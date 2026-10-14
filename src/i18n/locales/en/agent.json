@@ -127,6 +127,18 @@
 		"writingDescription": "The open manuscript is attached. Select a passage in the source or the PDF to ask about it.",
 		"waiting": "Waiting for agent…"
 	},
+	"zhihuDiscussions": {
+		"noPaper": "Open a paper to see what Zhihu is saying about it.",
+		"noSecret": "No Zhihu Access Secret yet. Add one in Settings → Agent → Zhihu.",
+		"loading": "Searching Zhihu…",
+		"empty": "No related discussions found on Zhihu.",
+		"note": "Title search on Zhihu — results may be unrelated.",
+		"retry": "Retry",
+		"refresh": "Refresh",
+		"answer": "Answer",
+		"article": "Article",
+		"votes": "{{votes}} upvotes"
+	},
 	"thinking": "Thinking…",
 	"working": "Working…",
 	"solving": "Solving…",

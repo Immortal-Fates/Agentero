@@ -605,6 +605,7 @@ export function useAgentPanel({
 	return {
 		t,
 		// Transcript (lines are owned by ChatTranscript's store subscription)
+		selectedPaperMeta,
 		activeTabId,
 		hydratingSessionId,
 		selected,

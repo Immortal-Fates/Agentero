@@ -31,6 +31,7 @@ import {
 	transcriptLineKey,
 	useTranscriptVirtualizer,
 } from "@/components/agent/hooks/use-transcript-virtualizer";
+import { ZhihuDiscussions } from "@/components/agent/zhihu-discussions";
 import {
 	Checkpoint,
 	CheckpointIcon,
@@ -81,7 +82,11 @@ import {
 } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveChatLines } from "@/lib/agent/agent-session-store";
-import { type AgentPhaseState, isAgentAuthFailure } from "@/lib/agent/api";
+import {
+	type AgentPhaseState,
+	isAgentAuthFailure,
+	isChatOnlyAgentTemplate,
+} from "@/lib/agent/api";
 import {
 	type AgentPart,
 	type AskUserQuestion,
@@ -99,6 +104,7 @@ import { stripPromptEnvelopeForDisplay } from "@/lib/agent/prompt-display";
 import { selectionNavigationStore } from "@/lib/agent/selection-navigation-state";
 import { selectionsPromptBlock } from "@/lib/agent/selection-prompt";
 import { cn } from "@/lib/core/utils";
+import type { PaperMetadata } from "@/lib/paper";
 import { writingStore } from "@/lib/writing/store";
 
 /** Compact note: interactive form is docked below, not inside the tool card. */
@@ -930,6 +936,8 @@ export const ChatTranscript = memo(function ChatTranscript({
 	onSendSuggestion,
 	onAgentLogin,
 	onOpenSource,
+	agentTemplate = null,
+	paper = null,
 	phase = null,
 }: {
 	activeTabId: string;
@@ -956,6 +964,10 @@ export const ChatTranscript = memo(function ChatTranscript({
 	onAgentLogin?: () => void;
 	/** Open a vault path / paper (or external URL) from Sources / inline citation. */
 	onOpenSource?: (source: string) => void;
+	/** Active agent template — chat-only built-ins (Zhihu) get a bespoke empty state. */
+	agentTemplate?: string | null;
+	/** Focused paper metadata, used by the Zhihu empty-state discussion cards. */
+	paper?: PaperMetadata | null;
 	/** Loading phase of the in-flight turn (starting / waiting-model / reconnecting). */
 	phase?: AgentPhaseState | null;
 }) {
@@ -966,6 +978,9 @@ export const ChatTranscript = memo(function ChatTranscript({
 	const lines = useActiveChatLines();
 	const restoringHistorySession =
 		hydratingSessionId === activeTabId && lines.length === 0;
+	// Chat-only built-ins (Zhihu) replace the generic suggestions with their own
+	// empty state.
+	const zhihuEmpty = isChatOnlyAgentTemplate(agentTemplate);
 
 	// Lifted Reasoning/Tool/Plan open state so virtualized rows keep their
 	// fold state across unmount/remount. Keyed by `${rowKey}:${part.id}`.
@@ -1063,28 +1078,32 @@ export const ChatTranscript = memo(function ChatTranscript({
 								writing ? "empty.writingDescription" : "empty.description",
 							)}
 						>
-							<div className="mt-4 flex w-full max-w-sm flex-col items-stretch gap-2">
-								{activeTabIsRunning ? (
-									<Shimmer className="text-center text-sm">
-										{t("empty.waiting")}
-									</Shimmer>
-								) : (
-									suggestions.map((item) => {
-										const label = t(`suggestions.${item.key}`);
-										return (
-											<Suggestion
-												key={item.key}
-												suggestion={label}
-												className="h-auto w-full justify-start whitespace-normal rounded-lg px-3 py-2.5 text-left"
-												onClick={(value) =>
-													onSendSuggestion(value, item.workflow)
-												}
-												disabled={activeTabIsRunning}
-											/>
-										);
-									})
-								)}
-							</div>
+							{zhihuEmpty ? (
+								<ZhihuDiscussions paper={paper} />
+							) : (
+								<div className="mt-4 flex w-full max-w-sm flex-col items-stretch gap-2">
+									{activeTabIsRunning ? (
+										<Shimmer className="text-center text-sm">
+											{t("empty.waiting")}
+										</Shimmer>
+									) : (
+										suggestions.map((item) => {
+											const label = t(`suggestions.${item.key}`);
+											return (
+												<Suggestion
+													key={item.key}
+													suggestion={label}
+													className="h-auto w-full justify-start whitespace-normal rounded-lg px-3 py-2.5 text-left"
+													onClick={(value) =>
+														onSendSuggestion(value, item.workflow)
+													}
+													disabled={activeTabIsRunning}
+												/>
+											);
+										})
+									)}
+								</div>
+							)}
 						</ConversationEmptyState>
 					</div>
 				) : (

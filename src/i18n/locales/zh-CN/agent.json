@@ -127,6 +127,18 @@
 		"writingDescription": "当前稿件已经附上。在源码或 PDF 里选中一段，就可以针对它提问。",
 		"waiting": "正在等待 Agent……"
 	},
+	"zhihuDiscussions": {
+		"noPaper": "打开一篇论文后，这里会显示知乎上的相关讨论。",
+		"noSecret": "尚未配置知乎 Access Secret，请在 设置 → Agent → 知乎 中填入。",
+		"loading": "正在检索知乎……",
+		"empty": "知乎上暂无与本文相关的讨论。",
+		"note": "按论文标题检索知乎，结果可能与本文无关。",
+		"retry": "重试",
+		"refresh": "换一批",
+		"answer": "回答",
+		"article": "文章",
+		"votes": "{{votes}} 赞同"
+	},
 	"thinking": "思考中……",
 	"working": "执行中……",
 	"solving": "求解中……",
