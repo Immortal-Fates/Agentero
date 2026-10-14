@@ -17,6 +17,7 @@ import { AgentUserAgentBlock } from "@/components/settings/panes/agent/agent-use
 import { useAgentCatalog } from "@/components/settings/panes/agent/use-agent-catalog";
 import { useAgentRegistry } from "@/components/settings/panes/agent/use-agent-registry";
 import { useAgentUninstall } from "@/components/settings/panes/agent/use-agent-uninstall";
+import { ZhihuSecretBlock } from "@/components/settings/panes/agent/zhihu-secret-block";
 import { catalogProbeKey } from "@/components/settings/panes/agent-catalog";
 import { AgentUninstallDialog } from "@/components/settings/panes/agent-uninstall-dialog";
 import {
@@ -248,6 +249,11 @@ export function AgentPane({
 				initialUserAgent={catalog?.userAgent ?? ""}
 				initialProviderIds={catalog?.userAgentProviderIds ?? ""}
 				onCommitted={patchUserAgent}
+			/>
+
+			<ZhihuSecretBlock
+				savedSecret={settings.zhihuAccessSecret}
+				onCommit={(value) => patch({ zhihuAccessSecret: value })}
 			/>
 
 			<AgentEmbeddingBlock settings={settings} patch={patch} />

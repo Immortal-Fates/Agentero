@@ -47,3 +47,5 @@ pub mod vault;
 pub mod web;
 #[cfg(feature = "desktop")]
 pub mod writing;
+#[cfg(feature = "desktop")]
+pub mod zhihu;
