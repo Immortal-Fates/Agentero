@@ -72,6 +72,7 @@ export function useAgentPanel({
 
 	const {
 		selectedVaultPath,
+		selectedPaperMeta,
 		directoryPathSet,
 		paperPathSet,
 		labelForPath,
@@ -367,6 +368,7 @@ export function useAgentPanel({
 		setHistoryOpen,
 		setSelectedAgentId,
 		selectedVaultPath,
+		selectedPaperMeta,
 		contextPaths,
 		composer: composerState,
 		turnConfig,
