@@ -488,6 +488,12 @@ export const commands = {
 	 *  未配置或请求失败返回 false。
 	 */
 	zhihuProbe: () => __TAURI_INVOKE<ApiResult<boolean>>("zhihu_probe"),
+	/**
+	 *  生成知乎提问草稿：标题优先用直答译成中文（未配凭证/失败时回退原标题），
+	 *  正文为论文信息 + 摘要。桌面端无法像扩展那样直接填知乎提问弹窗，前端拿到草稿后
+	 *  复制到剪贴板并打开知乎。
+	 */
+	zhihuQuestionDraft: (input: QuestionDraftInput) => __TAURI_INVOKE<ApiResult<ZhihuQuestionDraft>>("zhihu_question_draft", { input }),
 	agentRunOnce: (request: RunOnceRequest_Deserialize) => typedError<ApiResult<RunOnceAccepted>, string>(__TAURI_INVOKE("agent_run_once", { request })),
 	/**  List ACP sessions for an agent via `session/list`. */
 	agentListSessions: (agentId: string | null, vaultPath: string | null, cursor: string | null) => typedError<ApiResult<AcpListSessionsResult_Serialize>, string>(__TAURI_INVOKE("agent_list_sessions", { agentId, vaultPath, cursor })),
@@ -4605,6 +4611,19 @@ export type PropertyOption_Serialize = {
 	color?: string | null,
 };
 
+/**  生成提问草稿所需的论文信息（均为公开元数据，前端从 catalog 取）。 */
+export type QuestionDraftInput = {
+	title: string,
+	authors?: string[],
+	venue?: string,
+	year?: string,
+	doi?: string,
+	arxivId?: string,
+	/**  论文主页链接；为空时按 DOI / arXiv 推导。 */
+	url?: string,
+	abstractText?: string,
+};
+
 /**
  *  Minimal activity point mirrored by `ReadingActivityPoint` in
  *  `src/lib/paper/reading-heatmap/types.ts`.
@@ -6131,6 +6150,12 @@ export type WritingSyncReport = {
 	remote: boolean,
 	code: string,
 	detail: string,
+};
+
+/**  交给用户发布（或复制到剪贴板）的知乎提问草稿。 */
+export type ZhihuQuestionDraft = {
+	title: string,
+	body: string,
 };
 
 /**  A Zotero collection surfaced in the scan preview (for the folder picker). */
