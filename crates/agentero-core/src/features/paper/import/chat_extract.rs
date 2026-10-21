@@ -96,7 +96,10 @@ fn read_arxiv_tail(rest: &str) -> String {
     };
     // Count ALL consecutive digits first — a 6th digit must invalidate the
     // whole id, not truncate to a valid-looking 5-digit prefix.
-    let nn: String = after_dot.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let nn: String = after_dot
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     if !(4..=5).contains(&nn.len()) {
         return String::new();
     }
@@ -125,9 +128,7 @@ fn host_boundary(hay: &str, idx: usize) -> bool {
         || hay[..idx]
             .chars()
             .next_back()
-            .is_none_or(|c| {
-                !c.is_ascii_alphanumeric() && c != '-' && c != '_' && c != '.'
-            })
+            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_' && c != '.')
 }
 
 /// Invoke `f` on the tail after every boundary-anchored occurrence of
@@ -177,7 +178,9 @@ fn read_doi_tail(rest: &str) -> String {
             let close_rel = run.iter().position(|&x| x == closer);
             let balanced = close_rel.filter(|&k| {
                 k <= 24
-                    && run[..k].iter().all(|&x| !x.is_whitespace() && x != '(' && x != '<')
+                    && run[..k]
+                        .iter()
+                        .all(|&x| !x.is_whitespace() && x != '(' && x != '<')
                     && i + k + 2 < chars.len()
             });
             match balanced {
@@ -492,19 +495,17 @@ mod tests {
         );
         // #2 URL fragments don't leak into the DOI.
         assert_eq!(
-            extract_identifiers(
-                "https://doi.org/10.1038/nature12373#supplementary-information"
-            )
-            .dois,
+            extract_identifiers("https://doi.org/10.1038/nature12373#supplementary-information")
+                .dois,
             vec!["10.1038/nature12373"]
         );
         // #3 arXiv shape: post-dot digit count and month half are validated.
-        assert!(extract_identifiers("https://arxiv.org/abs/2403.1").arxiv.is_empty());
-        assert!(
-            extract_identifiers("https://arxiv.org/abs/2403.123456")
-                .arxiv
-                .is_empty()
-        );
+        assert!(extract_identifiers("https://arxiv.org/abs/2403.1")
+            .arxiv
+            .is_empty());
+        assert!(extract_identifiers("https://arxiv.org/abs/2403.123456")
+            .arxiv
+            .is_empty());
         assert!(
             extract_identifiers("https://arxiv.org/abs/2413.12345") // month 13
                 .arxiv
@@ -519,10 +520,7 @@ mod tests {
             "https://notarxiv.org/abs/2403.15388 https://fakedoi.org/10.1038/nature12373 myarxiv:2403.15388"
         )
         .is_empty());
-        assert!(
-            extract_identifiers("mydoi:10.1038/nature12373")
-                .is_empty()
-        );
+        assert!(extract_identifiers("mydoi:10.1038/nature12373").is_empty());
         // #5 short PMIDs: full 1–9 range on the domain anchor, 4+ on mentions.
         let out = extract_identifiers("https://pubmed.ncbi.nlm.nih.gov/1234/ and PMID: 5678");
         assert_eq!(out.pmids, vec!["1234", "5678"]);
