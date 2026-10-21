@@ -544,7 +544,7 @@ function skillJobSelections(params: unknown): SkillImportSelection[] {
 	);
 }
 
-function inferLookupSource(raw: string): string {
+export function inferLookupSource(raw: string): string {
 	const text = raw.trim();
 	if (/npx\s+skills|github\.com|skills\.sh/i.test(text)) return "skill";
 	if (/arxiv\.org|^\d{4}\.\d{4,5}(v\d+)?$/i.test(text)) return "arxiv";

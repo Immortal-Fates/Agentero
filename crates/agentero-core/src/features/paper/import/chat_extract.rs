@@ -12,7 +12,7 @@
 //! in chat text. Duplicates collapse in first-seen order.
 
 use crate::error::AppError;
-use crate::features::scholar_api::identifiers::{clean_doi, strip_arxiv_version};
+use crate::features::scholar_api::identifiers::strip_arxiv_version;
 
 /// Identifiers extracted from one blob of text, first-seen order.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
@@ -82,35 +82,120 @@ fn push_unique(list: &mut Vec<String>, value: String) {
     }
 }
 
+/// `<YYMM>.<NNNN[N]>` with optional vN. The month half must be 01–12 and the
+/// post-dot sequence exactly 4–5 digits — new-style ids are exactly that
+/// shape (`2403.1` / `2403.123456` are invalid). Old-style `hep-th/9901001`
+/// ids don't match the URL/mention paths at all; documented non-goal.
 fn read_arxiv_tail(rest: &str) -> String {
-    // <digits>.<digits> with optional vN
-    let mut out = String::new();
-    let mut seen_dot = false;
-    let mut digits_before_dot = 0usize;
-    for c in rest.chars() {
-        if c.is_ascii_digit() && !seen_dot {
-            digits_before_dot += 1;
-            out.push(c);
-        } else if c == '.' && !seen_dot && digits_before_dot == 4 {
-            seen_dot = true;
-            out.push(c);
-        } else if c.is_ascii_digit() && seen_dot {
-            out.push(c);
-        } else if c == 'v' && seen_dot {
-            // version suffix: keep reading digits
-            out.push(c);
-        } else {
-            break;
+    let yy: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if yy.len() != 4 {
+        return String::new();
+    }
+    let Some(after_dot) = rest[4..].strip_prefix('.') else {
+        return String::new();
+    };
+    // Count ALL consecutive digits first — a 6th digit must invalidate the
+    // whole id, not truncate to a valid-looking 5-digit prefix.
+    let nn: String = after_dot.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if !(4..=5).contains(&nn.len()) {
+        return String::new();
+    }
+    let mut out = format!("{yy}.{nn}");
+    if let Some(vtail) = after_dot[nn.len()..].strip_prefix('v') {
+        let vn: String = vtail.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !vn.is_empty() {
+            out.push('v');
+            out.push_str(&vn);
         }
     }
-    let valid = seen_dot
-        && digits_before_dot == 4
-        && out.ends_with(|c: char| c.is_ascii_digit() || c == 'v');
-    if valid {
-        out
-    } else {
-        String::new()
+    // YYMM: the month half must be 01–12 (kills `2413.xxxx`, `2450.xxxx`).
+    let yy_mm: u32 = yy.parse().unwrap_or(0);
+    if !(1..=12).contains(&(yy_mm % 100)) {
+        return String::new();
     }
+    out
+}
+
+/// A `needle` occurrence only counts when the character right before it is
+/// neither alphanumeric nor `-`/`_`/`.` — kills `notarxiv.org`, `myarxiv:`
+/// and `fakedoi.org` lookalikes while still allowing scheme (`://`), path
+/// (`/`) and plain line/word starts.
+fn host_boundary(hay: &str, idx: usize) -> bool {
+    idx == 0
+        || hay[..idx]
+            .chars()
+            .next_back()
+            .is_none_or(|c| {
+                !c.is_ascii_alphanumeric() && c != '-' && c != '_' && c != '.'
+            })
+}
+
+/// Invoke `f` on the tail after every boundary-anchored occurrence of
+/// `needle` in `hay`.
+fn for_each_tail<'a, F: FnMut(&'a str)>(hay: &'a str, needle: &str, mut f: F) {
+    let mut from = 0usize;
+    while let Some(rel) = hay[from..].find(needle) {
+        let abs = from + rel;
+        if host_boundary(hay, abs) {
+            f(&hay[abs + needle.len()..]);
+        }
+        from = abs + needle.len();
+    }
+}
+
+/// Strict DOI shape: `10.\d{4,9}/<non-empty suffix>` (credit @Fengsuid).
+/// Replaces the looser `clean_doi` acceptance, which let truncated values
+/// like `10.1016/s0140-6736` through.
+fn is_valid_doi(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix("10.") else {
+        return false;
+    };
+    let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    if !(4..=9).contains(&digits) {
+        return false;
+    }
+    let suffix = &rest[digits..];
+    suffix.starts_with('/') && suffix.len() > 1
+}
+
+/// Read a DOI tail, keeping balanced parentheses and angle brackets inline —
+/// Lancet/Wiley DOIs carry them (`10.1016/S0140-6736(20)30183-5`,
+/// `10.1002/(SICI)1097-4636...`). An opener is consumed only when its closer
+/// sits within 24 chars with no whitespace inside and real content follows
+/// the closer; otherwise the identifier ends there — prose punctuation
+/// after a DOI is far more common than unbalanced DOI suffixes. URL
+/// fragments (`#`) and query tails (`?`) end the DOI.
+fn read_doi_tail(rest: &str) -> String {
+    let chars: Vec<char> = rest.chars().collect();
+    let mut out = String::new();
+    let mut i = 0usize;
+    while i < chars.len() && out.chars().count() < 120 {
+        let c = chars[i];
+        if c == '(' || c == '<' {
+            let closer = if c == '(' { ')' } else { '>' };
+            let run = &chars[i + 1..];
+            let close_rel = run.iter().position(|&x| x == closer);
+            let balanced = close_rel.filter(|&k| {
+                k <= 24
+                    && run[..k].iter().all(|&x| !x.is_whitespace() && x != '(' && x != '<')
+                    && i + k + 2 < chars.len()
+            });
+            match balanced {
+                Some(k) => {
+                    out.extend(&chars[i..=i + k + 1]);
+                    i += k + 2;
+                }
+                None => break,
+            }
+            continue;
+        }
+        if ident_end(c) || c == '#' {
+            break;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
 }
 
 /// Scan chat/share text for paper identifiers.
@@ -124,9 +209,7 @@ pub fn extract_identifiers(text: &str) -> ExtractedIdentifiers {
         .replace("pmid：", "pmid:");
 
     // arXiv URLs: arxiv.org/{abs|pdf|html|src}/<id>
-    let mut rest = hay.as_str();
-    while let Some(idx) = rest.find("arxiv.org/") {
-        let after = &rest[idx + "arxiv.org/".len()..];
+    for_each_tail(&hay, "arxiv.org/", |after| {
         let after = after
             .strip_prefix("abs/")
             .or_else(|| after.strip_prefix("pdf/"))
@@ -138,66 +221,83 @@ pub fn extract_identifiers(text: &str) -> ExtractedIdentifiers {
                 push_unique(&mut out.arxiv, strip_arxiv_version(&id));
             }
         }
-        rest = &rest[idx + "arxiv.org/".len()..];
-    }
+    });
 
     // arXiv: mentions
-    let mut rest = hay.as_str();
-    while let Some(idx) = rest.find("arxiv:") {
-        let after = &rest[idx + "arxiv:".len()..];
+    for_each_tail(&hay, "arxiv:", |after| {
         let after = after.trim_start_matches(|c: char| c.is_whitespace() || c == '/');
         let id = read_arxiv_tail(after);
         if !id.is_empty() {
             push_unique(&mut out.arxiv, strip_arxiv_version(&id));
         }
-        rest = &rest[idx + "arxiv:".len()..];
-    }
+    });
 
     // DOI URLs: doi.org/<doi>
-    let mut rest = hay.as_str();
-    while let Some(idx) = rest.find("doi.org/") {
-        let after = &rest[idx + "doi.org/".len()..];
-        let tail: String = after
-            .chars()
-            .take_while(|c| !ident_end(*c))
-            .take(120)
-            .collect();
-        if let Some(doi) = clean_doi(&tail) {
+    for_each_tail(&hay, "doi.org/", |after| {
+        let doi = read_doi_tail(after);
+        if is_valid_doi(&doi) {
             push_unique(&mut out.dois, doi);
         }
-        rest = &rest[idx + "doi.org/".len()..];
+    });
+
+    // Bare DOIs (incl. `doi:`-prefixed mentions — the prefix ends with a
+    // boundary char, so one scanner covers both). Bare `10.\d{4,9}/…`
+    // doesn't collide with version strings or page numbers and is common in
+    // chat citations (credit @Fengsuid). Bare arXiv numbers stay excluded:
+    // they DO collide with version strings and YYMM validation alone is not
+    // enough. The preceding char must also not be `/` — a `10.` inside a URL
+    // path (possibly on a lookalike host) is not prose.
+    {
+        let mut from = 0usize;
+        while let Some(rel) = hay[from..].find("10.") {
+            let abs = from + rel;
+            let prev = hay[..abs].chars().next_back();
+            // `:<word>10.` only counts when the word is literally `doi`
+            // (`doi:10.…` ok, `mydoi:10.…` not).
+            let colon_ok = match prev {
+                Some(':') => {
+                    let word: String = hay[..abs - 1]
+                        .chars()
+                        .rev()
+                        .take_while(|c| c.is_ascii_alphanumeric())
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect();
+                    word == "doi"
+                }
+                _ => true,
+            };
+            let prev_slash = prev == Some('/');
+            if colon_ok && host_boundary(&hay, abs) && !prev_slash {
+                let candidate = format!("10.{}", &hay[abs + 3..]);
+                let doi = read_doi_tail(&candidate);
+                if is_valid_doi(&doi) {
+                    push_unique(&mut out.dois, doi);
+                }
+            }
+            from = abs + 3;
+        }
     }
 
-    // PubMed URLs
-    let mut rest = hay.as_str();
-    while let Some(idx) = rest.find("pubmed.ncbi.nlm.nih.gov/") {
-        let after = &rest[idx + "pubmed.ncbi.nlm.nih.gov/".len()..];
-        let digits: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .take(9)
-            .collect();
-        if digits.len() >= 5 {
+    // PubMed URLs — the domain anchor is trustworthy, so the full 1–9 digit
+    // range is accepted (PMID 1 exists).
+    for_each_tail(&hay, "pubmed.ncbi.nlm.nih.gov/", |after| {
+        let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if (1..=9).contains(&digits.len()) {
             push_unique(&mut out.pmids, digits);
         }
-        rest = &rest[idx + "pubmed.ncbi.nlm.nih.gov/".len()..];
-    }
+    });
 
-    // PMID mentions
-    let mut rest = hay.as_str();
-    while let Some(idx) = rest.find("pmid") {
-        let after = &rest[idx + "pmid".len()..];
+    // PMID mentions — the prefix anchor makes short ids safe; 4+ digits
+    // keeps stray `pmid: 12` counters out.
+    for_each_tail(&hay, "pmid", |after| {
         let after = after.trim_start_matches([':', ' ', '\t']);
-        let digits: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .take(9)
-            .collect();
-        if digits.len() >= 5 {
+        let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if (4..=9).contains(&digits.len()) {
             push_unique(&mut out.pmids, digits);
         }
-        rest = &rest[idx + "pmid".len()..];
-    }
+    });
 
     out
 }
@@ -221,6 +321,14 @@ pub fn is_share_url(text: &str) -> bool {
 /// Chrome UA passes for share pages (verified against a real share link).
 const SHARE_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
+/// Hard cap on the share page body — real share pages are well under 1 MiB;
+/// anything larger is not a conversation page (review point on #814).
+const SHARE_MAX_BYTES: usize = 5 * 1024 * 1024;
+
+/// Hosts a share fetch may redirect to (`chatgpt.com` SSO hops stay inside
+/// its own domain; anything else is refused).
+const SHARE_HOSTS: [&str; 2] = ["chatgpt.com", "chat.openai.com"];
+
 /// Fetch a share page over HTTPS and return its server-rendered HTML.
 /// Cloudflare fingerprints non-browser TLS stacks even behind a real UA, so
 /// send the full browser header set — the combo matters as much as the UA.
@@ -228,9 +336,24 @@ async fn fetch_share_page(url: &str) -> Result<String, AppError> {
     let client = reqwest::Client::builder()
         .user_agent(SHARE_UA)
         .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() > 3 {
+                return attempt.error("too many redirects");
+            }
+            let host_ok = attempt
+                .url()
+                .host_str()
+                .map(|h| h.to_ascii_lowercase())
+                .is_some_and(|h| SHARE_HOSTS.contains(&h.as_str()));
+            if host_ok {
+                attempt.follow()
+            } else {
+                attempt.error("redirect left the share host")
+            }
+        }))
         .build()
         .map_err(|e| AppError::Message(format!("share http client: {e}")))?;
-    let resp = client
+    let mut resp = client
         .get(url)
         .header("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
         .header("accept-language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -251,10 +374,20 @@ async fn fetch_share_page(url: &str) -> Result<String, AppError> {
             "share fetch returned HTTP {status}"
         )));
     }
-    let body = resp
-        .text()
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
         .await
-        .map_err(|e| AppError::Message(format!("share read failed: {e}")))?;
+        .map_err(|e| AppError::Message(format!("share read failed: {e}")))?
+    {
+        if body.len() + chunk.len() > SHARE_MAX_BYTES {
+            return Err(AppError::Message(
+                "share page exceeded 5 MiB; not a conversation page".into(),
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let body = String::from_utf8_lossy(&body).into_owned();
     if body.contains("Just a moment...") {
         return Err(AppError::Message(
             "share page served a bot challenge; paste the conversation text instead".into(),
@@ -341,6 +474,74 @@ mod tests {
             extract_identifiers(html).dois,
             vec!["10.1088/1361-6560/ac1a20"]
         );
+    }
+
+    /// Every repro from @Fengsuid's adversarial review of #814, plus the
+    /// adopted bare-DOI behaviour.
+    #[test]
+    fn adversarial_review_cases() {
+        // #1 balanced-paren DOIs are not truncated (Lancet/Wiley style).
+        assert_eq!(
+            extract_identifiers("https://doi.org/10.1016/S0140-6736(20)30183-5").dois,
+            vec!["10.1016/s0140-6736(20)30183-5"]
+        );
+        // Trailing prose parentheses are NOT swallowed.
+        assert_eq!(
+            extract_identifiers("参考 https://doi.org/10.1038/nature12373（全文）").dois,
+            vec!["10.1038/nature12373"]
+        );
+        // #2 URL fragments don't leak into the DOI.
+        assert_eq!(
+            extract_identifiers(
+                "https://doi.org/10.1038/nature12373#supplementary-information"
+            )
+            .dois,
+            vec!["10.1038/nature12373"]
+        );
+        // #3 arXiv shape: post-dot digit count and month half are validated.
+        assert!(extract_identifiers("https://arxiv.org/abs/2403.1").arxiv.is_empty());
+        assert!(
+            extract_identifiers("https://arxiv.org/abs/2403.123456")
+                .arxiv
+                .is_empty()
+        );
+        assert!(
+            extract_identifiers("https://arxiv.org/abs/2413.12345") // month 13
+                .arxiv
+                .is_empty()
+        );
+        assert_eq!(
+            extract_identifiers("https://arxiv.org/abs/2603.29080").arxiv,
+            vec!["2603.29080"]
+        );
+        // #4 lookalike hosts and prefixed mentions don't match.
+        assert!(extract_identifiers(
+            "https://notarxiv.org/abs/2403.15388 https://fakedoi.org/10.1038/nature12373 myarxiv:2403.15388"
+        )
+        .is_empty());
+        assert!(
+            extract_identifiers("mydoi:10.1038/nature12373")
+                .is_empty()
+        );
+        // #5 short PMIDs: full 1–9 range on the domain anchor, 4+ on mentions.
+        let out = extract_identifiers("https://pubmed.ncbi.nlm.nih.gov/1234/ and PMID: 5678");
+        assert_eq!(out.pmids, vec!["1234", "5678"]);
+        // Bare / `doi:` DOIs (adopted per review) — no collision with
+        // version strings like `1.26.4` or bare arXiv numbers.
+        assert_eq!(
+            extract_identifiers("方法见 10.1038/nature12373，数据 doi: 10.1126/science.abc1234")
+                .dois,
+            vec!["10.1038/nature12373", "10.1126/science.abc1234"]
+        );
+        assert!(extract_identifiers("升级到 1.26.4 和 2024.12345").is_empty());
+        // Balanced angle brackets survive (SICI-era DOIs); the `;` inside the
+        // very old suffixes still terminates — known limit, see PR thread.
+        let sici = extract_identifiers(
+            "https://doi.org/10.1002/(SICI)1097-4636(199801)39:1<1::AID-JBM1>3.0.CO;2-9",
+        )
+        .dois;
+        assert_eq!(sici.len(), 1);
+        assert!(sici[0].starts_with("10.1002/(sici)1097-4636(199801)39:1<1::aid-jbm1>"));
     }
 
     /// Distilled from a real chatgpt.com/share conversation: seven papers,

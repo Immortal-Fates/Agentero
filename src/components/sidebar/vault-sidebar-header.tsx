@@ -54,6 +54,7 @@ import { errorText } from "@/lib/core/error";
 import { callApiResult } from "@/lib/core/ipc";
 import { displayPath } from "@/lib/core/path";
 import { isTauri } from "@/lib/core/tauri";
+import { inferLookupSource } from "@/lib/paper/import-actions";
 import { formatShortcutById } from "@/lib/shell/shortcuts";
 import { vaultDisplayName } from "@/lib/vault";
 import {
@@ -202,7 +203,14 @@ export const VaultSidebarHeader = memo(function VaultSidebarHeader({
 			// switches to a review checklist instead of importing sight-unseen;
 			// plain identifier lists and title searches fall through unchanged.
 			// Local for pasted text; share URLs fetch once host-side.
-			if (isTauri()) {
+			// A blob containing a Skill source keeps the legacy per-segment
+			// path — Skill discovery must not be silently dropped by the
+			// checklist (review point on #814).
+			const segments = parseLookupTexts(raw);
+			const hasSkillSegment = segments.some(
+				(s) => inferLookupSource(s) === "skill",
+			);
+			if (isTauri() && !hasSkillSegment) {
 				const extracted = await callApiResult(
 					() => commands.chatImportExtract({ text: raw }),
 					{ fallback: t("lookup.fetchFailed") },
