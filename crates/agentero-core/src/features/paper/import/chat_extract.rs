@@ -43,13 +43,19 @@ impl ExtractedIdentifiers {
 /// Characters that reliably end an identifier inside chat text. `&`/`?`/`=`
 /// only occur in URL query strings, never in a DOI suffix or arXiv id, so they
 /// end identifiers too — HTML-decoded share pages carry `doi.org/<doi>&amp;…`
-/// tracking tails that would otherwise corrupt the extracted DOI.
+/// tracking tails that would otherwise corrupt the extracted DOI. `\` is the
+/// markdown-escape residue chatgpt.com share pages leave after identifiers,
+/// `*` is bold markup, and identifiers are pure ASCII — private-use code
+/// points (e.g. U+E201) inside share pages terminate too.
 fn ident_end(c: char) -> bool {
-    c.is_whitespace()
+    !c.is_ascii()
+        || c.is_whitespace()
         || matches!(
             c,
-            '&' | '?'
+            '\\' | '&'
+                | '?'
                 | '='
+                | '*'
                 | '"'
                 | '\''
                 | '<'
@@ -148,9 +154,10 @@ fn for_each_tail<'a, F: FnMut(&'a str)>(hay: &'a str, needle: &str, mut f: F) {
     }
 }
 
-/// Strict DOI shape: `10.\d{4,9}/<non-empty suffix>` (credit @Fengsuid).
-/// Replaces the looser `clean_doi` acceptance, which let truncated values
-/// like `10.1016/s0140-6736` through.
+/// Strict DOI shape: `10.\d{4,9}/<non-empty suffix>` with the suffix at least
+/// 4 chars — real DOI suffixes never run shorter, while ellipsis-truncated
+/// citation cards leave 1–3 char stubs like `10.1088/13` (credit: a second
+/// real share link, #814).
 fn is_valid_doi(s: &str) -> bool {
     let Some(rest) = s.strip_prefix("10.") else {
         return false;
@@ -160,7 +167,23 @@ fn is_valid_doi(s: &str) -> bool {
         return false;
     }
     let suffix = &rest[digits..];
-    suffix.starts_with('/') && suffix.len() > 1
+    suffix.starts_with('/') && suffix.len() > 4
+}
+
+/// Push a DOI, resolving truncation duplicates: share pages carry
+/// ellipsis-truncated copies (`…356682`) of the same DOI, so when the new
+/// value and an existing one are prefix-related, keep the longer one.
+fn push_unique_doi(list: &mut Vec<String>, value: String) {
+    if value.is_empty() {
+        return;
+    }
+    list.retain(|existing| !(value.starts_with(existing.as_str()) && existing.len() < value.len()));
+    if !list
+        .iter()
+        .any(|existing| existing.starts_with(value.as_str()))
+    {
+        list.push(value);
+    }
 }
 
 /// Read a DOI tail, keeping balanced parentheses and angle brackets inline —
@@ -279,7 +302,7 @@ pub fn extract_identifiers(text: &str) -> ExtractedIdentifiers {
         for_each_tail(&hay, needle, |after| {
             let doi = read_doi_tail(after);
             if is_valid_doi(&doi) {
-                push_unique(&mut out.dois, doi);
+                push_unique_doi(&mut out.dois, doi);
             }
         });
     }
@@ -317,7 +340,7 @@ pub fn extract_identifiers(text: &str) -> ExtractedIdentifiers {
                 let candidate = format!("10.{}", &hay[abs + 3..]);
                 let doi = read_doi_tail(&candidate);
                 if is_valid_doi(&doi) {
-                    push_unique(&mut out.dois, doi);
+                    push_unique_doi(&mut out.dois, doi);
                 }
             }
             from = abs + 3;
@@ -635,6 +658,53 @@ mod tests {
             .dois
             .len(),
             1
+        );
+        // Markdown-escape residue: chatgpt.com share pages emit `\` after
+        // identifiers (found on a second real share link).
+        assert_eq!(
+            extract_identifiers(
+                r"链接 [10.1109/TMC.2025.3547371\](https://doi.org/10.1109/TMC.2025.3547371) 和 arXiv:2609.36844\\",
+            )
+            .dois,
+            vec!["10.1109/tmc.2025.3547371"]
+        );
+        assert_eq!(
+            extract_identifiers("https://arxiv.org/abs/2312.07192\\ tail").arxiv,
+            vec!["2312.07192"]
+        );
+    }
+
+    /// Pathologies from a second real share link (robotics survey, 15 papers):
+    /// private-use code points (U+E201), bold markup and ellipsis-truncated
+    /// citation cards — all must collapse to clean, unique identifiers.
+    #[test]
+    fn share_page_markup_pathologies() {
+        // U+E201 + `**` right after a DOI inside a table cell.
+        assert_eq!(
+            extract_identifiers("10.1109/TMC.2025.3547371\u{e201}**（IEEE TMC 2025）| CUHK").dois,
+            vec!["10.1109/tmc.2025.3547371"]
+        );
+        // Ellipsis-truncated citation cards: the stub must not survive
+        // alongside (or instead of) the full DOI seen elsewhere in the page.
+        assert!(
+            extract_identifiers("https://doi.org/10.1088/13... truncated")
+                .dois
+                .is_empty()
+        );
+        assert_eq!(
+            extract_identifiers(
+                "https://doi.org/10.1109/TIM.2025.3566826 引用卡片 10.1109/TIM.2025.356682...",
+            )
+            .dois,
+            vec!["10.1109/tim.2025.3566826"]
+        );
+        // Truncation arriving first still loses to the full form later.
+        assert_eq!(
+            extract_identifiers(
+                "卡片 10.1109/TIM.2025.356682... 正文 https://doi.org/10.1109/TIM.2025.3566826",
+            )
+            .dois,
+            vec!["10.1109/tim.2025.3566826"]
         );
     }
 
