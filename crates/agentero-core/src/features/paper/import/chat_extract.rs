@@ -3,13 +3,17 @@
 //! Deterministic scanner (no LLM, no network): matches only unambiguous
 //! identifier forms so precision stays high in noisy chat text —
 //!
-//! - arXiv: `arxiv.org/(abs|pdf|html|src)/<id>` URLs and `arXiv:<id>` mentions
-//! - DOI: `doi.org/<doi>` URLs (validated via [`clean_doi`])
+//! - arXiv: `arxiv.org/(abs|pdf|html|src)` URLs (incl. `export.arxiv.org`)
+//!   and `arXiv:<id>` mentions
+//! - DOI: `doi.org` / `dx.doi.org` / `www.doi.org` URLs, bare
+//!   `10.\d{4,9}/…` and `doi:` mentions (validated via [`is_valid_doi`]);
+//!   balanced parens/angle brackets survive, trailing sentence punctuation
+//!   is trimmed
 //! - PMID: `pubmed.ncbi.nlm.nih.gov/<pmid>` URLs and `PMID[: ]<pmid>` mentions
 //!
-//! Deliberately excluded: bare `2403.15388`-style arXiv numbers and bare
-//! `10.x/yyyy` DOIs without a `doi.org` prefix — both false-positive heavily
-//! in chat text. Duplicates collapse in first-seen order.
+//! Deliberately excluded: bare `2403.15388`-style arXiv numbers — they
+//! false-positive heavily in chat text (version strings, page numbers).
+//! Duplicates collapse in first-seen order.
 
 use crate::error::AppError;
 use crate::features::scholar_api::identifiers::strip_arxiv_version;
@@ -165,7 +169,11 @@ fn is_valid_doi(s: &str) -> bool {
 /// sits within 24 chars with no whitespace inside and real content follows
 /// the closer; otherwise the identifier ends there — prose punctuation
 /// after a DOI is far more common than unbalanced DOI suffixes. URL
-/// fragments (`#`) and query tails (`?`) end the DOI.
+/// fragments (`#`) and query tails (`?`) end the DOI. Trailing sentence
+/// punctuation (`.`/`:`/`!`/`'`) is trimmed — sentence-final DOIs are the
+/// common case in pasted prose and no real DOI ends in those. SICI-era
+/// suffixes get one narrow continuation: a `;` right after `.CO` consumes
+/// `;` + digits/hyphens (`3.0.CO;2-9`).
 fn read_doi_tail(rest: &str) -> String {
     let chars: Vec<char> = rest.chars().collect();
     let mut out = String::new();
@@ -192,11 +200,30 @@ fn read_doi_tail(rest: &str) -> String {
             }
             continue;
         }
+        if c == ';' && out.ends_with(".co") {
+            // SICI continuation: `;` + digits/hyphens, then stop.
+            let mut j = i + 1;
+            out.push(';');
+            while j < chars.len() && (chars[j].is_ascii_digit() || chars[j] == '-') {
+                out.push(chars[j]);
+                j += 1;
+            }
+            break;
+        }
         if ident_end(c) || c == '#' {
             break;
         }
         out.push(c);
         i += 1;
+    }
+    // Trim a trailing run of sentence punctuation — no real DOI ends in
+    // `.`/`:`/`!`/`'`, and sentence-final DOIs are the common pasted form.
+    while out
+        .chars()
+        .next_back()
+        .is_some_and(|c| matches!(c, '.' | ':' | '!' | '\''))
+    {
+        out.pop();
     }
     out
 }
@@ -211,7 +238,17 @@ pub fn extract_identifiers(text: &str) -> ExtractedIdentifiers {
         .replace("arxiv：", "arxiv:")
         .replace("pmid：", "pmid:");
 
-    // arXiv URLs: arxiv.org/{abs|pdf|html|src}/<id>
+    // arXiv URLs: arxiv.org/{abs|pdf|html|src}/<id>. The export mirror needs
+    // its own needle — `host_boundary` rejects the `.` in `export.arxiv.org`,
+    // which is exactly what keeps lookalike hosts out.
+    for_each_tail(&hay, "export.arxiv.org/", |after| {
+        if let Some(after) = after.strip_prefix("abs/") {
+            let id = read_arxiv_tail(after);
+            if !id.is_empty() {
+                push_unique(&mut out.arxiv, strip_arxiv_version(&id));
+            }
+        }
+    });
     for_each_tail(&hay, "arxiv.org/", |after| {
         let after = after
             .strip_prefix("abs/")
@@ -235,13 +272,17 @@ pub fn extract_identifiers(text: &str) -> ExtractedIdentifiers {
         }
     });
 
-    // DOI URLs: doi.org/<doi>
-    for_each_tail(&hay, "doi.org/", |after| {
-        let doi = read_doi_tail(after);
-        if is_valid_doi(&doi) {
-            push_unique(&mut out.dois, doi);
-        }
-    });
+    // DOI URLs: doi.org/<doi> plus the dx/www mirrors old citations and
+    // Wikipedia still carry — each needs its own needle because
+    // `host_boundary` rejects their `.`-prefixed host form.
+    for needle in ["doi.org/", "dx.doi.org/", "www.doi.org/"] {
+        for_each_tail(&hay, needle, |after| {
+            let doi = read_doi_tail(after);
+            if is_valid_doi(&doi) {
+                push_unique(&mut out.dois, doi);
+            }
+        });
+    }
 
     // Bare DOIs (incl. `doi:`-prefixed mentions — the prefix ends with a
     // boundary char, so one scanner covers both). Bare `10.\d{4,9}/…`
@@ -532,14 +573,69 @@ mod tests {
             vec!["10.1038/nature12373", "10.1126/science.abc1234"]
         );
         assert!(extract_identifiers("升级到 1.26.4 和 2024.12345").is_empty());
-        // Balanced angle brackets survive (SICI-era DOIs); the `;` inside the
-        // very old suffixes still terminates — known limit, see PR thread.
+        // SICI-era suffixes: the narrow `.CO;` continuation now consumes the
+        // full tail (chosen behaviour — @Fengsuid's corpus covers it either way).
         let sici = extract_identifiers(
             "https://doi.org/10.1002/(SICI)1097-4636(199801)39:1<1::AID-JBM1>3.0.CO;2-9",
         )
         .dois;
-        assert_eq!(sici.len(), 1);
-        assert!(sici[0].starts_with("10.1002/(sici)1097-4636(199801)39:1<1::aid-jbm1>"));
+        assert_eq!(
+            sici,
+            vec!["10.1002/(sici)1097-4636(199801)39:1<1::aid-jbm1>3.0.co;2-9"]
+        );
+        // Bare SICI form in prose keeps the tail too.
+        assert_eq!(
+            extract_identifiers(
+                "老论文 10.1002/(SICI)1097-4636(199801)39:1<1::AID-JBM1>3.0.CO;2-9 结束"
+            )
+            .dois
+            .len(),
+            1
+        );
+    }
+
+    /// Second-round review repros (#814): trailing sentence punctuation and
+    /// the dx/www/export mirrors the boundary anchoring accidentally dropped.
+    #[test]
+    fn review_round_two_regressions() {
+        // A. Sentence-final punctuation must not leak into DOIs.
+        assert_eq!(
+            extract_identifiers(
+                "See 10.1038/nature12373. The follow-up is 10.1016/S0140-6736(20)30183-5."
+            )
+            .dois,
+            vec!["10.1038/nature12373", "10.1016/s0140-6736(20)30183-5"]
+        );
+        assert_eq!(
+            extract_identifiers("https://doi.org/10.1038/nature12373. Next sentence.").dois,
+            vec!["10.1038/nature12373"]
+        );
+        assert_eq!(
+            extract_identifiers("see 10.1038/nature12373: important").dois,
+            vec!["10.1038/nature12373"]
+        );
+        // B. dx.doi.org / www.doi.org / export.arxiv.org mirrors parse again.
+        assert_eq!(
+            extract_identifiers("https://dx.doi.org/10.1038/nature12373").dois,
+            vec!["10.1038/nature12373"]
+        );
+        assert_eq!(
+            extract_identifiers("https://www.doi.org/10.1038/nature12373").dois,
+            vec!["10.1038/nature12373"]
+        );
+        assert_eq!(
+            extract_identifiers("https://export.arxiv.org/abs/2403.15388").arxiv,
+            vec!["2403.15388"]
+        );
+        // Mirrors still dedup against the canonical form.
+        assert_eq!(
+            extract_identifiers(
+                "https://doi.org/10.1038/nature12373 和 https://dx.doi.org/10.1038/nature12373"
+            )
+            .dois
+            .len(),
+            1
+        );
     }
 
     /// Distilled from a real chatgpt.com/share conversation: seven papers,
