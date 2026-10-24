@@ -28,6 +28,7 @@
 | [plugin-api.md](plugin-api.md) | 插件数据面契约：ops 稳定性 / 权限 / `since`，五个公开生命周期事件（webview 内 `onPublic`），`plugins.json`（启动不加载、无设置页），进程内命令面板注册表，以及三个菜单贡献位；本地初版 开发宿主已接通命令与受限论文读取，见 [实现/未决项](../backend/plugins.md) |
 | [decision-layer.md](decision-layer.md) | 通用决策层：规则 / System One（jEV/Clef）/ LLM 统一为可插拔 provider + routing。**已落地**（见 [../backend/decision.md](../backend/decision.md)），保留为设计记录 |
 | [rust-arch-refactor.md](rust-arch-refactor.md) | Rust 架构重构计划（2026-10-21 更新）：共享业务用例、提交与恢复、Vault 派生状态、论文准备/共享提取、任务生命周期、Agent 上下文六条主线；含前置正确性修复、依赖与验收、旧任务归并及历史裁决。R1 WAL 一致快照、R2 字段原子更新、R3 sync 占用 RAII、A1 共享移动用例已完成；D2 MinerU 在途共享与 B3 原子写基础已落地，长期缓存与跨文件恢复仍按计划推进 |
+| [arxiv-source-lifecycle-audit.md](arxiv-source-lifecycle-audit.md) | arXiv 源码与正文生命周期审计（2026-10-24）：各导入入口、TeX / OCR 路由、补资源与在途竞态、正文消费、版本一致性；含隔离复现与修复顺序，尚未实施 |
 | [zhihu.md](zhihu.md) | 知乎开放平台集成：统一 CLI 后端（探测/一键安装/Keychain 凭证）+ 知乎虚拟 Agent（builtin ACP 适配 + 直答大脑）+ 广场知乎面板 + 论文找讨论 / 划词插引用。设计稿，实施未开始 |
 | [A2A.md](A2A.md) | 本机桌面与远端 headless 之间的薄 A2A 任务层：Agent Card + Task，把算力和数据留在服务器。设计草稿，实施未开始 |
 | [translate-sentence-anchor.md](translate-sentence-anchor.md) | 全文译文划选按句锚回英文。**已落地**（见 [../frontend/translate.md](../frontend/translate.md)、[../frontend/wiki.md](../frontend/wiki.md)），保留为设计记录。侧栏译文面板不给英文高亮加淡底 |

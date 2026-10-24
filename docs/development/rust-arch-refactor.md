@@ -103,6 +103,7 @@
   - 验收：识别后的稳定路径、Connector 附件就绪、下载后的解析顺序有同一计划来源；无进度监听也不改变必需业务步骤。
   - 实施（2026-10-22，窄切片，与 A4 同批）：计划类型已存在。commit/download 返回该计划，HostHooks spawn 不再是 commit 安排这三项工作的方式。桌面按计划入队与原先相同的 JobCenter 任务；CLI 计划可以非空、执行为空，并明确打印跳过的步骤。没有改 JobCenter（E1）。layout analyze 不在计划里（RecognizeMetadata runner 仍在识别完成后自己排 layout）。计划只看资产标志，不读 HostHooks，因此没有进度监听也不会改变步骤。
   - 未做：Connector / Zotero / remote commit 没有收到同一执行策略；auto-ingest 仍直接 `spawn_recognize_metadata`。识别后的稳定路径、Connector 附件就绪与下载后的解析顺序还没有同一个计划来源。完整入口统一未做。
+  - 2026-10-24 补充审计：[arXiv 源码与正文生命周期](arxiv-source-lifecycle-audit.md) 确认了识别后不补源码、OCR 产物掩盖源码缺失、reconcile 抢跑、源码有效性与 Reader / Context 来源不一致；该文含场景矩阵、6 项隔离复现与修复顺序，运行时尚未修复。
 - [ ] **D2 DocumentExtraction 共享执行与产物**
   - 2026-10-21 已完成 MinerU 在途共享：同内容/文件名/服务/凭据/语言/OCR/协议选项共享 `Shared` future 与 ZIP；弱引用表不保留已完成产物。进度独立订阅，单消费者取消不影响其他消费者，最后订阅退出释放上游 future。并发复用、重试、取消与请求键隔离已有单元测试。长期可重建缓存、跨 provider 的计划层仍按收益推进。
   - 先为相同 MinerU 请求共享在途执行，正文与版面分别转换结果；再按收益添加可重建缓存。

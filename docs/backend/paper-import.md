@@ -78,6 +78,12 @@ Skill 不写入 catalog、不创建 `papers/` 条目、不执行 `scripts/`。�
 
 `PAPER.md` 是派生文件，可删可重建；`source/` 与 PDF 才是归档事实来源。
 
+当前“优先 TeX”只在磁盘存在 `.tex/.ltx` 时由正文解析 guard 保证；本地 PDF 识别、
+Connector 上传成功、Zotero 迁移与并发 reconcile 尚未统一源码准备，临时源码下载失败也
+可能直接进入 PDF / OCR 回退。`PAPER.md` / `body_source` 又可能掩盖后续源码补全需求。
+完整场景、正文消费断点与未决项见
+[arXiv 源码生命周期审计](../development/arxiv-source-lifecycle-audit.md)。
+
 ### 正文解析引擎（可插拔）
 
 `settings.layout.parserBackend` 选择 PAPER.md 的生成引擎（Settings →「版面解析」）。除内置 provider 外，凭据与版面分析共用 `layout.providerConfigs`；`agentero` 的凭据在构建期编入 Host，不落设置（见 [builtin-provider.md](builtin-provider.md)）：
