@@ -66,6 +66,8 @@ Agentero 使用 **BYOA**（Bring Your Own Agent）：Agent 由你安装和登录
 
 Agentero 的 Skill 是放在 Vault `.agents/skills/<name>/` 下的 prompt 包，含 `SKILL.md` 与可选的 `scripts/`、`references/`、`assets/`。
 
+侧栏把库根的 `AGENTS.md` 和 `.agents/` 收成一行 **Agent**。展开后第一行是 `AGENTS.md`，下面每个技能显示 frontmatter 里的 `name`。单击技能打开它的 `SKILL.md`。磁盘上的路径不变。
+
 Claude Code 只读项目内的 `.claude/skills/`：检测到 `claude` CLI 时，Agentero 会自动创建 `.claude/skills → ../.agents/skills` 链接，无需手动复制，新建/删除 Skill 自动同步。若你在 Vault 里已有自己的 `.claude/skills` 目录，则保持原样、不做链接。
 
 ### 安装 Skill

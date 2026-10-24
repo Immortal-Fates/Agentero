@@ -16,6 +16,12 @@ import {
 import { LIBRARY_VIRTUAL_PATH } from "@/lib/paper/api";
 import { PLAZA_VIRTUAL_PATH, visiblePlazaSources } from "@/lib/plaza";
 import type { FileNode } from "@/lib/vault";
+import {
+	agentTreeHighlightPath,
+	finishAgentTreeDisplay,
+	projectAgentTree,
+	type SkillTreeLabel,
+} from "@/lib/vault/agent-tree";
 import { toVaultRelative } from "@/lib/wiki";
 import {
 	isVirtualTreePath,
@@ -24,6 +30,8 @@ import {
 } from "../tree-helpers";
 import type { FlatRow, TreeCreateDraft } from "../types";
 import type { ZoteroCollectionReference } from "../zotero-collection-references";
+
+const EMPTY_SKILL_LABELS: ReadonlyMap<string, SkillTreeLabel> = new Map();
 
 export type TreeIndex = {
 	byPath: ReadonlyMap<string, FileNode>;
@@ -50,6 +58,7 @@ export function useTreeIndex({
 	paperMetaByRelPath,
 	paperTreeLabelMode,
 	paperTreeSortMode,
+	skillLabels,
 }: {
 	nodes: FileNode[];
 	vaultPath: string | null;
@@ -57,6 +66,7 @@ export function useTreeIndex({
 	paperMetaByRelPath?: ReadonlyMap<string, PaperMetadata>;
 	paperTreeLabelMode: PaperTreeLabelMode;
 	paperTreeSortMode: PaperTreeSortMode;
+	skillLabels?: ReadonlyMap<string, SkillTreeLabel>;
 }): TreeIndex {
 	const byPath = useMemo(() => {
 		const map = new Map<string, FileNode>();
@@ -87,28 +97,35 @@ export function useTreeIndex({
 		[vaultPath],
 	);
 
-	const displayNodes = useMemo(
-		() =>
-			sortFileTreeNodes(
-				nodes,
-				paperTreeSortMode,
-				paperMetaByRelPath,
-				relPathForNode,
-				paperTreeLabelMode,
-			),
-		[
-			nodes,
+	const displayNodes = useMemo(() => {
+		const sorted = sortFileTreeNodes(
+			projectAgentTree(nodes, vaultPath),
 			paperTreeSortMode,
 			paperMetaByRelPath,
 			relPathForNode,
 			paperTreeLabelMode,
-		],
-	);
+		);
+		return finishAgentTreeDisplay(
+			sorted,
+			vaultPath,
+			skillLabels ?? EMPTY_SKILL_LABELS,
+		);
+	}, [
+		nodes,
+		vaultPath,
+		paperTreeSortMode,
+		paperMetaByRelPath,
+		relPathForNode,
+		paperTreeLabelMode,
+		skillLabels,
+	]);
 
 	const treeSelectedPath = useMemo(() => {
 		if (!selectedPath) return undefined;
-		return resolveTreeHighlightPath(selectedPath, byPathKey);
-	}, [selectedPath, byPathKey]);
+		const visible =
+			agentTreeHighlightPath(vaultPath, selectedPath) ?? selectedPath;
+		return resolveTreeHighlightPath(visible, byPathKey);
+	}, [selectedPath, byPathKey, vaultPath]);
 
 	return {
 		byPath,

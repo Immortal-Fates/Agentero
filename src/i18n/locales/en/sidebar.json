@@ -92,7 +92,8 @@
 		"vaultRoot": {
 			"notes": "Notes",
 			"thesis": "Thesis",
-			"data": "Data"
+			"data": "Data",
+			"agents": "Agent"
 		}
 	},
 	"importLocalPdf": {

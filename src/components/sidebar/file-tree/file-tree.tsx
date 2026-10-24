@@ -25,6 +25,7 @@ import {
 import type { FileNode } from "@/lib/vault";
 import { useMovePicker } from "./hooks/use-move-picker";
 import { usePaperRowActions } from "./hooks/use-paper-row-actions";
+import { useSkillLabels } from "./hooks/use-skill-labels";
 import { useTexCompile } from "./hooks/use-tex-compile";
 import { useTreeContextMenu } from "./hooks/use-tree-context-menu";
 import { useTreeDragDrop } from "./hooks/use-tree-drag-drop";
@@ -217,6 +218,7 @@ export const FileTree = memo(
 		const plazaEnabled = useSettings((s) => s.plazaEnabled);
 		const plazaHiddenSources = useSettings((s) => s.plazaHiddenSources);
 		const containerRef = useRef<HTMLDivElement>(null);
+		const skillLabels = useSkillLabels(vaultPath, nodes);
 		const {
 			byPath,
 			byPathKey,
@@ -230,6 +232,7 @@ export const FileTree = memo(
 			paperMetaByRelPath,
 			paperTreeLabelMode,
 			paperTreeSortMode,
+			skillLabels,
 		});
 		const zoteroCollectionReferences = useMemo(
 			() =>
@@ -356,6 +359,7 @@ export const FileTree = memo(
 				onCutPaths,
 				onPasteInto,
 				onMoveTo,
+				skillLabels,
 			});
 
 		const { collapsePaths, collapseToDefault } = expansion;
@@ -499,6 +503,7 @@ export const FileTree = memo(
 									paperActions={paperActions}
 									texCompile={texCompile}
 									vaultPath={vaultPath}
+									skillLabels={skillLabels}
 								/>
 							</AiFileTree>
 						)}

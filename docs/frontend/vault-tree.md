@@ -8,6 +8,20 @@
 
 Vault 根上的 `notes/`、`thesis/`、`data/` 同样只改侧栏外观，磁盘目录名不变。`notes/` 用笔记图标，显示「笔记」；`thesis/` 用文稿图标，显示「文稿」；`data/` 用数据库图标，显示「数据」。英文界面分别为 Notes、Thesis、Data。只匹配相对路径恰好是这三个名字的根目录；更深的同名文件夹，以及重命名之后的目录，仍显示磁盘名。单击、展开、新建和重命名仍是普通文件夹。重命名输入框里是磁盘名。粘贴到这些目录时，菜单用侧栏名称。
 
+## Agent
+
+Vault 根上的 `.agents/` 与 `AGENTS.md` 合成一行，标题为 Agent（中英文相同），`Bot` 图标，排在其它根目录之前（仍在回收站和广场下面），默认收起。磁盘布局不变：`AGENTS.md` 仍在库根，技能仍在 `.agents/skills/<id>/`。没有 `.agents/` 目录时，`AGENTS.md` 仍单独出现在根上。
+
+展开后：
+
+- 第一行是根上的 `AGENTS.md`，显示文件名。点开即该文件。
+- 之后每个含 `SKILL.md` 的技能目录一行。行上的名字是 frontmatter `name`（合法的小写 id）；没有或非法时用目录名。悬停显示 `description` 的第一句。单击打开该技能的 `SKILL.md`，不把 Library 收成这个目录。
+- 技能包里只有 `references/`、`scripts/`、`assets/` 会出现展开箭头，其下仍是磁盘文件名。`README`、`LICENSE`、`SKILL.md`、`agents/openai.yaml`、`SKILL-windows.md` 不进树。
+- 重命名框里是目录名。右键「在访达中显示」指向真实路径：说明在库根，技能在 `.agents/skills/<id>/`，Agent 行本身是 `.agents/`。
+- 家目录里的 `~/.agents`、`~/.claude/skills` 不进这棵树，仍只出现在 Composer 的 `$` 菜单。
+
+更深的同名 `.agents`（例如 `notes/.agents`）保持普通文件夹。打开 `AGENTS.md` 或某个技能的 `SKILL.md` 时，树会展开 Agent 行并高亮对应行，不会因此展开技能包内部。
+
 ## 虚拟节点
 
 | 节点 | 路径常量 | 行为 |
@@ -85,6 +99,7 @@ Vault 根上的 `notes/`、`thesis/`、`data/` 同样只改侧栏外观，磁盘
 - UI：`src/components/sidebar/file-tree/`（barrel `index.ts`；`file-tree.tsx` 仅装配，行/菜单/输入/虚拟列表为独立子模块）、`vault-sidebar-header.tsx`（普通 / 多选标题栏）、AI Elements `FileTree`
 - 树内状态：`src/components/sidebar/file-tree/hooks/`（`use-tree-model` 路径索引与扁平行、`use-tree-expansion` 展开与懒加载、`use-tree-selection` 多选、`use-tree-reveal` 虚拟化与定位、`use-tree-drag-drop`、`use-paper-row-actions`、`use-tree-context-menu`、`use-move-picker`）
 - 逻辑：`src/lib/vault/`（store、tree、fs-watch、reveal）
+- Agent 行：`src/lib/vault/agent-tree.ts`（把根上的 `AGENTS.md` 和 `.agents/skills/` 投影成一行）、`use-skill-labels.ts`（读 `SKILL.md` 的 frontmatter `name`）
 - 附件：`src/lib/paper/attachments.ts`、`paths.ts`（`attachments/` 约定）
 - 论文可见子项：`src/lib/paper/children.ts`（根目录 `.md`/`.html`/`.htm` 白名单，排除 `PAPER.md`，再与 `attachments/` 合成）
 - 标签/排序：`src/lib/paper/tree-label.ts`、`tree-modes.ts`

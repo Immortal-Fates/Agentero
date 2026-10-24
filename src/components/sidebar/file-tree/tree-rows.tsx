@@ -1,4 +1,5 @@
 import {
+	Bot,
 	ChevronRight,
 	Database,
 	Download,
@@ -10,6 +11,7 @@ import {
 	NotebookPen,
 	Play,
 	ScrollText,
+	Sparkles,
 	Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -41,6 +43,13 @@ import {
 	plazaSourceLabel,
 } from "@/lib/plaza";
 import type { FileNode } from "@/lib/vault";
+import {
+	isVaultAgentRoot,
+	isVaultSkillDirectory,
+	type SkillTreeLabel,
+	skillDescriptionTooltip,
+} from "@/lib/vault/agent-tree";
+import { normalizePathKey } from "@/lib/vault/path";
 import type { TexCompileActions as TexCompileHookActions } from "./hooks/use-tex-compile";
 import {
 	DOWNLOAD_REASON_KEYS,
@@ -218,6 +227,7 @@ type NodeTreeRowProps = {
 	expanded: boolean;
 	texCompile?: TexCompileHookActions;
 	vaultPath?: string | null;
+	skillLabels?: ReadonlyMap<string, SkillTreeLabel>;
 };
 
 export function NodeTreeRow({
@@ -227,14 +237,33 @@ export function NodeTreeRow({
 	expanded,
 	texCompile,
 	vaultPath,
+	skillLabels,
 }: NodeTreeRowProps) {
 	const { t } = useTranslation("sidebar");
+	if (
+		node.kind === "directory" &&
+		isVaultSkillDirectory(vaultPath, node.path)
+	) {
+		const label = skillLabels?.get(normalizePathKey(node.path));
+		return (
+			<SkillTreeRow
+				node={node}
+				isCut={isCut}
+				label={label?.name || node.name}
+				description={skillDescriptionTooltip(label?.description ?? "")}
+				expanded={expanded}
+				pendingLoad={pendingLoad}
+			/>
+		);
+	}
 	if (node.kind === "directory") {
 		// `papers/` doubles as the library entry: library icon + title.
-		// Vault-root notes/thesis/data get the same treatment: icon + label,
-		// disk name unchanged.
+		// Vault-root notes/thesis/data, and `.agents`, get an icon + label.
+		// Disk names stay unchanged.
 		const isLibraryRoot = isPapersRoot(node.path);
-		const rootFace = isLibraryRoot ? null : vaultRootFace(vaultPath, node.path);
+		const isAgentRoot = isVaultAgentRoot(vaultPath, node.path);
+		const rootFace =
+			isLibraryRoot || isAgentRoot ? null : vaultRootFace(vaultPath, node.path);
 		return (
 			<div
 				className={cn(
@@ -242,6 +271,7 @@ export function NodeTreeRow({
 					isCut && "opacity-50",
 				)}
 				{...(isLibraryRoot ? { "data-library-row": "" } : {})}
+				{...(isAgentRoot ? { "data-vault-root": "agents" } : {})}
 				{...(rootFace ? { "data-vault-root": rootFace } : {})}
 			>
 				<div className="min-w-0 flex-1">
@@ -250,13 +280,17 @@ export function NodeTreeRow({
 						name={
 							isLibraryRoot
 								? t("papersLibrary.title")
-								: rootFace
-									? t(VAULT_ROOT_LABEL_KEY[rootFace])
-									: node.name
+								: isAgentRoot
+									? t("fileTree.vaultRoot.agents")
+									: rootFace
+										? t(VAULT_ROOT_LABEL_KEY[rootFace])
+										: node.name
 						}
 						icon={
 							isLibraryRoot ? (
 								<Library className="size-4 text-muted-foreground" />
+							) : isAgentRoot ? (
+								<Bot className="size-4 text-muted-foreground" aria-hidden />
 							) : rootFace ? (
 								<VaultRootIcon face={rootFace} />
 							) : undefined
@@ -298,6 +332,80 @@ export function NodeTreeRow({
 				/>
 			) : null}
 		</FileTreeFile>
+	);
+}
+
+function SkillTreeRow({
+	node,
+	isCut,
+	label,
+	description,
+	expanded,
+	pendingLoad,
+}: {
+	node: FileNode;
+	isCut: boolean;
+	label: string;
+	description: string;
+	expanded: boolean;
+	pendingLoad: boolean;
+}) {
+	const { t } = useTranslation("sidebar");
+	const { togglePath } = useFileTree();
+	const expandable =
+		Boolean(node.childrenPending) || (node.children?.length ?? 0) > 0;
+	const expandLabel = expanded
+		? t("fileTree.collapseChildren")
+		: t("fileTree.expandChildren");
+	const tip = description || label;
+	return (
+		<div
+			className={cn("relative flex w-full items-center", isCut && "opacity-50")}
+		>
+			<FileTreeFile path={node.path} name={label} className="min-w-0 flex-1">
+				{expandable ? (
+					<button
+						type="button"
+						aria-expanded={expanded}
+						aria-label={expandLabel}
+						className="group/skill relative flex size-4 shrink-0 items-center justify-center text-muted-foreground focus-visible:outline-none"
+						onClick={(e) => {
+							e.stopPropagation();
+							e.preventDefault();
+							togglePath(node.path);
+						}}
+						onPointerDown={(e) => e.stopPropagation()}
+						onKeyDown={(e) => e.stopPropagation()}
+					>
+						<Sparkles
+							className="size-4 transition-opacity group-hover/skill:opacity-0 group-focus-visible/skill:opacity-0"
+							aria-hidden
+						/>
+						<ChevronRight
+							className={cn(
+								"pointer-events-none absolute size-4 opacity-0 transition-[opacity,transform] group-hover/skill:opacity-100 group-focus-visible/skill:opacity-100",
+								expanded && "rotate-90",
+							)}
+							aria-hidden
+						/>
+					</button>
+				) : (
+					<Sparkles
+						className="size-4 shrink-0 text-muted-foreground"
+						aria-hidden
+					/>
+				)}
+				<FileTreeName className="min-w-0 flex-1 truncate" title={tip}>
+					{label}
+				</FileTreeName>
+			</FileTreeFile>
+			{pendingLoad && expanded ? (
+				<Loader2
+					className="pointer-events-none absolute right-2 size-3.5 shrink-0 animate-spin text-muted-foreground"
+					aria-hidden
+				/>
+			) : null}
+		</div>
 	);
 }
 

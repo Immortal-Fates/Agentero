@@ -14,6 +14,7 @@ import {
 } from "react";
 import { isPaperDirectory, paperSurfacesChildPath } from "@/lib/paper";
 import type { FileNode } from "@/lib/vault";
+import { adjustAgentRevealAncestors } from "@/lib/vault/agent-tree";
 import {
 	ancestorPaths,
 	collectDefaultExpanded,
@@ -206,7 +207,11 @@ export function useTreeExpansion({
 	const expandAncestorsOf = useCallback(
 		(target: string) => {
 			if (isVirtualTreePath(target)) return;
-			const parents = ancestorPaths(target, vaultPath);
+			const parents = adjustAgentRevealAncestors(
+				target,
+				vaultPath,
+				ancestorPaths(target, vaultPath),
+			);
 			if (parents.length === 0) return;
 			setExpanded((prev) => {
 				let changed = false;

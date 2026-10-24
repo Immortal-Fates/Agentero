@@ -28,6 +28,8 @@ import {
 	resolveCreateParent,
 	vaultRelativePath,
 } from "@/lib/vault";
+import { isVaultAgentRoot } from "@/lib/vault/agent-tree";
+import { normalizePathKey } from "@/lib/vault/path";
 import { openInTerminal, revealInFileManager } from "@/lib/vault/reveal";
 import { openTexPdf } from "@/lib/workspace/actions";
 import { isTexPath } from "@/lib/workspace/viewer";
@@ -98,6 +100,7 @@ export function useTreeContextMenu({
 	onCutPaths,
 	onPasteInto,
 	onMoveTo,
+	skillLabels,
 }: {
 	nodes: FileNode[];
 	vaultPath: string | null;
@@ -128,6 +131,7 @@ export function useTreeContextMenu({
 	onCutPaths?: (paths: string[]) => void;
 	onPasteInto?: (targetPath: string) => void;
 	onMoveTo?: (paths: string[], destParentRel: string) => void;
+	skillLabels?: ReadonlyMap<string, { name: string }>;
 }): TreeContextMenuState {
 	const { t } = useTranslation("sidebar");
 	const [menu, setMenu] = useState<TreeContextMenu | null>(null);
@@ -233,6 +237,11 @@ export function useTreeContextMenu({
 		!cutPaths.some((p) => targetKey.startsWith(`${pathKey(p)}/`));
 
 	const rootFace = menuNode ? vaultRootFace(vaultPath, menuNode.path) : null;
+	const skillLabel = skillLabels?.get(normalizePathKey(menu.path))?.name;
+	const menuNodeName = isVaultAgentRoot(vaultPath, menu.path)
+		? t("fileTree.vaultRoot.agents")
+		: (skillLabel ??
+			(rootFace ? t(VAULT_ROOT_LABEL_KEY[rootFace]) : menuNode?.name));
 	const menuProps: TreeContextMenuPortalProps = {
 		menu,
 		menuRef,
@@ -244,7 +253,7 @@ export function useTreeContextMenu({
 			paperMetaByRelPath,
 		),
 		menuCount: targets.length,
-		menuNodeName: rootFace ? t(VAULT_ROOT_LABEL_KEY[rootFace]) : menuNode?.name,
+		menuNodeName,
 		isPaperMenu,
 		isLibraryMenu,
 		libraryExportBusy,

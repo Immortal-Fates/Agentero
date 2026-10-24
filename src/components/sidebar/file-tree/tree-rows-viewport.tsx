@@ -3,7 +3,7 @@
  * to its renderer (virtual rows, inline drafts, paper leaves, files/folders).
  */
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { FolderIcon, ScrollText } from "lucide-react";
+import { Bot, FolderIcon, ScrollText, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { contextPathIcon } from "@/lib/agent/context-path-icon";
 import {
@@ -16,6 +16,11 @@ import {
 } from "@/lib/paper";
 import { PLAZA_VIRTUAL_PATH } from "@/lib/plaza";
 import type { FileNode } from "@/lib/vault";
+import {
+	isVaultAgentRoot,
+	isVaultSkillDirectory,
+	type SkillTreeLabel,
+} from "@/lib/vault/agent-tree";
 import type { PaperRowActions } from "./hooks/use-paper-row-actions";
 import type { TexCompileActions } from "./hooks/use-tex-compile";
 import { pathKey } from "./tree-helpers";
@@ -39,6 +44,7 @@ type RowContext = {
 	paperActions: PaperRowActions;
 	texCompile?: TexCompileActions;
 	vaultPath?: string | null;
+	skillLabels?: ReadonlyMap<string, SkillTreeLabel>;
 	renameDraft?: TreeRenameDraft | null;
 	onConfirmRename?: (path: string, newName: string) => void | Promise<void>;
 	onCancelRename?: () => void;
@@ -104,6 +110,10 @@ function RenameRow({
 	let icon: ReactNode;
 	if (isPaper) {
 		icon = <ScrollText className="size-4 shrink-0 text-muted-foreground" />;
+	} else if (isVaultAgentRoot(ctx.vaultPath, node.path)) {
+		icon = <Bot className="size-4 shrink-0 text-muted-foreground" />;
+	} else if (isVaultSkillDirectory(ctx.vaultPath, node.path)) {
+		icon = <Sparkles className="size-4 shrink-0 text-muted-foreground" />;
 	} else if (node.kind === "directory") {
 		icon = <FolderIcon className="size-4 text-blue-500" />;
 	} else {
@@ -151,6 +161,7 @@ function renderRow(row: FlatRow, props: TreeRowsViewportProps): ReactNode {
 			expanded={props.expanded.has(row.node.path)}
 			texCompile={props.texCompile}
 			vaultPath={props.vaultPath}
+			skillLabels={props.skillLabels}
 		/>
 	);
 }

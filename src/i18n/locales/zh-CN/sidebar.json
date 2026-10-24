@@ -92,7 +92,8 @@
 		"vaultRoot": {
 			"notes": "笔记",
 			"thesis": "文稿",
-			"data": "数据"
+			"data": "数据",
+			"agents": "Agent"
 		}
 	},
 	"importLocalPdf": {

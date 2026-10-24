@@ -41,6 +41,10 @@ import { closeCurrentWindow } from "@/lib/shell/close-window";
 import { setLayoutMode } from "@/lib/shell/ui-store";
 import { type FileNode, joinVaultPath } from "@/lib/vault";
 import {
+	isVaultSkillDirectory,
+	skillMarkdownPath,
+} from "@/lib/vault/agent-tree";
+import {
 	getVaultPath,
 	refreshTree,
 	setTreeSelectedPath,
@@ -867,6 +871,11 @@ registerDecision<{ node: FileNode }>({
 			node.kind === "directory" && isPaperDirectory(node.path, node.children)
 				? "open-paper"
 				: null,
+		({ node }) =>
+			node.kind === "directory" &&
+			isVaultSkillDirectory(getVaultPath(), node.path)
+				? "open-skill"
+				: null,
 		({ node }) => (node.kind === "directory" ? "scope-library" : null),
 		({ node }) => (node.kind === "file" ? "open-path" : null),
 	],
@@ -890,6 +899,9 @@ export function selectFileNode(node: FileNode): void {
 		}
 		case "open-paper":
 			openPaper(node.path);
+			return;
+		case "open-skill":
+			openPath(skillMarkdownPath(node) ?? joinVaultPath(node.path, "SKILL.md"));
 			return;
 		case "scope-library": {
 			const paperAbs = paperDirFromPath(
