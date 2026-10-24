@@ -5397,10 +5397,12 @@ export type VaultTreeNode_Deserialize = {
 	children: VaultTreeNode_Deserialize[] | null,
 	childrenPending: boolean | null,
 	/**
-	 *  Paper `source/` shells only: whether TeX exists on disk (children are
-	 *  lazy, so the renderer cannot infer this from the tree itself).
+	 *  Paper rows and lazy source shells: whether a readable TeX manuscript
+	 *  exists; the renderer cannot validate its dependencies from node names.
 	 */
 	hasTex: boolean | null,
+	/**  Paper rows: missing fetchable arXiv source, independently of Markdown. */
+	needsSource: boolean | null,
 };
 
 export type VaultTreeNode_Serialize = {
@@ -5411,10 +5413,12 @@ export type VaultTreeNode_Serialize = {
 	children?: VaultTreeNode_Serialize[] | null,
 	childrenPending?: boolean | null,
 	/**
-	 *  Paper `source/` shells only: whether TeX exists on disk (children are
-	 *  lazy, so the renderer cannot infer this from the tree itself).
+	 *  Paper rows and lazy source shells: whether a readable TeX manuscript
+	 *  exists; the renderer cannot validate its dependencies from node names.
 	 */
 	hasTex?: boolean | null,
+	/**  Paper rows: missing fetchable arXiv source, independently of Markdown. */
+	needsSource?: boolean | null,
 };
 
 /**  Result of one publication sync over a Library scope. */

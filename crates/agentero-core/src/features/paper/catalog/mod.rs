@@ -273,7 +273,11 @@ mod tests {
         fs::write(paper.join("NOTES.md"), "# n\n").unwrap();
         fs::write(paper.join("PAPER.md"), "# p\n").unwrap();
         fs::write(paper.join("paper.pdf"), "%PDF").unwrap();
-        fs::write(paper.join("source/main.tex"), "\\section{A}\n").unwrap();
+        fs::write(
+            paper.join("source/main.tex"),
+            "\\documentclass{article}\\begin{document}\\section{A}\\end{document}",
+        )
+        .unwrap();
 
         assert_eq!(
             paper_related_paths(root.path(), "papers/demo").unwrap(),

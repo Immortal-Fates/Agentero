@@ -23,6 +23,32 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use walkdir::WalkDir;
 
+/// Run the shared body preparation after a Connector's final path settles.
+/// Persist retry state even when preparation fails, so the remote tree can
+/// distinguish unavailable source from a transient acquisition error.
+pub(crate) async fn prepare_body_remote(
+    session: Arc<RemoteSession>,
+    path: &str,
+) -> Result<(), AppError> {
+    use agentero_core::features::paper::analyze::parse::{parse_paper_body, PaperParseBodyArgs};
+    let parsed = parse_paper_body(
+        PaperParseBodyArgs {
+            vault_path: session.work_root.to_string_lossy().into_owned(),
+            path: path.into(),
+            force: false,
+            task_id: None,
+        },
+        None,
+    )
+    .await?;
+    upload_tree(session.fs.as_ref(), &session.work_root.join(path), path).await?;
+    session.push_catalog().await?;
+    if let Some(error) = parsed.error {
+        return Err(AppError::message(error));
+    }
+    Ok(())
+}
+
 /// Import by identifier into a remote vault session.
 pub async fn import_by_identifier_remote(
     session: Arc<RemoteSession>,
@@ -283,6 +309,12 @@ async fn import_one_local_pdf_remote(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| slug_from_stem(stem));
     let mut meta = papers::PaperRecord::local_pdf(base_id, title);
+    meta.arxiv_id = entry
+        .arxiv_id
+        .as_deref()
+        .and_then(crate::features::paper::import::extract_arxiv_id);
+    meta.doi = entry.doi.clone();
+    crate::features::paper::import::enrich_remote_urls(&mut meta);
     if let Some(authors) = &entry.authors {
         meta.authors = authors
             .iter()

@@ -18,7 +18,8 @@ pub fn api_paper_to_meta(paper: &ApiPaper) -> PaperRecord {
     let id = paper
         .identifiers
         .arxiv_id
-        .clone()
+        .as_ref()
+        .map(|id| strip_arxiv_version(id))
         .or_else(|| paper.identifiers.doi.clone().map(|d| doi_slug(&d)))
         .or_else(|| paper.identifiers.isbn.clone())
         .unwrap_or_else(|| citekey_fallback(&paper.authors, paper.year, &paper.title));
@@ -320,7 +321,9 @@ pub fn merge_api_paper_candidates(candidates: &[ApiPaper]) -> ApiPaper {
 pub fn enrich_remote_urls(meta: &mut PaperRecord) {
     if let Some(ref aid) = meta.arxiv_id {
         let bare = strip_arxiv_version(aid.trim().trim_start_matches("arXiv:"));
-        let urls = arxiv_canonical_urls(&bare);
+        let request =
+            crate::features::paper::source::arxiv_request(meta).unwrap_or_else(|| bare.clone());
+        let urls = arxiv_canonical_urls(&request);
         meta.pdf_url = Some(urls.pdf);
         meta.html_url = Some(urls.html);
         meta.source_url = Some(urls.abs);

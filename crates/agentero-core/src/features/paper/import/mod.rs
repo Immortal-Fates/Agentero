@@ -995,7 +995,7 @@ pub async fn resolve_metadata(
     task_id: Option<&str>,
 ) -> Result<(PaperRecord, bool), AppError> {
     // Prefer Translator Runtime (placeholder URL)
-    match translator_fetch(text, translator_base, task_id).await {
+    let resolved = match translator_fetch(text, translator_base, task_id).await {
         Ok(meta) => {
             check_task_not_cancelled(task_id)?;
             Ok((meta, true))
@@ -1017,7 +1017,19 @@ pub async fn resolve_metadata(
                 ))),
             }
         }
-    }
+    };
+    resolved.map(|(mut meta, used_translator)| {
+        if let Some(request) =
+            crate::features::scholar_api::identifiers::extract_arxiv_request(text)
+        {
+            meta.arxiv_id = Some(strip_arxiv_version(&request));
+            let urls = crate::features::scholar_api::urls::arxiv_canonical_urls(&request);
+            meta.pdf_url = Some(urls.pdf);
+            meta.html_url = Some(urls.html);
+            meta.source_url = Some(urls.abs);
+        }
+        (meta, used_translator)
+    })
 }
 
 async fn translator_fetch(

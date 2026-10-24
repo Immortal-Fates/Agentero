@@ -60,7 +60,9 @@
 
 ## 补资源 / 精读触发
 
-- Download：缺 PDF 或无正文资源时。
+- Download：缺主 PDF、无可读正文，或缺可获取的 arXiv LaTeX 源码时；已有 OCR `PAPER.md`
+  不再隐藏缺源码提示。PDF-only 不反复提示源码缺失；临时失败仍显示「缺少 arXiv LaTeX 源码」，
+  手动下载可重试。Host 提供有效 TeX 与源码缺失标志，前端不靠 catalog 来源标签推测文件存在。
 - 手动精读 / 自动精读：见 [agent.md](agent.md)。
 
 ## 代码

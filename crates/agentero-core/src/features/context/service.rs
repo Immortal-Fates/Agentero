@@ -602,7 +602,41 @@ fn search_paper(
             ),
         ));
     }
+    let tex_source = crate::features::paper::source::read_tex(&session.vault.join(&paper.path));
+    if let Some(source) = &tex_source {
+        let points = score(&source.text, tokens);
+        if !tokens.is_empty() && points > 0 {
+            let rel = source
+                .root
+                .strip_prefix(&session.vault)
+                .unwrap_or(&source.root)
+                .to_string_lossy()
+                .replace('\\', "/");
+            hits.push((
+                points,
+                session.evidence(
+                    paper.id.clone(),
+                    Some(paper.path.clone()),
+                    Some(rel.clone()),
+                    EvidenceLocator {
+                        kind: "source".into(),
+                        page: None,
+                        section: None,
+                        region_id: None,
+                        line_from: None,
+                        line_to: None,
+                    },
+                    snippet(&source.text, tokens, card),
+                    paper.updated_at.clone(),
+                    rel,
+                ),
+            ));
+        }
+    }
     for rel in ["NOTES.md", "PAPER.md"] {
+        if rel == "PAPER.md" && tex_source.is_some() {
+            continue;
+        }
         let path = session.vault.join(&paper.path).join(rel);
         let Ok(text) = fs_read_capped(&path, 64 * 1024) else {
             continue;
@@ -879,6 +913,15 @@ fn excerpt_text(
             return cap_text(&page_body, budget).0;
         }
     }
+    if let Some(source) = crate::features::paper::source::read_tex(&vault.join(&paper.path)) {
+        if let Some(quote) = quote.map(str::trim).filter(|text| !text.is_empty()) {
+            if let Some(window) = window_around(&source.text, quote, budget) {
+                return window;
+            }
+        } else {
+            return cap_text(&source.text, budget).0;
+        }
+    }
     let notes = read_paper_file(vault, paper, "NOTES.md").unwrap_or_default();
     if let Some(quote) = quote.map(str::trim).filter(|text| !text.is_empty()) {
         if let Some(window) = window_around(&notes, quote, budget) {
@@ -896,6 +939,13 @@ fn section_text(
     layout: Option<&RawLayout>,
     budget: usize,
 ) -> String {
+    if let Some(source) = crate::features::paper::source::read_tex(&vault.join(&paper.path)) {
+        let text = tex_section_markdown(&source.text);
+        let body = markdown_section(&text, section, budget);
+        if !body.is_empty() {
+            return body;
+        }
+    }
     if let (Some(layout), Some(section)) = (layout, section.filter(|text| !text.trim().is_empty()))
     {
         let body = layout_section(layout, section);
@@ -975,6 +1025,9 @@ fn full_text(
     layout: Option<&RawLayout>,
     budget: usize,
 ) -> String {
+    if let Some(source) = crate::features::paper::source::read_tex(&vault.join(&paper.path)) {
+        return cap_text(&source.text, budget).0;
+    }
     if let Some(text) = read_paper_file(vault, paper, "PAPER.md") {
         return cap_text(&text, budget).0;
     }
@@ -990,6 +1043,50 @@ fn full_text(
         }
     }
     "Full text is not available. Use metadata, section, or page.".into()
+}
+
+/// Expose literal TeX section titles to the existing section slicer. Math and
+/// body macros stay verbatim; this is not a lossy TeX-to-Markdown conversion.
+fn tex_section_markdown(text: &str) -> String {
+    let mut result = text.to_string();
+    for (command, prefix) in [
+        ("chapter", "#"),
+        ("section", "##"),
+        ("subsection", "###"),
+        ("subsubsection", "####"),
+    ] {
+        let needle = format!("\\{command}");
+        let mut offset = 0;
+        while let Some(index) = result[offset..].find(&needle) {
+            let start = offset + index;
+            let rest = &result[start + needle.len()..];
+            if rest.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                offset = start + needle.len();
+                continue;
+            }
+            let rest = rest.trim_start_matches('*').trim_start();
+            let rest = if rest.starts_with('[') {
+                rest.split_once(']')
+                    .map(|(_, rest)| rest.trim_start())
+                    .unwrap_or(rest)
+            } else {
+                rest
+            };
+            let Some(after) = rest.strip_prefix('{') else {
+                offset = start + needle.len();
+                continue;
+            };
+            let Some(end) = after.find('}') else {
+                break;
+            };
+            let title = after[..end].to_string();
+            let consumed = result.len() - after[end + 1..].len();
+            let replacement = format!("\n{prefix} {title}\n");
+            result.replace_range(start..consumed, &replacement);
+            offset = start + replacement.len();
+        }
+    }
+    result
 }
 
 fn read_paper_file(vault: &Path, paper: &PaperRecord, name: &str) -> Option<String> {
@@ -1418,6 +1515,37 @@ mod tests {
             .evidence
             .iter()
             .any(|item| item.citation_uri.contains("papers/attention")));
+    }
+
+    #[test]
+    fn tex_full_section_and_search_supersede_old_ocr() {
+        let (vault, session, paper) = vault_with_paper();
+        let source = vault.path().join(&paper.path).join("source");
+        fs::write(source.join("main.tex"), "\\documentclass{article}\\begin{document}\\section{Introduction}\\input{intro}\\section{Method}\\input{method}\\end{document}").unwrap();
+        fs::write(source.join("intro.tex"), "TEX-INTRO-SENTINEL").unwrap();
+        fs::write(source.join("method.tex"), "TEX-METHOD-SENTINEL $x^2$.").unwrap();
+        let query = EvidenceQuery {
+            paper_path: Some(paper.path.clone()),
+            ..Default::default()
+        };
+        let full = session.read(&query, Some("full")).unwrap();
+        assert!(full.evidence[0].excerpt.contains("TEX-METHOD-SENTINEL"));
+        assert!(!full.evidence[0].excerpt.contains("FULL-BODY-SENTINEL"));
+        let section = session
+            .read(
+                &EvidenceQuery {
+                    section: Some("Introduction".into()),
+                    ..query
+                },
+                Some("section"),
+            )
+            .unwrap();
+        assert!(section.evidence[0].excerpt.contains("TEX-INTRO-SENTINEL"));
+        assert!(!section.evidence[0].excerpt.contains("TEX-METHOD-SENTINEL"));
+        let hits = search_paper(&session, &paper, &["tex-method-sentinel".into()]);
+        assert!(hits
+            .iter()
+            .any(|(_, evidence)| evidence.excerpt.contains("TEX-METHOD-SENTINEL")));
     }
 
     #[test]

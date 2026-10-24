@@ -43,8 +43,8 @@ Skill 不写入 catalog、不创建 `papers/` 条目、不执行 `scripts/`。�
   → PaperRecord → catalog upsert
   → papers/<id>/ + 带 aliases frontmatter 的 NOTES.md 壳（不覆盖已有 NOTES）
   → PDF → {paper}/{id}.pdf
-  → arXiv e-print → 解压 LaTeX 到 source/
-  → 无 TeX：liteparse → PAPER.md
+  → arXiv e-print → 暂存解包、校验主 TeX / 依赖后发布到 source/
+  → 明确无可用 TeX：配置的正文引擎 → PAPER.md
   → 前端刷树 / openPaper
 ```
 
@@ -59,9 +59,9 @@ Skill 不写入 catalog、不创建 `papers/` 条目、不执行 `scripts/`。�
   fallback、DOI 元数据查询及 arXiv e-print；单个 HTTP
   请求仍使用更短的 reqwest timeout。超时不会回滚已经写入的 paper 壳和 catalog，
   资源错误会保留在导入结果中，后续可再次执行补资源。
-- Connector 不启动这条后台资源或解析管线：Chrome 先上传附件，DOI/arXiv Host 下载仅作
-  fallback；附件成功或失败的 finalizer 先将 paper 移到 latest target，再通过稳定路径的
-  `connector:item-saved` 交给现有 open/reconcile 解析流程。
+- Connector 先由 Chrome 上传附件，DOI/arXiv Host 下载作 fallback；附件成功或失败的
+  finalizer 先将 paper 移到 latest target，再在稳定路径提交共享正文准备任务，补齐源码后
+  决定是否解析 PDF。打开论文 / reconcile 也使用相同规则。
 - 错误：全局 Toast；重复不破坏用户 NOTES。
 - 标识符去重（#406）：批量预检之外，commit 阶段再按 `id` / `arxiv_id` / `doi` / `pmid` / `isbn` 查 catalog（`DedupePolicy::ByIdentifiers`），任一命中即 `Deduped`，不新建文件夹。
 - 新建壳会写论文全称 alias，并在元数据足够时写确定性短 alias；历史笔记由 [Doctor](doctor.md) 诊断和确认迁移。`created` 不属于入库壳或 Doctor 的职责。
@@ -78,11 +78,39 @@ Skill 不写入 catalog、不创建 `papers/` 条目、不执行 `scripts/`。�
 
 `PAPER.md` 是派生文件，可删可重建；`source/` 与 PDF 才是归档事实来源。
 
-当前“优先 TeX”只在磁盘存在 `.tex/.ltx` 时由正文解析 guard 保证；本地 PDF 识别、
-Connector 上传成功、Zotero 迁移与并发 reconcile 尚未统一源码准备，临时源码下载失败也
-可能直接进入 PDF / OCR 回退。`PAPER.md` / `body_source` 又可能掩盖后续源码补全需求。
-完整场景、正文消费断点与未决项见
-[arXiv 源码生命周期审计](../development/arxiv-source-lifecycle-audit.md)。
+### LaTeX 优先与源码补全
+
+`ParseBody` 是共享的正文准备入口：先按 catalog 的 arXiv 身份准备有效源码，再考虑已有
+`PAPER.md` 或 PDF 引擎。本地 PDF 识别 / 合并、Connector 附件保存和目录移动完成、Zotero
+迁移、打开论文与全库 reconcile 均走该入口；标识符与 Bib/RIS 的资源下载也使用同一源码准备器。
+CLI `paper parse` 使用相同规则。远程导入保留 staging / 上传路径，复用源码校验与准备；
+远程 Connector 完成后在工作镜像中准备正文并上传产物。
+
+- 源码与正文是两个判定：有 OCR Markdown 仍可缺原始源码，下载按钮与批量补资源不会因此
+  隐藏源码缺失。打开 Vault / 论文时可补齐历史 OCR 论文的源码；已存在的 `PAPER.md` 保留。
+- `source/agentero-source.json` 保存请求版本、尝试时间，以及 `ready` / `unavailable` /
+  `retryableError` 和错误原因。PDF-only、PostScript 或成功解包但没有 TeX 的提交属于明确无
+  TeX；网络错误、坏归档、缺失正文 input 属于可重试失败，不静默启动云端 OCR。
+- 自动重试间隔 15 分钟；手动下载可立即重试。该间隔只控制自动网络请求，不隐藏缺源码提示。
+  同步配置排除 `source` 时，自动正文准备不主动下载该目录；用户显式下载仍可执行。
+- 保留显式版本 URL，catalog 去重仍用 bare ID。资源下载先落 PDF，再复用元数据原生文字
+  probe 的 arXiv 版本戳固定源码版本。已有 PDF 的版本既无显式 URL、也无法从文字戳确定时，
+  返回错误，要求设置带版本的 PDF / source URL；发现版本冲突也不混合下载或覆盖旧文件。
+- TeX 有效性、聊天读取与编译共享 literal `input/include/subfile/import` 扫描基础；有效源码
+  需要主文档指示与可读正文依赖。空文件、HTML 错误页不算源码；不会执行 TeX 或要求本机
+  安装宏包。前言区来自 TeX 发行版的缺失 input 可保留原文，正文缺失章节不视为完整源码。
+- 解包在隐藏暂存目录完成，gzip 后重新识别 PDF；拒绝坏 tar、路径越界、链接与过大归档。
+  发布不覆盖已有不同内容的源文件或派生 sidecar；冲突 / 写入失败撤销本次新增文件，保留
+  用户原文件。旧的半解包源码可补足缺失文件；与上游冲突时报告具体路径供用户处理。
+- 源码获取和正文发布共用按论文路径隔离的锁；等待 PDF 解析许可后再次检查 TeX，写盘前
+  重检 TeX、取消状态与 PDF 文件标识。晚到源码或 PDF 替换使旧 OCR 结果被丢弃。
+- catalog 正文来源通过既有 SQLite 字段原子更新能力修正；清除派生正文同步失效来源标签，
+  `body_source` 不再代替文件存在性。主 PDF 只取论文根目录，优先 `{id}.pdf`，兼容旧根文件名，
+  不将 `source/` 中的图 PDF 当作论文或当作已经下载了主 PDF。
+
+PDF 版面任务保持独立，供坐标、图表与引用等功能使用；`force` 仍只表示重建派生正文，不会
+越过有效 TeX 的优先级。切换正文引擎只改变后续解析，不自动对全库重新 OCR。
+审计证据及修复对应关系见 [arXiv 源码生命周期审计](../development/arxiv-source-lifecycle-audit.md)。
 
 ### 正文解析引擎（可插拔）
 

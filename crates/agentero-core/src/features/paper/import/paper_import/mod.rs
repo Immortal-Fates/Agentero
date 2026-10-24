@@ -231,6 +231,7 @@ pub async fn paper_commit(
 
     crate::features::lifecycle::emit_paper_imported(opts.app, vault, &meta.id);
 
+    let arxiv_request = crate::features::paper::source::arxiv_request(&meta);
     let (assets, assets_pending) = match opts.assets {
         AssetsPolicy::SyncDownload { cookies, progress } => {
             let assets = match ensure_paper_assets_with_progress(
@@ -238,7 +239,7 @@ pub async fn paper_commit(
                 vault,
                 &path_rel,
                 &meta.id,
-                meta.arxiv_id.as_deref(),
+                arxiv_request.as_deref(),
                 meta.pdf_url.as_deref(),
                 meta.doi.as_deref(),
                 cookies,
@@ -252,9 +253,14 @@ pub async fn paper_commit(
                     assets
                 }
                 Err(e) => {
-                    let mut r = AssetDownloadResult::default();
-                    r.messages.push(format!("asset download error: {e}"));
-                    r
+                    let caps = probe_paper_caps(&paper_dir);
+                    AssetDownloadResult {
+                        pdf: caps.has_pdf(),
+                        tex: caps.has_tex,
+                        paper_md: caps.has_paper_md,
+                        messages: vec![format!("asset download error: {e}")],
+                        ..Default::default()
+                    }
                 }
             };
             (assets, false)
@@ -308,6 +314,14 @@ fn existing_result(
         .map(|c| c.caps_for(vault, &existing.path))
         .unwrap_or_else(|| probe_paper_caps(dir));
     let path = existing.path.clone();
+    let mut preparation = PreparationPlan::empty(&path);
+    if existing.arxiv_id.is_some()
+        && crate::features::paper::source::needs_preparation(vault, &existing)
+    {
+        preparation
+            .steps
+            .push(super::preparation::PreparationStep::ParseBody { force: false });
+    }
     PaperCommitResult {
         status,
         pdf: caps.has_pdf(),
@@ -319,7 +333,7 @@ fn existing_result(
         title: existing.title,
         asset_messages: Vec::new(),
         assets_pending: false,
-        preparation: PreparationPlan::empty(existing.path),
+        preparation,
     }
 }
 
@@ -536,13 +550,21 @@ async fn merge_pdf_into_existing(
     };
     log::info!(target: "agentero::import", "{}: {}", message, existing.path);
 
-    let preparation = plan_after_merged_pdf(
+    let mut preparation = plan_after_merged_pdf(
         &existing.path,
         became_main,
         caps.has_pdf(),
         caps.has_tex,
         caps.has_paper_md,
     );
+    if !preparation.has_parse_body()
+        && existing.arxiv_id.is_some()
+        && crate::features::paper::source::needs_preparation(vault, &existing)
+    {
+        preparation
+            .steps
+            .push(super::preparation::PreparationStep::ParseBody { force: false });
+    }
 
     Ok(PaperCommitResult {
         status: CommitStatus::Deduped,

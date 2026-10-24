@@ -255,7 +255,14 @@ pub async fn job_reconcile_paper(
     caps.invalidate(&vault, &path);
     let paper_caps = caps.caps_for(&vault, &path);
     let mut enqueued = Vec::new();
-    if paper_caps.needs_paper_md() {
+    if paper_caps.needs_paper_md()
+        || crate::features::paper::catalog::papers::get_by_path(&vault, &path)
+            .ok()
+            .flatten()
+            .is_some_and(|paper| {
+                agentero_core::features::paper::source::needs_preparation(&vault, &paper)
+            })
+    {
         enqueued.push(
             enqueue_backfill(&app, &center, parse_lane(None), |lane| {
                 center.enqueue_parse_body(&vault, &path, lane, false, None)
@@ -305,11 +312,11 @@ pub async fn job_reconcile_vault(
         };
         papers
             .into_iter()
-            .map(|paper| paper.path)
-            .filter(|path| {
-                caps_handle.invalidate(&scan_vault, path);
-                caps_handle.caps_for(&scan_vault, path).needs_paper_md()
+            .filter(|paper| {
+                caps_handle.invalidate(&scan_vault, &paper.path);
+                agentero_core::features::paper::source::needs_preparation(&scan_vault, paper)
             })
+            .map(|paper| paper.path)
             .collect::<Vec<_>>()
     })
     .await
@@ -354,6 +361,10 @@ pub async fn job_papers_needing_assets(
             .filter(|paper| {
                 let caps = caps_handle.caps_for(&scan_vault, &paper.path);
                 caps.needs_asset_download(paper.body_source.as_deref())
+                    || agentero_core::features::paper::source::needs_source(
+                        &scan_vault.join(&paper.path),
+                        agentero_core::features::paper::source::arxiv_request(paper).as_deref(),
+                    )
             })
             .map(|paper| paper.path)
             .collect::<Vec<_>>()
@@ -901,7 +912,7 @@ async fn clear_parse_results_core(
         if !paper_dir.is_dir() {
             continue;
         }
-        affected_paths.push(paper.path);
+        affected_paths.push(paper.path.clone());
 
         if matches!(scope, ParseResultScope::Layout | ParseResultScope::All) {
             let source_dir = paper_dir.join("source");
@@ -916,6 +927,9 @@ async fn clear_parse_results_core(
             && remove_file_best_effort(&paper_dir.join(PAPER_MD_FILE))?
         {
             files_removed += 1;
+        }
+        if matches!(scope, ParseResultScope::Paper | ParseResultScope::All) {
+            agentero_core::features::paper::source::reconcile_body(&vault, &paper.path)?;
         }
     }
 

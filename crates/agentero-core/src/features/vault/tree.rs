@@ -109,6 +109,7 @@ const LAZY_PAPER_DIR: &str = "source";
 const PAPER_SOURCE_ARTIFACT_NAMES: &[&str] = &[
     "agentero-cite.json",
     "agentero-figures.json",
+    "agentero-source.json",
     "layout.json",
     "layout-index.json",
     "layout-translate.json",
@@ -165,10 +166,13 @@ pub struct VaultTreeNode {
     pub children: Option<Vec<VaultTreeNode>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children_pending: Option<bool>,
-    /// Paper `source/` shells only: whether TeX exists on disk (children are
-    /// lazy, so the renderer cannot infer this from the tree itself).
+    /// Paper rows and lazy source shells: whether a readable TeX manuscript
+    /// exists; the renderer cannot validate its dependencies from node names.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_tex: Option<bool>,
+    /// Paper rows: missing fetchable arXiv source, independently of Markdown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub needs_source: Option<bool>,
 }
 
 /// Whether a vault-root child name is excluded from the tree. Public for the
@@ -304,6 +308,7 @@ fn pending_shell(name: String, path: String) -> VaultTreeNode {
         children: Some(Vec::new()),
         children_pending: Some(true),
         has_tex: None,
+        needs_source: None,
     }
 }
 
@@ -393,6 +398,7 @@ fn list_dir(
                 children: None,
                 children_pending: None,
                 has_tex: None,
+                needs_source: None,
             });
         }
     }
@@ -415,7 +421,7 @@ fn list_dir(
         if name == LAZY_PAPER_DIR && !is_paper_unit && is_app_sidecar_only_dir(&child_path) {
             continue;
         }
-        let node = match mode {
+        let mut node = match mode {
             Mode::OneLevel => pending_shell(name, path_str),
             Mode::Eager => {
                 if paper_marker && name == LAZY_PAPER_DIR {
@@ -437,6 +443,7 @@ fn list_dir(
                         )),
                         children_pending: None,
                         has_tex: None,
+                        needs_source: None,
                     }
                 } else {
                     VaultTreeNode {
@@ -453,10 +460,33 @@ fn list_dir(
                         )),
                         children_pending: Some(false),
                         has_tex: None,
+                        needs_source: None,
                     }
                 }
             }
         };
+        if node.children.as_ref().is_some_and(|children| {
+            children.iter().any(|child| {
+                child.kind == "file"
+                    && crate::features::paper::identity::is_paper_marker_file(&child.name)
+            })
+        }) {
+            let has_tex = caps.caps_for(root, &child_rel).has_tex;
+            node.has_tex = Some(has_tex);
+            if has_tex {
+                node.needs_source = Some(false);
+            } else if let Ok(Some(paper)) =
+                crate::features::paper::catalog::papers::get_by_path(root, &child_rel)
+            {
+                node.needs_source = Some(
+                    crate::features::paper::source::automatic_download_allowed(root)
+                        && crate::features::paper::source::needs_source(
+                            &child_path,
+                            crate::features::paper::source::arxiv_request(&paper).as_deref(),
+                        ),
+                );
+            }
+        }
         nodes.push(node);
     }
     nodes.extend(files);
@@ -543,7 +573,10 @@ mod tests {
     fn eager_roots_recurse_and_paper_source_stays_pending() {
         let root = &temp_root("build");
         write(&root.join("papers/p1/NOTES.md"), "# n");
-        write(&root.join("papers/p1/source/main.tex"), "x");
+        write(
+            &root.join("papers/p1/source/main.tex"),
+            "\\documentclass{article}\\begin{document}Body\\end{document}",
+        );
         write(&root.join("papers/p1/source/figs/a.png"), "x");
         write(&root.join("papers/p1/assets/img.png"), "x");
         write(&root.join("notes/idea.md"), "x");
@@ -574,7 +607,10 @@ mod tests {
         let root = &temp_root("children");
         write(&root.join("papers/p1/NOTES.md"), "# n");
         write(&root.join("papers/p1/source/sub/deep.tex"), "x");
-        write(&root.join("papers/p1/source/main.tex"), "x");
+        write(
+            &root.join("papers/p1/source/main.tex"),
+            "\\documentclass{article}\\begin{document}Body\\end{document}",
+        );
         let caps = CapsCache::new();
 
         // Expanding the paper's source/: one level, subdirs pending.
@@ -704,7 +740,10 @@ mod tests {
         write(&root.join("loose-paper/source/layout-index.json"), "{}");
         // Same, but with real TeX next to the sidecars: the bucket stays and
         // only the sidecars are filtered out of its listing.
-        write(&root.join("with-tex/source/main.tex"), "x");
+        write(
+            &root.join("with-tex/source/main.tex"),
+            "\\documentclass{article}\\begin{document}Body\\end{document}",
+        );
         write(&root.join("with-tex/source/agentero-cite.json"), "{}");
         write(&root.join("with-tex/source/layout.json"), "{}");
         // A paper unit under papers/ without NOTES.md: `source/` is its only
@@ -783,7 +822,10 @@ mod tests {
         assert_eq!(source_has_tex(&build_tree(root, &caps)), Some(false));
 
         // TeX appears; the cached probe is stale until the watcher invalidates.
-        write(&root.join("papers/p1/source/main.tex"), "x");
+        write(
+            &root.join("papers/p1/source/main.tex"),
+            "\\documentclass{article}\\begin{document}Body\\end{document}",
+        );
         assert_eq!(source_has_tex(&build_tree(root, &caps)), Some(false));
 
         // Watcher-style invalidation of the paper folder refreshes the probe.
@@ -799,7 +841,10 @@ mod tests {
         let root = &temp_root("symlink-pdf");
         let paper = root.join("papers/p1");
         write(&paper.join("NOTES.md"), "# n");
-        write(&paper.join("source/main.tex"), "x");
+        write(
+            &paper.join("source/main.tex"),
+            "\\documentclass{article}\\begin{document}Body\\end{document}",
+        );
         let target = root.join("outside.pdf");
         write(&target, "pdf");
         symlink(&target, paper.join("p1.pdf")).unwrap();
@@ -825,7 +870,11 @@ mod tests {
             for f in 0..199 {
                 fs::write(src.join(format!("figs/f{f:03}.png")), "x").unwrap();
             }
-            fs::write(src.join("main.tex"), "x").unwrap();
+            fs::write(
+                src.join("main.tex"),
+                "\\documentclass{article}\\begin{document}Body\\end{document}",
+            )
+            .unwrap();
         }
         let caps = CapsCache::new();
 

@@ -1112,6 +1112,42 @@ impl ConnectorController {
     }
 
     pub fn emit_item_saved(&self, payload: ConnectorItemSaved) {
+        // Only after the attachment writers and collection move have settled.
+        // The common body preparation resolves arXiv TeX before considering OCR.
+        if let Ok((vault, _)) = self.vault_handle_and_parent() {
+            if let Some(session_id) = crate::integration::remote::parse_remote_handle(&vault) {
+                if let Some(registry) = self.remote_registry() {
+                    let session_id = session_id.to_string();
+                    let path = payload.path.clone();
+                    let app = self.app_handle();
+                    tauri::async_runtime::spawn(async move {
+                        let result = async {
+                            let session = registry.get(&session_id).await?;
+                            crate::integration::remote::import_bridge::prepare_body_remote(
+                                session, &path,
+                            )
+                            .await
+                        }
+                        .await;
+                        if let Err(error) = result {
+                            log::warn!(target: "agentero::connector", "remote source preparation failed for {path}: {error}");
+                            if let Some(app) = app {
+                                emit_connector_error(&app, &error.to_string(), None);
+                            }
+                        }
+                    });
+                }
+            } else {
+                if let Some(app) = self.app_handle() {
+                    crate::features::jobs::spawn_parse_body_after_assets(
+                        Some(&app),
+                        std::path::Path::new(&vault),
+                        &payload.path,
+                        false,
+                    );
+                }
+            }
+        }
         if let Ok(g) = self.inner.lock() {
             if let Some(app) = &g.app {
                 let _ = app.emit("connector:item-saved", &payload);
@@ -1130,13 +1166,7 @@ impl ConnectorController {
     pub fn emit_error(&self, message: &str, session_id: Option<&str>) {
         if let Ok(g) = self.inner.lock() {
             if let Some(app) = &g.app {
-                let _ = app.emit(
-                    "connector:error",
-                    serde_json::json!({
-                        "message": message,
-                        "sessionId": session_id,
-                    }),
-                );
+                emit_connector_error(app, message, session_id);
             }
         }
     }
@@ -1156,6 +1186,16 @@ impl ConnectorController {
             ("X-Zotero-Connector-API-Version", CONNECTOR_API_VERSION),
         ]
     }
+}
+
+fn emit_connector_error(app: &AppHandle, message: &str, session_id: Option<&str>) {
+    let _ = app.emit(
+        "connector:error",
+        serde_json::json!({
+            "message": message,
+            "sessionId": session_id,
+        }),
+    );
 }
 
 #[cfg(test)]

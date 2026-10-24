@@ -15,7 +15,8 @@
 		"downloadAllMissing": "下载全部不完整的论文资源",
 		"downloadReason": {
 			"noPdf": "缺少 PDF",
-			"noBody": "缺少 TeX 与 PAPER.md（有其一即可，优先 TeX）"
+			"noBody": "缺少 TeX 与 PAPER.md（有其一即可，优先 TeX）",
+			"noSource": "缺少 arXiv LaTeX 源码"
 		},
 		"expandChildren": "显示笔记与附件",
 		"collapseChildren": "隐藏笔记与附件",

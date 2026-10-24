@@ -61,6 +61,28 @@ pub async fn lookup_import_batch(
                     &paper.preparation,
                 );
             }
+            // Dedupe preserves the catalog entry, but should not hide a missing
+            // source behind an older OCR body when the user imports its ID again.
+            for skipped in batch
+                .skipped
+                .iter()
+                .filter(|item| item.kind == "arxiv" && item.reason == "already_in_library")
+            {
+                if let Ok(Some(paper)) = crate::features::paper::catalog::papers::find_by_identifier(
+                    &vault,
+                    "arxiv_id",
+                    &skipped.value,
+                ) {
+                    if agentero_core::features::paper::source::needs_preparation(&vault, &paper) {
+                        crate::features::jobs::spawn_parse_body_after_assets(
+                            Some(&app),
+                            &vault,
+                            &paper.path,
+                            false,
+                        );
+                    }
+                }
+            }
         }
     }
     Ok(op.finish_result(result))

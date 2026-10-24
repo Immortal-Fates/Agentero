@@ -1243,6 +1243,18 @@ pub fn remove_tags(
 /// Keep the read/patch/write under one SQLite write reservation, including
 /// writers in other processes (e.g. CLI alongside desktop). A deferred
 /// transaction would allow a stale read before acquiring the write lock.
+pub fn set_body_source(
+    vault_root: &Path,
+    path: &str,
+    body: Option<(&str, &str)>,
+) -> Result<PaperRecord, AppError> {
+    mutate_paper(vault_root, path, |row| {
+        row.body_source = body.map(|(source, _)| source.to_string());
+        row.body_quality = body.map(|(_, quality)| quality.to_string());
+        Ok(())
+    })
+}
+
 fn mutate_paper(
     vault_root: &Path,
     path: &str,

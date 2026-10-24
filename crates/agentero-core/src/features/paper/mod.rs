@@ -8,5 +8,6 @@ pub mod discovery;
 pub mod identity;
 pub mod import;
 pub mod scholar_api;
+pub mod source;
 pub(crate) mod util;
 pub mod venue;

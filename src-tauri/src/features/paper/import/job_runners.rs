@@ -44,7 +44,7 @@ fn parse_body_runner(
         let result = crate::features::paper::import::pdf_parse::parse_paper_body(
             crate::features::paper::import::pdf_parse::PaperParseBodyArgs {
                 vault_path: vault.to_string_lossy().to_string(),
-                path,
+                path: path.clone(),
                 force,
                 task_id: Some(task_id),
             },
@@ -56,7 +56,15 @@ fn parse_body_runner(
         match result {
             Ok(parsed) => match parsed.error {
                 Some(message) => RunOutcome::Failed(Some(message)),
-                None => RunOutcome::Succeeded,
+                None => {
+                    // Source preparation can add .bbl/.bib after an older refs pass.
+                    crate::features::paper::analyze::refs::spawn_parse_after_import(
+                        Some(&app),
+                        &vault,
+                        &path,
+                    );
+                    RunOutcome::Succeeded
+                }
             },
             Err(e) => RunOutcome::Failed(Some(e.to_string())),
         }
@@ -275,7 +283,14 @@ fn recognize_metadata_runner(
         }
 
         let final_caps = cache.caps_for(&vault, &final_path);
-        if final_caps.needs_paper_md() {
+        if final_caps.needs_paper_md()
+            || crate::features::paper::catalog::papers::get_by_path(&vault, &final_path)
+                .ok()
+                .flatten()
+                .is_some_and(|paper| {
+                    agentero_core::features::paper::source::needs_preparation(&vault, &paper)
+                })
+        {
             let snap = center
                 .enqueue_parse_body(&vault, &final_path, JobLane::Normal, false, None)
                 .await;

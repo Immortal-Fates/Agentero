@@ -210,11 +210,35 @@ async fn parse_paper_body_inner(
     cache: Option<&CapsCache>,
 ) -> PaperParseResult {
     let mut out = PaperParseResult::default();
-    let caps = cache
-        .map(|c| c.caps_for(vault, path_rel))
-        .unwrap_or_else(|| probe_paper_caps(paper_dir));
+    // Every entry point (including old OCR papers) resolves source before the
+    // PAPER.md short circuit. Acquisition shares its lock with asset downloads.
+    if crate::features::paper::source::automatic_download_allowed(vault) {
+        if let Ok(Some(record)) = papers::get_by_path(vault, path_rel) {
+            if let Some(id) = crate::features::paper::source::arxiv_request(&record) {
+                if let Err(error) = crate::features::paper::import::download::prepare_arxiv_source(
+                    paper_dir, &id, task_id,
+                )
+                .await
+                {
+                    let _ = crate::features::paper::source::reconcile_body(vault, path_rel);
+                    out.fail(format!("arXiv source preparation failed: {error}"));
+                    return out;
+                }
+            }
+        }
+    }
+    if let Some(cache) = cache {
+        cache.invalidate(vault, path_rel);
+    }
+    let caps = probe_paper_caps(paper_dir);
+    if let Err(error) = crate::features::paper::source::reconcile_body(vault, path_rel) {
+        out.fail(error.to_string());
+        return out;
+    }
 
     if caps.has_tex {
+        out.body_source = Some("latex".into());
+        out.body_quality = Some("high".into());
         out.messages.push("skip: local TeX present".into());
         return out;
     }
@@ -244,6 +268,17 @@ async fn parse_paper_body_inner(
         }
     };
 
+    // Source may have arrived while this job waited for a PDF worker slot.
+    if crate::features::paper::source::read_tex(paper_dir).is_some() {
+        let _ = crate::features::paper::source::reconcile_body(vault, path_rel);
+        out.body_source = Some("latex".into());
+        out.messages.push("skip: local TeX became available".into());
+        return out;
+    }
+    let pdf_stamp = fs::metadata(&pdf_path)
+        .ok()
+        .map(|m| (m.len(), m.modified().ok()));
+
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let parse_result = engines::parse_body_with_engine(&pdf_path, task_id, &mut out.messages)
         .await
@@ -268,23 +303,53 @@ async fn parse_paper_body_inner(
             let path_owned = path_rel.to_string();
             let catalog_source = body_source.clone();
             let catalog_quality = body_quality.clone();
-            let write_outcome: Result<Result<Option<String>, String>, tokio::task::JoinError> =
-                tokio::task::spawn_blocking(move || {
-                    write_paper_body_bundle(&paper_dir_owned, &markdown, &assets)?;
-                    let catalog_error = update_catalog_body(
-                        &vault_owned,
-                        &path_owned,
-                        &catalog_source,
-                        &catalog_quality,
-                    )
-                    .err()
-                    .map(|e| e.to_string());
-                    Ok(catalog_error)
-                })
-                .await;
+            let _source_guard = match crate::features::paper::source::lock(paper_dir, task_id).await
+            {
+                Ok(guard) => guard,
+                Err(error) => {
+                    out.fail(error.to_string());
+                    return out;
+                }
+            };
+            let pdf_owned = pdf_path.clone();
+            let task_owned = task_id.map(str::to_owned);
+            let write_outcome: Result<
+                Result<Option<Option<String>>, String>,
+                tokio::task::JoinError,
+            > = tokio::task::spawn_blocking(move || {
+                crate::features::paper::import::check_task_not_cancelled(task_owned.as_deref())
+                    .map_err(|e| e.to_string())?;
+                let current_stamp = fs::metadata(&pdf_owned)
+                    .ok()
+                    .map(|m| (m.len(), m.modified().ok()));
+                if crate::features::paper::source::read_tex(&paper_dir_owned).is_some()
+                    || current_stamp != pdf_stamp
+                {
+                    crate::features::paper::source::reconcile_body(&vault_owned, &path_owned)
+                        .map_err(|e| e.to_string())?;
+                    return Ok(None);
+                }
+                write_paper_body_bundle(&paper_dir_owned, &markdown, &assets)?;
+                let catalog_error = update_catalog_body(
+                    &vault_owned,
+                    &path_owned,
+                    &catalog_source,
+                    &catalog_quality,
+                )
+                .err()
+                .map(|e| e.to_string());
+                Ok(Some(catalog_error))
+            })
+            .await;
 
             match write_outcome {
-                Ok(Ok(catalog_error)) => {
+                Ok(Ok(None)) => {
+                    out.body_source =
+                        crate::features::paper::source::read_tex(paper_dir).map(|_| "latex".into());
+                    out.messages
+                        .push("skip: paper source changed during parsing".into());
+                }
+                Ok(Ok(Some(catalog_error))) => {
                     out.paper_md = true;
                     out.body_source = Some(body_source);
                     out.body_quality = Some(body_quality);
@@ -1119,7 +1184,8 @@ fn write_paper_body_bundle(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         fs::write(destination, &asset.bytes).map_err(|e| e.to_string())?;
     }
-    fs::write(paper_dir.join(PAPER_MD), markdown).map_err(|e| e.to_string())
+    crate::fs::atomic_write(&paper_dir.join(PAPER_MD), markdown.as_bytes())
+        .map_err(|e| e.to_string())
 }
 
 fn update_catalog_body(
@@ -1128,20 +1194,98 @@ fn update_catalog_body(
     body_source: &str,
     body_quality: &str,
 ) -> Result<(), AppError> {
-    let Some(mut row) = papers::get_by_path(vault, path_rel)? else {
+    let Some(_) = papers::get_by_path(vault, path_rel)? else {
         // No catalog row yet — still wrote PAPER.md; skip SQLite.
         return Ok(());
     };
-    row.body_source = Some(body_source.to_string());
-    row.body_quality = Some(body_quality.to_string());
-    row.updated_at = crate::time::now_rfc3339_millis();
-    papers::upsert_paper(vault, &row)?;
+    papers::set_body_source(vault, path_rel, Some((body_source, body_quality)))?;
     Ok(())
 }
 
 #[cfg(all(test, not(any(target_os = "ios", target_os = "android"))))]
 mod tests {
     use super::*;
+
+    struct LateSourceEngine;
+    #[async_trait::async_trait]
+    impl engines::BodyParseEngine for LateSourceEngine {
+        fn id(&self) -> &'static str {
+            "test-late-source"
+        }
+        async fn parse(
+            &self,
+            ctx: &engines::BodyParseCtx<'_>,
+        ) -> Result<engines::BodyParseOutcome, AppError> {
+            let dir = ctx.pdf_path.parent().unwrap();
+            fs::create_dir_all(dir.join("source")).unwrap();
+            fs::write(
+                dir.join("source/main.tex"),
+                "\\documentclass{article}\\begin{document}SOURCE-SENTINEL\\end{document}",
+            )
+            .unwrap();
+            Ok(engines::BodyParseOutcome {
+                markdown: "STALE-OCR".into(),
+                assets: vec![],
+                body_source: "vlm".into(),
+                body_quality: "medium".into(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn late_tex_discards_ocr_and_source_failure_never_calls_pdf_engine() {
+        let vault = tempfile::tempdir().unwrap();
+        let path = "papers/p";
+        let dir = vault.path().join(path);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("p.pdf"), b"%PDF test input").unwrap();
+        papers::upsert_paper(
+            vault.path(),
+            &papers::PaperRecord::local_pdf("p".into(), "Title".into()).at_path(path),
+        )
+        .unwrap();
+        engines::register_engine("test-late-source", || Arc::new(LateSourceEngine));
+        engines::configure_parser(engines::ParserEngineConfig {
+            backend: "test-late-source".into(),
+            ..Default::default()
+        });
+        let parsed = parse_paper_body_inner(vault.path(), path, &dir, false, None, None).await;
+        assert!(parsed.error.is_none(), "{:?}", parsed.messages);
+        assert!(!dir.join("PAPER.md").exists());
+        assert_eq!(parsed.body_source.as_deref(), Some("latex"));
+        assert_eq!(
+            papers::get_by_path(vault.path(), path)
+                .unwrap()
+                .unwrap()
+                .body_source
+                .as_deref(),
+            Some("latex")
+        );
+
+        fs::remove_file(dir.join("source/main.tex")).unwrap();
+        fs::write(dir.join("PAPER.md"), "OLD-BODY").unwrap();
+        let mut paper = papers::get_by_path(vault.path(), path).unwrap().unwrap();
+        paper.arxiv_id = Some("1706.03762".into());
+        papers::upsert_paper(vault.path(), &paper).unwrap();
+        crate::features::paper::source::record_state(
+            &dir,
+            "1706.03762",
+            crate::features::paper::source::SourceStatus::RetryableError,
+            Some("HTTP 429".into()),
+        )
+        .unwrap();
+        let failed = parse_paper_body_inner(vault.path(), path, &dir, true, None, None).await;
+        assert!(failed.error.is_some());
+        assert!(
+            !dir.join("source/main.tex").exists(),
+            "PDF engine must not run during transient source failure"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("PAPER.md")).unwrap(),
+            "OLD-BODY"
+        );
+        engines::configure_parser(engines::ParserEngineConfig::default());
+    }
 
     #[test]
     fn fail_records_real_errors_but_not_cancellation() {

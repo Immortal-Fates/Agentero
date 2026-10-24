@@ -2,9 +2,9 @@
 //! Agent `@` mentions, so discussing a paper never imports it into the Vault.
 //!
 //! Layout: `<cache>/agentero/plaza-scratch/{arxivId}/` holding `paper.pdf`
-//! (downloaded from arxiv.org) and `PAPER.md` (liteparse conversion, same
-//! engine as Vault paper parsing). Papers are immutable, so entries are
-//! reused until the size cap evicts the least-recently-used ones.
+//! (downloaded from arxiv.org), `source/` and expanded `SOURCE.txt` when TeX
+//! exists, otherwise `PAPER.md` via the Vault body engine. Source acquisition
+//! errors remain retryable; complete entries are reused until LRU eviction.
 
 use std::path::{Path, PathBuf};
 #[cfg(any(test, not(any(target_os = "ios", target_os = "android"))))]
@@ -58,7 +58,7 @@ pub struct ScratchPaper {
     pub arxiv_id: String,
     /// Absolute directory path (outside the Vault).
     pub dir: String,
-    /// Absolute path of the full-text markdown the Agent should read.
+    /// Absolute path of the full text the Agent should read (TeX or Markdown).
     pub markdown_path: String,
     /// Absolute path of the cached source PDF.
     pub pdf_path: String,
@@ -243,9 +243,8 @@ async fn download_pdf(arxiv_id: &str, pdf_path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Ensure the scratch copy (PDF + full-text markdown) for one arXiv paper
-/// under `root`. Downloads and parses only when missing; papers are
-/// immutable afterwards.
+/// Ensure the scratch copy (PDF + preferred full text) for one arXiv paper
+/// under `root`. Existing OCR does not prevent missing-source repair.
 async fn ensure_paper_in(root: &Path, arxiv_id: &str) -> Result<ScratchPaper, AppError> {
     let id = arxiv_id.trim();
     validate_arxiv_id(id)?;
@@ -253,7 +252,24 @@ async fn ensure_paper_in(root: &Path, arxiv_id: &str) -> Result<ScratchPaper, Ap
     let pdf_path = dir.join("paper.pdf");
     let markdown_path = dir.join("PAPER.md");
 
-    if markdown_path.is_file() && pdf_path.is_file() {
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    if let Some(source) = crate::features::paper::source::read_tex(&dir) {
+        let body = dir.join("SOURCE.txt");
+        crate::fs::atomic_write(&body, source.text.as_bytes())?;
+        touch_last_used(&dir);
+        return Ok(ScratchPaper {
+            arxiv_id: id.into(),
+            dir: dir.to_string_lossy().into_owned(),
+            markdown_path: body.to_string_lossy().into_owned(),
+            pdf_path: pdf_path.to_string_lossy().into_owned(),
+            reused: true,
+        });
+    }
+
+    if markdown_path.is_file()
+        && pdf_path.is_file()
+        && !crate::features::paper::source::needs_source(&dir, Some(id))
+    {
         touch_last_used(&dir);
         return Ok(ScratchPaper {
             arxiv_id: id.to_string(),
@@ -267,7 +283,7 @@ async fn ensure_paper_in(root: &Path, arxiv_id: &str) -> Result<ScratchPaper, Ap
     materialize_scratch(root, id, &dir, &pdf_path, &markdown_path).await
 }
 
-/// Download the PDF and turn it into `PAPER.md`.
+/// Download the PDF, prefer validated TeX, otherwise produce `PAPER.md`.
 ///
 /// `parse::engines` (liteparse) is compiled out on iOS/Android, matching
 /// `analyze::parse`. An existing scratch copy can still be reused above;
@@ -285,6 +301,22 @@ async fn materialize_scratch(
 
     if !pdf_path.is_file() {
         download_pdf(id, pdf_path).await?;
+    }
+
+    if crate::features::paper::import::download::prepare_arxiv_source(dir, id, None).await? {
+        let source = crate::features::paper::source::read_tex(dir)
+            .ok_or_else(|| AppError::message("prepared TeX source is no longer available"))?;
+        let body = dir.join("SOURCE.txt");
+        crate::fs::atomic_write(&body, source.text.as_bytes())?;
+        touch_last_used(dir);
+        enforce_cap_in(root, dir, MAX_TOTAL_BYTES);
+        return Ok(ScratchPaper {
+            arxiv_id: id.into(),
+            dir: dir.to_string_lossy().into_owned(),
+            markdown_path: body.to_string_lossy().into_owned(),
+            pdf_path: pdf_path.to_string_lossy().into_owned(),
+            reused: false,
+        });
     }
 
     let mut messages = Vec::new();
@@ -346,7 +378,7 @@ fn stats_in(root: &Path) -> ScratchStats {
             continue;
         }
         bytes += dir_size(&path);
-        if path.join("PAPER.md").is_file() {
+        if path.join("PAPER.md").is_file() || path.join("SOURCE.txt").is_file() {
             papers += 1;
         }
     }

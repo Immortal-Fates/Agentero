@@ -34,6 +34,13 @@ Prompt 里只有稳定 paper ref、标题、页码或章节、引用原文，以
 | `context_read` | 默认 `metadata`（标题、作者、摘要）。然后才是 `excerpt`、`section`、`page`、`region`。`full` 必须点名，并且仍受预算限制。文件的 `excerpt` 先在文件里定位引文，再按预算截取返回 |
 | `paper_relations` | 引用、被引、库内相关论文的瘦卡片。引用 sidecar 和 citing-scan 缓存。被引卡片只有在 DOI 或 arXiv 对上库内论文时才带那篇的 `paperPath`，不会借用当前论文的路径。grant 外的论文只出现在卡片上，`context_read` 会拒绝 |
 
+论文正文的 `full` 优先使用通过共享 source 校验的主 TeX 与 literal input/include/import
+依赖，按原位置展开并保留公式、宏与来源文件注释，然后才退回 `PAPER.md` 和版面文字。
+`section` 优先从同一 TeX 正文的章节标题截取，`context_search` 也搜索源码并跳过旧 OCR
+Markdown；笔记仍单独提供。`page` / `region` 继续使用 PDF 版面坐标，不将源码伪装为页码。
+读取不执行 TeX；拒绝越过论文边界或进入 attachments 的依赖，文件数最多 512、展开文本最多
+4 MiB，实际返回继续受每轮预算限制。无需先生成 `PAPER.md` 或成功编译才能聊天读取正文。
+
 工具结果带 `citationUri`。实际用过的 URI 追加到同目录的 `usage.jsonl`，回合结束时放进 `agent:completed` 的 `sources`。侧边栏和 Quick Chat 把这些来源画成可点击的定位。
 
 ## 指纹和恢复

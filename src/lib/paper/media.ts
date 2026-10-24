@@ -113,9 +113,8 @@ export function revokePdfViewerSource(source: string | null | undefined): void {
 /**
  * Layout-analysis PDF: `{paperDir}/{id}.pdf` and nothing else.
  *
- * `id` is the paper folder name. `findLocalPdfPath` still walks nested
- * folders when that root file is missing, and can return an illustration
- * PDF under `source/assets/`. Layout analysis must not parse that file.
+ * `id` is the paper folder name. The viewer also accepts legacy root PDF
+ * filenames; neither path treats a source illustration as the paper.
  */
 export function canonicalPaperPdfPath(paperDir: string): string | null {
 	const root = paperDir.trim().replace(/[/\\]+$/, "");
@@ -147,9 +146,8 @@ export async function findCanonicalPaperPdfPath(
 }
 
 /**
- * Find first local PDF under a paper folder.
- * Prefer root-level `*.pdf` (canonical `{id}.pdf`), then shallow recursive
- * under nested dirs (e.g. `source/`). Max depth 4.
+ * Primary PDF: canonical `{id}.pdf`, then legacy root-level filenames.
+ * Source illustrations and attachments never stand in for the main document.
  */
 export async function findLocalPdfPath(
 	paperDir: string,
@@ -167,18 +165,8 @@ export async function findLocalPdfPath(
 				.filter((e) => e.isFile && PDF_NAME_RE.test(e.name))
 				.map((e) => `${handle}/${e.path}`)
 				.sort((a, b) => a.localeCompare(b));
-			if (pdfs[0]) return pdfs[0];
-			// shallow search source/
-			const source = entries.find((e) => e.isDir && e.name === "source");
-			if (source) {
-				const nested = await remoteList(sessionId, source.path);
-				const nestedPdf = nested
-					.filter((e) => e.isFile && PDF_NAME_RE.test(e.name))
-					.map((e) => `${handle}/${e.path}`)
-					.sort((a, b) => a.localeCompare(b));
-				return nestedPdf[0] ?? null;
-			}
-			return null;
+			const canonical = canonicalPaperPdfPath(root);
+			return pdfs.find((path) => path === canonical) ?? pdfs[0] ?? null;
 		} catch {
 			return null;
 		}
@@ -195,9 +183,13 @@ export async function findLocalPdfPath(
 		if (rootPdfs.length > 0) {
 			// Prefer shorter names / id-like: stable sort
 			rootPdfs.sort((a, b) => a.localeCompare(b));
-			return rootPdfs[0] ?? null;
+			return (
+				rootPdfs.find((path) => path === canonicalPaperPdfPath(root)) ??
+				rootPdfs[0] ??
+				null
+			);
 		}
-		return await findPdfUnder(root, 1, 4);
+		return null;
 	} catch (e) {
 		logger.warn("pdf: list paper dir failed", {
 			dir: root,
@@ -205,42 +197,6 @@ export async function findLocalPdfPath(
 		});
 		return null;
 	}
-}
-
-async function findPdfUnder(
-	dir: string,
-	depth: number,
-	maxDepth: number,
-): Promise<string | null> {
-	if (depth > maxDepth) return null;
-	let entries: Awaited<ReturnType<typeof readDir>>;
-	try {
-		entries = await readDir(dir);
-	} catch {
-		return null;
-	}
-	const subdirs: string[] = [];
-	for (const e of entries) {
-		if (!e.name) continue;
-		if (e.name.startsWith(".")) continue;
-		const full = joinPath(dir, e.name);
-		if (e.isFile && PDF_NAME_RE.test(e.name)) return full;
-		if (e.isDirectory) subdirs.push(full);
-	}
-	// Prefer source/ before other nested dirs
-	subdirs.sort((a, b) => {
-		const an = a.replace(/\\/g, "/").toLowerCase();
-		const bn = b.replace(/\\/g, "/").toLowerCase();
-		const aSrc = an.endsWith("/source") || an.includes("/source/") ? 0 : 1;
-		const bSrc = bn.endsWith("/source") || bn.includes("/source/") ? 0 : 1;
-		if (aSrc !== bSrc) return aSrc - bSrc;
-		return an.localeCompare(bn);
-	});
-	for (const sub of subdirs) {
-		const found = await findPdfUnder(sub, depth + 1, maxDepth);
-		if (found) return found;
-	}
-	return null;
 }
 
 /**

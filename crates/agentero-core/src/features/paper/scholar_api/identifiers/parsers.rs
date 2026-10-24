@@ -5,39 +5,52 @@
 /// Handles plain IDs, `arXiv:` prefixes, and arxiv.org URL paths
 /// (`/abs`, `/pdf`, `/html`, `/src`, `/e-print`). Strips version suffixes.
 pub fn extract_arxiv_id(text: &str) -> Option<String> {
-    let s = text.trim();
-    // URL form
-    let stripped = s
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .trim_start_matches("export.arxiv.org/")
-        .trim_start_matches("arxiv.org/");
-    let after_path = if let Some(rest) = stripped.strip_prefix("abs/") {
-        rest
-    } else if let Some(rest) = stripped.strip_prefix("pdf/") {
-        rest
-    } else if let Some(rest) = stripped.strip_prefix("html/") {
-        rest
-    } else if let Some(rest) = stripped.strip_prefix("src/") {
-        rest
-    } else if let Some(rest) = stripped.strip_prefix("e-print/") {
-        rest
+    extract_arxiv_request(text).map(|id| strip_arxiv_version(&id))
+}
+
+/// Asset identity preserves an explicit version; catalog dedup still uses the bare id.
+pub fn extract_arxiv_request(text: &str) -> Option<String> {
+    let input = text.trim();
+    let input = input
+        .strip_prefix("https://")
+        .or_else(|| input.strip_prefix("http://"))
+        .unwrap_or(input);
+    let mut id = if let Some(path) = input
+        .strip_prefix("arxiv.org/")
+        .or_else(|| input.strip_prefix("export.arxiv.org/"))
+    {
+        let (_, id) = path.split_once('/')?;
+        if !["abs", "pdf", "html", "src", "e-print"]
+            .iter()
+            .any(|p| path.starts_with(&format!("{p}/")))
+        {
+            return None;
+        }
+        id
     } else {
-        s.trim_start_matches("arXiv:").trim_start_matches("arxiv:")
+        input
+            .strip_prefix("arXiv:")
+            .or_else(|| input.strip_prefix("arxiv:"))
+            .unwrap_or(input)
+            .trim()
     };
-    let id = after_path
-        .split(['?', '#', '/'])
-        .next()
-        .unwrap_or(after_path)
+    id = id
+        .split(['?', '#'])
+        .next()?
+        .trim_end_matches('/')
         .trim_end_matches(".pdf");
-    let id = id.trim().trim_end_matches('/');
-    // new-style 1706.03762 or old-style hep-th/9901001
+    id = id.trim_start_matches("arXiv:").trim_start_matches("arxiv:");
     let bare = strip_arxiv_version(id);
-    if is_arxiv_id(&bare) {
-        Some(bare)
-    } else {
-        None
+    if !is_arxiv_id(&bare) {
+        return None;
     }
+    if bare != id {
+        let version = id.strip_prefix(&bare)?.strip_prefix('v')?;
+        if version.is_empty() || !version.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+    }
+    Some(id.to_string())
 }
 
 fn is_arxiv_id(s: &str) -> bool {
@@ -51,7 +64,12 @@ fn is_arxiv_id(s: &str) -> bool {
     }
     // archive/YYMMNNN
     if let Some((arch, num)) = s.split_once('/') {
-        return !arch.is_empty() && num.len() == 7 && num.chars().all(|c| c.is_ascii_digit());
+        return arch.starts_with(|c: char| c.is_ascii_alphabetic())
+            && arch
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-'))
+            && num.len() == 7
+            && num.chars().all(|c| c.is_ascii_digit());
     }
     false
 }

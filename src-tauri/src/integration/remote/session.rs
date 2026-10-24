@@ -1030,7 +1030,7 @@ mod tests {
             // 4) Download assets for local-pdf paper if any
             if let Ok(list) = crate::features::paper::catalog::papers::list_all(&session.work_root)
             {
-                if let Some(p) = list.first() {
+                if let Some(p) = list.iter().find(|paper| paper.arxiv_id.is_none()) {
                     match import_bridge::download_paper_assets_remote(
                         session.clone(),
                         PaperDownloadAssetsArgs {

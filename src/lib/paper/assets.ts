@@ -10,32 +10,29 @@ type TreeWalkNode = {
 	path?: string;
 	/** Lazy `source/` shells carry a Host-computed TeX-on-disk flag. */
 	hasTex?: boolean;
+	needsSource?: boolean;
 	children?: Array<{
 		name: string;
 		kind?: string;
 		path?: string;
 		hasTex?: boolean;
+		needsSource?: boolean;
 		children?: unknown[];
 	}>;
 };
 
-/** Walk tree node names for a matching extension. Skip `attachments/`. */
-function treeHasFileExt(node: TreeWalkNode, re: RegExp): boolean {
-	if (node.kind !== "directory" && re.test(node.name)) return true;
-	for (const child of node.children ?? []) {
-		if (isPaperAttachmentsDirName(child.name)) continue;
-		if (treeHasFileExt(child as TreeWalkNode, re)) return true;
-	}
-	return false;
-}
-
 export function paperHasLocalPdf(node: TreeWalkNode): boolean {
-	return treeHasFileExt(node, PDF_NAME_RE);
+	return (
+		(node.kind !== "directory" && PDF_NAME_RE.test(node.name)) ||
+		(node.children ?? []).some(
+			(child) => child.kind !== "directory" && PDF_NAME_RE.test(child.name),
+		)
+	);
 }
 
 export function paperHasLocalTex(node: TreeWalkNode): boolean {
 	// Lazy `source/` shells have no listed children; trust the on-disk flag.
-	if (node.hasTex === true) return true;
+	if (node.hasTex != null) return node.hasTex;
 	for (const child of node.children ?? []) {
 		if (isPaperAttachmentsDirName(child.name)) continue;
 		if (paperHasLocalTex(child as TreeWalkNode)) return true;
@@ -43,14 +40,14 @@ export function paperHasLocalTex(node: TreeWalkNode): boolean {
 	return node.kind !== "directory" && TEX_NAME_RE.test(node.name);
 }
 
-/** True when the paper folder has a direct-child `PAPER.md` (any depth name match). */
+/** True when the paper folder has a direct-child `PAPER.md`. */
 export function paperHasLocalPaperMd(node: TreeWalkNode): boolean {
-	if (node.kind !== "directory" && PAPER_MD_RE.test(node.name)) return true;
-	for (const child of node.children ?? []) {
-		if (isPaperAttachmentsDirName(child.name)) continue;
-		if (paperHasLocalPaperMd(child as TreeWalkNode)) return true;
-	}
-	return false;
+	return (
+		(node.kind !== "directory" && PAPER_MD_RE.test(node.name)) ||
+		(node.children ?? []).some(
+			(child) => child.kind !== "directory" && PAPER_MD_RE.test(child.name),
+		)
+	);
 }
 
 /**
@@ -59,29 +56,20 @@ export function paperHasLocalPaperMd(node: TreeWalkNode): boolean {
  *
  * Readable body: **TeX OR PAPER.md** is enough (prefer TeX — if TeX exists, PAPER.md is not required).
  */
-export type PaperDownloadReason = "noPdf" | "noBody";
+export type PaperDownloadReason = "noPdf" | "noBody" | "noSource";
 
-/**
- * Missing local assets that warrant a Download control:
- * - no PDF (at paper folder root or nested), or
- * - no TeX **and** no `PAPER.md` (either body form is sufficient; TeX preferred)
- *
- * Click: download PDF to paper folder root; arXiv TeX into `source/`; if no TeX → liteparse PAPER.md.
- * Note: `source/` is only required for TeX archives — PDF alone does not require `source/`.
- *
- * `meta` is optional catalog metadata. When present, its `body_source` field
- * overrides the file-tree scan: `source/` is lazy‑loaded so TeX files inside it
- * are never visible to `paperHasLocalTex`.
- */
+/** Host source repair is independent of derived Markdown. Local files, not
+ * catalog labels, determine PDF/body readiness. */
 export function paperAssetDownloadReasons(
 	node: TreeWalkNode,
 	meta?: { body_source?: string | null } | null,
 ): PaperDownloadReason[] {
 	const reasons: PaperDownloadReason[] = [];
 	if (!paperHasLocalPdf(node)) reasons.push("noPdf");
-	// Body: trust catalog body_source when set (source/ is lazy‑loaded).
-	const bodyKnown = meta?.body_source != null && meta.body_source !== "";
-	if (!bodyKnown && !paperHasLocalTex(node) && !paperHasLocalPaperMd(node)) {
+	void meta; // Catalog source labels can outlive the local source/body files.
+	if (node.needsSource) {
+		reasons.push("noSource");
+	} else if (!paperHasLocalTex(node) && !paperHasLocalPaperMd(node)) {
 		reasons.push("noBody");
 	}
 	return reasons;

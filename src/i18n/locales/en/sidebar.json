@@ -15,7 +15,8 @@
 		"downloadAllMissing": "Download all incomplete paper assets",
 		"downloadReason": {
 			"noPdf": "Missing PDF",
-			"noBody": "Missing TeX and PAPER.md (either is enough; TeX preferred)"
+			"noBody": "Missing TeX and PAPER.md (either is enough; TeX preferred)",
+			"noSource": "Missing arXiv LaTeX source"
 		},
 		"expandChildren": "Show notes and attachments",
 		"collapseChildren": "Hide notes and attachments",

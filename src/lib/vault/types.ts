@@ -18,8 +18,10 @@ export type FileNode = {
 	 */
 	childrenPending?: boolean;
 	/**
-	 * Paper `source/` shells only: whether TeX exists on disk. Needed because
-	 * lazy children hide `.tex` files from tree-based asset detection.
+	 * Host-validated TeX manuscript on paper rows and lazy source shells.
+	 * File names alone cannot validate the main document and its dependencies.
 	 */
 	hasTex?: boolean;
+	/** Host source-acquisition decision for a paper, independent of OCR Markdown. */
+	needsSource?: boolean;
 };

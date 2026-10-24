@@ -385,6 +385,7 @@ function mapHostTreeNodes(nodes: VaultTreeNode_Serialize[]): FileNode[] {
 			if (n.children) node.children = mapHostTreeNodes(n.children);
 			if (n.childrenPending != null) node.childrenPending = n.childrenPending;
 			if (n.hasTex != null) node.hasTex = n.hasTex;
+			if (n.needsSource != null) node.needsSource = n.needsSource;
 			return node;
 		}),
 	);
