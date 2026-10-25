@@ -15,6 +15,7 @@ import {
 	loadDevelopmentPlugin,
 	unloadDevelopmentPlugins,
 } from "@/lib/plugins/development";
+import { pluginsSurfaceEnabled } from "@/lib/plugins/visibility";
 import { registerBuiltinCommands } from "@/lib/shell/commands/registry";
 import type { AppCommand } from "@/lib/shell/commands/types";
 import {
@@ -48,14 +49,14 @@ export const paletteCommands: AppCommand[] = [
 		id: "plugins.loadDevelopment",
 		titleKey: "commands.pluginsLoadDevelopment",
 		categoryKey: "commands.catApp",
-		when: canLoadDevelopmentPlugin,
+		when: () => pluginsSurfaceEnabled && canLoadDevelopmentPlugin(),
 		run: loadDevelopmentPlugin,
 	},
 	{
 		id: "plugins.unloadDevelopment",
 		titleKey: "commands.pluginsUnloadDevelopment",
 		categoryKey: "commands.catApp",
-		when: hasDevelopmentPlugins,
+		when: () => pluginsSurfaceEnabled && hasDevelopmentPlugins(),
 		run: unloadDevelopmentPlugins,
 	},
 	{

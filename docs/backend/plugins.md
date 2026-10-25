@@ -2,6 +2,8 @@
 
 桌面应用支持从本机目录安装 JavaScript 插件，在每个本地 Vault 单独启用、授权和配置。插件代码不进入 React Webview，不自动执行 Vault 内代码。iOS、Android 与远程 Vault 不提供本地插件宿主。
 
+前端入口暂时隐藏：设置页「插件」、命令面板的开发插件加载，以及 Vault 打开后的自动激活都由 `src/lib/plugins/visibility.ts` 的 `pluginsSurfaceEnabled` 关掉。Host 命令与插件运行时未删除；该常量为 `false` 时前端不会调用 `plugin_activate`。
+
 操作教程见 [使用本地插件](../usage/plugins.md)。
 
 ## 使用
