@@ -6,6 +6,7 @@
 const SKIP_DIRECTORIES = new Set(["build", "out", "aux", "node_modules"]);
 
 const SKIP_EXTENSIONS = new Set([
+	"pdf",
 	"aux",
 	"log",
 	"out",

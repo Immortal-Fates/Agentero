@@ -18,6 +18,7 @@ describe("writing source filter", () => {
 		expect(isWritingSourceName("file", "refs.bib")).toBe(true);
 		expect(isWritingSourceName("file", "figure.png")).toBe(true);
 		expect(isWritingSourceName("file", ".latexmkrc")).toBe(true);
+		expect(isWritingSourceName("file", "main.pdf")).toBe(false);
 		expect(isWritingSourceName("file", "main.aux")).toBe(false);
 		expect(isWritingSourceName("file", "main.fdb_latexmk")).toBe(false);
 		expect(isWritingSourceName("file", "main.synctex.gz")).toBe(false);
