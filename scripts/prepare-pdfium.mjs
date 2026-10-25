@@ -163,7 +163,17 @@ if (size < 1024 * 1024) {
 	process.exit(1);
 }
 
-fs.copyFileSync(src, dest);
+if (!fs.existsSync(dest) || fs.statSync(dest).size !== size) {
+	if (fs.existsSync(dest)) {
+		fs.rmSync(dest, { force: true });
+	}
+	fs.copyFileSync(src, dest);
+	fs.chmodSync(dest, 0o644);
+} else {
+	try {
+		fs.chmodSync(dest, 0o644);
+	} catch {}
+}
 
 // pdfium-binaries ships an install name of `./libpdfium.dylib`; codesign and
 // @rpath resolution inside Contents/Frameworks need the @rpath form.
