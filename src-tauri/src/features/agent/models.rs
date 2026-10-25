@@ -10,6 +10,9 @@ pub enum AgentTemplate {
     Hermes,
     ClaudeAcp,
     CodexAcp,
+    /// Cursor Agent CLI with native ACP (`cursor-agent acp`).
+    /// Docs: https://cursor.com/docs/cli
+    CursorAgent,
     /// Google Antigravity's official ACP server (separate from the retired `agy-acp` adapter).
     AntigravityAcp,
     /// Qoder CLI native ACP (`qodercli --acp`).
@@ -55,6 +58,7 @@ impl<'de> serde::Deserialize<'de> for AgentTemplate {
             "hermes" => Self::Hermes,
             "claude-acp" => Self::ClaudeAcp,
             "codex-acp" => Self::CodexAcp,
+            "cursor-agent" => Self::CursorAgent,
             "antigravity-acp" => Self::AntigravityAcp,
             "qodercli" => Self::QoderCli,
             "grok-build" => Self::GrokBuild,
@@ -81,6 +85,7 @@ impl AgentTemplate {
             Self::Hermes => "hermes",
             Self::ClaudeAcp => "claude-acp",
             Self::CodexAcp => "codex-acp",
+            Self::CursorAgent => "cursor-agent",
             Self::AntigravityAcp => "antigravity-acp",
             Self::QoderCli => "qodercli",
             Self::GrokBuild => "grok-build",

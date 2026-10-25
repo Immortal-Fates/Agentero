@@ -52,7 +52,7 @@ Agentero 作为 **ACP Client**，stdio JSON-RPC 连接用户本机或远端 Agen
   `OPENAI_BASE_URL` 等变量；`AgentDescriptor.env` 优先级最高，可覆盖 shell 值（#478）。
   ACP、命令探测和安装器共用 core 的 shell 环境快照；安装前刷新，安装结束（含失败/取消）后失效，
   下次启动重新读取安装器可能修改的 PATH。快照不写入日志。
-- 统一接口：OpenCode、Hermes、Claude ACP、Codex ACP、Antigravity ACP、Qoder、Grok、Pi、Dsh（DeepSeek Harness）、Kimi Code、ZCode、MiniMax Code、MiMo Code、自定义 `command`/`args`/`env`。自定义项不探测安装器，保存后按同一 stdio 路径拉起；前端把参数字符串按空白拆开。设置表单用 `agent.form.hint` 说明这一约定。
+- 统一接口：OpenCode、Hermes、Claude ACP、Codex ACP、Cursor Agent、Antigravity ACP、Qoder、Grok、Pi、Dsh（DeepSeek Harness）、Kimi Code、ZCode、MiniMax Code、MiMo Code、自定义 `command`/`args`/`env`。自定义项不探测安装器，保存后按同一 stdio 路径拉起；前端把参数字符串按空白拆开。设置表单用 `agent.form.hint` 说明这一约定。
 - Dsh：umbrella CLI `@deepseek-ai/dsh`（npm，需 0.1.2+）内置 ACP profile——
   `dsh --profile acp` 以 ACP stdio 服务，首次启动从内置模板自动初始化 profile
   （`$DSH_HOME/profiles/acp`），无需手写 `cordis.yml` 或受管 launcher 目录。
@@ -86,6 +86,15 @@ Agentero 作为 **ACP Client**，stdio JSON-RPC 连接用户本机或远端 Agen
   `@moonshot-ai/kimi-code`（需 Node 22.19+）作回退。`kimi upgrade` 是交互式的，静默
   `update` 重跑幂等的官方 installer。登录在终端完成（`kimi` → `/login`，OAuth 或
   Moonshot API key），skill 走 slash mention。
+- Cursor Agent：原生 ACP，且**没有** `--acp` flag，必须用隐藏子命令
+  `cursor-agent acp`（`--acp` 会报 unknown option）。官方 installer
+  （`curl https://cursor.com/install -fsS | bash`，Windows 为
+  `irm 'https://cursor.com/install?win32=true' | iex`）安装原生二进制，Unix 落到
+  `~/.local/share/cursor-agent/versions/<release>` 并软链 `~/.local/bin/{agent,cursor-agent}`，
+  Windows 落到 `%LOCALAPPDATA%\cursor-agent`；没有 npm 包。静默 update 优先
+  `cursor-agent update`，失败再重跑官方 installer。登录复用本机 Cursor 登录态
+  （`cursor-agent login`），因此 `detect_command` / ACP 入口都是 `cursor-agent`，
+  skill 走 slash mention。ACP 的 `cwd` 由 `session/new` 传，不要加 `--workspace`。
 - MiniMax Code：原生 ACP（`mcode acp`）。npm 包 `@minimax-ai/code`（需 Node 22.19+
   或 24+）安装后提供 `mcode`，detect/ACP 入口同二进制，静默 install/update 走
   `npm install --global @minimax-ai/code@latest --ignore-scripts=false

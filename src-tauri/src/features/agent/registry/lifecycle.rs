@@ -76,6 +76,7 @@ pub const LIFECYCLE_TEMPLATES: &[&str] = &[
     "opencode",
     "claude-acp",
     "codex-acp",
+    "cursor-agent",
     "hermes",
     "qodercli",
     "grok-build",
@@ -179,6 +180,15 @@ const QODER_NPM_INSTALL_COMMAND: &str = if cfg!(windows) {
 } else {
     "npm i -g @qoder-ai/qodercli@latest --prefix \"$HOME/.local\""
 };
+
+/// Cursor Agent CLI official installer. Downloads a native `cursor-agent`
+/// into `~/.local/share/cursor-agent/versions/<release>` and symlinks
+/// `~/.local/bin/{agent,cursor-agent}`. There is no npm package.
+#[cfg(not(target_os = "windows"))]
+const CURSOR_INSTALL_UNIX: &str = "bash -c 'tmp=$(mktemp) && curl -fsSL https://cursor.com/install -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
+
+#[cfg(target_os = "windows")]
+const CURSOR_INSTALL_WINDOWS_SCRIPT: &str = "irm 'https://cursor.com/install?win32=true' | iex";
 
 #[cfg(target_os = "windows")]
 const GROK_INSTALL_WINDOWS_SCRIPT: &str = "irm https://x.ai/cli/install.ps1 | iex";
@@ -320,6 +330,9 @@ pub fn uninstall_info(template_id: &str) -> Option<UninstallInfo> {
             vec![claude_acp],
         ),
         "codex-acp" => (vec![codex_host], vec![codex_acp]),
+        // Official-installer-only: no npm package to reverse, only the
+        // launcher dirs and symlinks the installer created.
+        "cursor-agent" => (Vec::new(), Vec::new()),
         "pi" => (
             vec![npm_uninstall_global("@earendil-works/pi-coding-agent")],
             vec![pi_acp],
@@ -346,6 +359,13 @@ pub fn uninstall_info(template_id: &str) -> Option<UninstallInfo> {
         _ => return None,
     };
     let (agent_dirs, acp_dirs): (Vec<String>, Vec<String>) = match template_id {
+        "cursor-agent" => (
+            cursor_managed_install_paths()
+                .into_iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+            Vec::new(),
+        ),
         "dsh" => (
             Vec::new(),
             vec![legacy_dsh_launcher_dir().display().to_string()],
@@ -406,6 +426,30 @@ fn qoder_managed_install_paths() -> Vec<std::path::PathBuf> {
             bin.join("qodercli.cmd"),
         ]
     };
+    paths
+}
+
+/// Official Cursor installer layout. Unix keeps versioned binaries under
+/// `~/.local/share/cursor-agent` and symlinks `agent` / `cursor-agent` into
+/// `~/.local/bin`; Windows installs the launchers plus `versions/` under
+/// `%LOCALAPPDATA%\cursor-agent`. The shared `bin` dir and the `~/.cursor`
+/// login/config dir are never removed.
+fn cursor_managed_install_paths() -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from);
+    #[cfg(not(target_os = "windows"))]
+    let base = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let Some(base) = base.filter(|path| !path.as_os_str().is_empty()) else {
+        return Vec::new();
+    };
+    #[cfg(not(target_os = "windows"))]
+    let paths = vec![
+        base.join(".local").join("share").join("cursor-agent"),
+        base.join(".local").join("bin").join("cursor-agent"),
+        base.join(".local").join("bin").join("agent"),
+    ];
+    #[cfg(target_os = "windows")]
+    let paths = vec![base.join("cursor-agent")];
     paths
 }
 
@@ -926,6 +970,7 @@ fn host_install_command(template_id: &str) -> Result<String, String> {
         match template_id {
             "claude-acp" => Ok(CLAUDE_NPM_INSTALL_COMMAND.to_string()),
             "codex-acp" => Ok(CODEX_HOST_INSTALL_COMMAND.to_string()),
+            "cursor-agent" => Ok(cursor_install_windows_command()),
             "opencode" => Ok(OPENCODE_NPM_INSTALL_COMMAND.to_string()),
             "hermes" => Ok(hermes_install_windows_command()),
             "qodercli" => Ok(chain_or(
@@ -956,6 +1001,7 @@ fn host_install_command(template_id: &str) -> Result<String, String> {
         match template_id {
             "claude-acp" => Ok(chain_or(CLAUDE_INSTALL_UNIX, CLAUDE_NPM_INSTALL_COMMAND)),
             "codex-acp" => Ok(CODEX_HOST_INSTALL_COMMAND.to_string()),
+            "cursor-agent" => Ok(CURSOR_INSTALL_UNIX.to_string()),
             "opencode" => Ok(chain_or(
                 OPENCODE_INSTALL_UNIX,
                 OPENCODE_NPM_INSTALL_COMMAND,
@@ -996,6 +1042,21 @@ fn host_update_command(template_id: &str) -> Result<String, String> {
             }
         }
         "codex-acp" => Ok(CODEX_HOST_INSTALL_COMMAND.to_string()),
+        "cursor-agent" => {
+            // Cursor also auto-updates on launch; `cursor-agent update` is the
+            // documented manual path, with the installer as the fallback.
+            #[cfg(target_os = "windows")]
+            {
+                Ok(chain_or(
+                    "cursor-agent update",
+                    &cursor_install_windows_command(),
+                ))
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                Ok(chain_or("cursor-agent update", CURSOR_INSTALL_UNIX))
+            }
+        }
         "pi" => {
             // pi is a host CLI plus a community ACP adapter. Updating only the
             // host frequently leaves the adapter out of sync after a `pi` release,
@@ -1136,6 +1197,14 @@ fn qoder_install_windows_command() -> String {
     )
 }
 
+#[cfg(target_os = "windows")]
+fn cursor_install_windows_command() -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell_encoded_command(CURSOR_INSTALL_WINDOWS_SCRIPT)
+    )
+}
+
 /// Manual one-click install text for Settings (copyable). Matches backend install chains.
 pub fn manual_install_commands_text() -> String {
     #[cfg(target_os = "windows")]
@@ -1147,6 +1216,8 @@ pub fn manual_install_commands_text() -> String {
 # Codex + ACP adapter
 {codex_host}
 {codex_acp}
+# Cursor Agent CLI
+{cursor}
 # OpenCode
 {opencode_npm}
 # Pi + ACP adapter
@@ -1171,6 +1242,7 @@ pub fn manual_install_commands_text() -> String {
             claude_acp = CLAUDE_ACP_INSTALL_COMMAND,
             codex_host = CODEX_HOST_INSTALL_COMMAND,
             codex_acp = CODEX_ACP_INSTALL_COMMAND,
+            cursor = cursor_install_windows_command(),
             opencode_npm = OPENCODE_NPM_INSTALL_COMMAND,
             pi_host = PI_HOST_INSTALL_COMMAND,
             pi_acp = PI_ACP_INSTALL_COMMAND,
@@ -1194,6 +1266,8 @@ pub fn manual_install_commands_text() -> String {
 # Codex + ACP adapter
 {codex_host}
 {codex_acp}
+# Cursor Agent CLI
+{cursor}
 # OpenCode
 {opencode} || {opencode_npm}
 # Pi + ACP adapter
@@ -1216,6 +1290,7 @@ pub fn manual_install_commands_text() -> String {
             claude_acp = CLAUDE_ACP_INSTALL_COMMAND,
             codex_host = CODEX_HOST_INSTALL_COMMAND,
             codex_acp = CODEX_ACP_INSTALL_COMMAND,
+            cursor = CURSOR_INSTALL_UNIX,
             opencode = OPENCODE_INSTALL_UNIX,
             opencode_npm = OPENCODE_NPM_INSTALL_COMMAND,
             pi_host = PI_HOST_INSTALL_COMMAND,

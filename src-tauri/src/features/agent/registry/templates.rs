@@ -433,6 +433,24 @@ pub fn builtin_templates() -> Vec<AgentTemplateInfo> {
             install_command: Some(CODEX_ACP_INSTALL_COMMAND.to_string()),
             login_command: Some("codex login".to_string()),
         },
+        AgentTemplateInfo {
+            id: AgentTemplate::CursorAgent.as_str().to_string(),
+            name: "Cursor".to_string(),
+            description:
+                "Cursor Agent CLI with native ACP (`cursor-agent acp`). Reuses the local Cursor login."
+                    .to_string(),
+            command: "cursor-agent".to_string(),
+            args: vec!["acp".to_string()],
+            detect_command: Some("cursor-agent".to_string()),
+            install_hint: if cfg!(windows) {
+                "irm 'https://cursor.com/install?win32=true' | iex  ·  then `cursor-agent login`  ·  https://cursor.com/docs/cli"
+            } else {
+                "curl https://cursor.com/install -fsS | bash  ·  then `cursor-agent login`  ·  https://cursor.com/docs/cli"
+            }
+            .to_string(),
+            install_command: None,
+            login_command: Some("cursor-agent login".to_string()),
+        },
         // The official registry has no macOS Intel build.
         #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
         AgentTemplateInfo {
@@ -639,6 +657,7 @@ pub fn template_from_id(id: &str) -> AgentTemplate {
         "hermes" => AgentTemplate::Hermes,
         "claude-acp" => AgentTemplate::ClaudeAcp,
         "codex-acp" => AgentTemplate::CodexAcp,
+        "cursor-agent" => AgentTemplate::CursorAgent,
         "antigravity-acp" => AgentTemplate::AntigravityAcp,
         "qodercli" => AgentTemplate::QoderCli,
         "grok-build" => AgentTemplate::GrokBuild,

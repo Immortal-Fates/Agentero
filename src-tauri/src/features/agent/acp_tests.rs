@@ -62,6 +62,7 @@ mod acp_live {
         assert!(ids.contains(&"opencode"));
         assert!(ids.contains(&"claude-acp"));
         assert!(ids.contains(&"codex-acp"));
+        assert!(ids.contains(&"cursor-agent"));
         assert!(ids.contains(&"hermes"));
         assert!(!ids.contains(&"antigravity"));
         assert_eq!(
@@ -138,6 +139,20 @@ mod acp_live {
         assert_eq!(codex.args, Vec::<String>::new());
         assert_eq!(codex.detect_command.as_deref(), Some("codex"));
         assert_eq!(codex.login_command.as_deref(), Some("codex login"));
+    }
+
+    #[test]
+    fn cursor_template_uses_native_acp() {
+        let cursor = catalog_templates()
+            .into_iter()
+            .find(|entry| entry.id == "cursor-agent")
+            .expect("Cursor template");
+        // `--acp` is not a flag; ACP is the hidden `acp` subcommand.
+        assert_eq!(cursor.command, "cursor-agent");
+        assert_eq!(cursor.args, vec!["acp".to_string()]);
+        assert_eq!(cursor.detect_command.as_deref(), Some("cursor-agent"));
+        assert_eq!(cursor.login_command.as_deref(), Some("cursor-agent login"));
+        assert!(crate::features::agent::registry::lifecycle::supports_lifecycle(&cursor.id));
     }
 
     #[test]

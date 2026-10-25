@@ -2,6 +2,7 @@ import { Terminal } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import {
 	SiClaude,
+	SiCursor,
 	SiDeepseek,
 	SiHermes,
 	SiOpencode,
@@ -14,6 +15,7 @@ export type AgentLogoKey =
 	| "opencode"
 	| "claude-acp"
 	| "codex-acp"
+	| "cursor-agent"
 	| "hermes"
 	| "qodercli"
 	| "antigravity-acp"
@@ -33,6 +35,7 @@ export function agentLogoKeyForTemplate(
 		case "opencode":
 		case "claude-acp":
 		case "codex-acp":
+		case "cursor-agent":
 		case "hermes":
 		case "qodercli":
 		case "antigravity-acp":
@@ -80,6 +83,9 @@ export function AgentLogo({
 			break;
 		case "codex-acp":
 			icon = <OpenAiMark className={neutralIconClass} />;
+			break;
+		case "cursor-agent":
+			icon = <SiCursor className={neutralIconClass} />;
 			break;
 		case "hermes":
 			icon = (

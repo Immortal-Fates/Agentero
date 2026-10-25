@@ -1338,6 +1338,11 @@ export type AgentTemplate = "opencode" |
  *  Docs: https://github.com/NousResearch/hermes-agent
  */
 "hermes" | "claude-acp" | "codex-acp" | 
+/**
+ *  Cursor Agent CLI with native ACP (`cursor-agent acp`).
+ *  Docs: https://cursor.com/docs/cli
+ */
+"cursor-agent" | 
 /**  Google Antigravity's official ACP server (separate from the retired `agy-acp` adapter). */
 "antigravity-acp" | 
 /**

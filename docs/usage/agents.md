@@ -10,6 +10,7 @@ Agentero 使用 **BYOA**（Bring Your Own Agent）：Agent 由你安装和登录
 
 - Claude ACP
 - Codex（经 ACP 适配器）
+- Cursor Agent（原生 ACP，`cursor-agent acp`）
 - OpenCode、Qoder、Grok、Kimi Code、ZCode、MiniMax Code、MiMo Code 等兼容 ACP 的 CLI（ZCode 经 `zcode-acp-server` 适配器，复用桌面版登录；MiMo Code 为 `mimo acp`，npm 包 `mimocode`）
 - [GenericAgent ACP](genericagent-acp.md)
 - 自定义 `command` / `args` / `env`

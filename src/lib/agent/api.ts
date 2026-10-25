@@ -24,6 +24,7 @@ export type AgentTemplate =
 	| "hermes"
 	| "claude-acp"
 	| "codex-acp"
+	| "cursor-agent"
 	| "antigravity-acp"
 	| "qodercli"
 	| "grok-build"

@@ -362,6 +362,7 @@ function catalogTemplateFromId(templateId: string): AgentTemplate | undefined {
 		case "hermes":
 		case "claude-acp":
 		case "codex-acp":
+		case "cursor-agent":
 		case "antigravity-acp":
 		case "qodercli":
 		case "grok-build":
