@@ -219,6 +219,8 @@
 	},
 	"html": {
 		"edit": "Edit HTML",
+		"preview": "HTML preview",
+		"closePreview": "Close preview",
 		"placeholder": "<div align=\"center\">…</div>"
 	}
 }

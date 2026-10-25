@@ -32,6 +32,10 @@ import { EditorStatusBar } from "@/components/editor/overlays/editor-status-bar"
 import { FindReplaceBar } from "@/components/editor/overlays/find-replace-bar";
 import { FrontmatterPanel } from "@/components/editor/overlays/frontmatter-panel";
 import { HeadingRenameDialog } from "@/components/editor/overlays/heading-rename-dialog";
+import {
+	HtmlPreviewPanel,
+	type HtmlPreviewState,
+} from "@/components/editor/overlays/html-preview-panel";
 import { SlashCommandMenu } from "@/components/editor/overlays/slash-command-menu";
 import {
 	MINIMUM_TOC_HEADINGS,
@@ -281,6 +285,8 @@ export const MarkdownEditor = memo(function MarkdownEditor({
 	const suppressNextEditorBreakRef = useRef(false);
 	const [findOpen, setFindOpen] = useState(false);
 	const [findFocusTick, setFindFocusTick] = useState(0);
+	const [htmlPreview, setHtmlPreview] = useState<HtmlPreviewState | null>(null);
+	const closeHtmlPreview = useCallback(() => setHtmlPreview(null), []);
 	const [exportOpen, setExportOpen] = useState(false);
 	const [exportBusy, setExportBusy] = useState(false);
 	const [exportPaperHeader, setExportPaperHeader] =
@@ -708,6 +714,11 @@ export const MarkdownEditor = memo(function MarkdownEditor({
 		() => ({
 			filePath: filePath ?? null,
 			onAssetsChanged,
+			openHtmlPreview: (html: string) =>
+				setHtmlPreview((previous) => ({
+					html,
+					key: (previous?.key ?? 0) + 1,
+				})),
 		}),
 		[filePath, onAssetsChanged],
 	);
@@ -1065,6 +1076,10 @@ export const MarkdownEditor = memo(function MarkdownEditor({
 								{tocMounted ? (
 									<TocSidebar rootMargin="-8px 0px -80% 0px" topOffset={16} />
 								) : null}
+								<HtmlPreviewPanel
+									preview={htmlPreview}
+									onClose={closeHtmlPreview}
+								/>
 							</div>
 						</div>
 						<EditorStatusBar

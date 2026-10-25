@@ -22,7 +22,7 @@ import {
 	wikiFragmentSuffix,
 } from "@/lib/wiki";
 import { useWikiNav } from "@/lib/wiki/nav-context";
-import { openCitation } from "@/lib/workspace/actions";
+import { openCitation, openHtmlPreviewLink } from "@/lib/workspace/actions";
 
 type LinkEl = TElement & {
 	url?: string;
@@ -40,6 +40,13 @@ export function LinkElement(props: PlateElementProps) {
 	const citationJump =
 		!wiki && (isAgentCitationHref(url) || isVaultPdfHref(url));
 	const localMarkdown = !wiki && !citationJump && isVaultLocalMarkdownLink(url);
+	// Local `.html` destinations open in the right-side HTML preview; the wiki
+	// resolver only indexes Markdown, so they need their own branch (#825).
+	const localHtml =
+		!wiki &&
+		!citationJump &&
+		/\.html?($|[?#])/i.test(url) &&
+		isVaultLocalMarkdownLink(url);
 
 	if (citationJump) {
 		return (
@@ -103,6 +110,28 @@ export function LinkElement(props: PlateElementProps) {
 							}
 						}
 						wikiNav?.onWikiNavigate(wiki);
+					},
+				}}
+			>
+				{children}
+			</PlateElement>
+		);
+	}
+
+	if (localHtml) {
+		return (
+			<PlateElement
+				{...props}
+				as="a"
+				className={linkClassName}
+				attributes={{
+					...props.attributes,
+					href: url,
+					title: url,
+					onClick: (event: MouseEvent) => {
+						event.preventDefault();
+						event.stopPropagation();
+						void openHtmlPreviewLink(url, markdownDoc.filePath);
 					},
 				}}
 			>

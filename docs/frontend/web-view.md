@@ -77,7 +77,7 @@ NAV_BRIDGE 同款 vanilla ES5 IIFE,只装配顶层 frame。经 `parent.postMessa
 
 ## 本地 HTML 文件
 
-Vault 中的 `.html` / `.htm`（论文目录下的子文件、`notes/` 里的图）由 `LocalHtmlViewer`（`src/components/viewer/local-html-viewer.tsx`）预览。远程论文页仍走上面的 `HtmlViewer`。
+Vault 中的 `.html` / `.htm`（论文目录下的子文件、`notes/` 里的图）由 `LocalHtmlViewer`（`src/components/viewer/local-html-viewer.tsx`）预览。远程论文页仍走上面的 `HtmlViewer`。Markdown 笔记或 Agent 对话里的本地 HTML 链接会在活动面板右侧分屏打开这个 viewer（#825）。
 
 ```text
 打开 logic.html

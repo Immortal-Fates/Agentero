@@ -15,7 +15,7 @@ import { commands } from "@/lib/core/bindings";
 import { errorText } from "@/lib/core/error";
 import { notifyError } from "@/lib/core/notify";
 import { openExternalUrl } from "@/lib/core/open-external";
-import { normalizePath } from "@/lib/core/path";
+import { dirnameOf, normalizePath } from "@/lib/core/path";
 import { isTauri } from "@/lib/core/tauri";
 import {
 	detectPaperDirectory,
@@ -51,7 +51,12 @@ import { queueTexBuild } from "@/lib/tex/build-queue";
 import { getTexProjectSettings } from "@/lib/tex/config";
 import { syncTexAfterBuild } from "@/lib/tex/synctex";
 import { isTexLiveRootActive } from "@/lib/tex-live/session";
-import { ensureLocalFsScope, joinVaultPath, writeVaultFile } from "@/lib/vault";
+import {
+	ensureLocalFsScope,
+	joinVaultPath,
+	vaultPathExists,
+	writeVaultFile,
+} from "@/lib/vault";
 import { getVaultPath, refreshTree, vaultStore } from "@/lib/vault/store";
 import {
 	missingNotePath,
@@ -697,6 +702,83 @@ export function openVaultRel(rel: string): void {
 	openPath(joinVaultPath(vaultPath, clean));
 }
 
+/** True when `target` is a relative/absolute Vault path ending in `.html`. */
+export function isLocalHtmlLink(target: string): boolean {
+	const value = target.trim().replace(/^<|>$/g, "");
+	if (!value || value.startsWith("#") || value.startsWith("/")) return false;
+	if (value.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(value))
+		return false;
+	return /\.html?($|[?#])/i.test(value);
+}
+
+/**
+ * Resolve `rel` against the directory of `fromFile` (CommonMark link rules).
+ * `..` may climb, but never past the path root.
+ */
+function resolveLinkRelativeTo(fromFile: string, rel: string): string {
+	let parent = dirnameOf(fromFile);
+	for (const segment of rel.split(/[\\/]+/)) {
+		if (!segment || segment === ".") continue;
+		if (segment === "..") {
+			const next = dirnameOf(parent);
+			if (next) parent = next;
+			continue;
+		}
+		parent = joinVaultPath(parent, segment);
+	}
+	return parent;
+}
+
+function decodeLinkPath(rel: string): string {
+	try {
+		return decodeURIComponent(rel);
+	} catch {
+		return rel;
+	}
+}
+
+/**
+ * Open a local HTML file in a right-side split (#825).
+ *
+ * Relative destinations resolve against the source note first (as the Host
+ * wiki resolver does for Markdown), then against the Vault root. `fromFile`
+ * is null for chat links, which carry no source document.
+ */
+export async function openHtmlPreviewLink(
+	source: string,
+	fromFile?: string | null,
+): Promise<boolean> {
+	const trimmed = cleanCitationHref(source).trim();
+	if (!isLocalHtmlLink(trimmed)) return false;
+	const vaultPath = getVaultPath();
+	if (!vaultPath) {
+		notifyError(i18n.t("app:errors.openVaultForLinks"));
+		return false;
+	}
+	const rel = decodeLinkPath(trimmed.split(/[?#]/, 1)[0]);
+	const candidates: string[] = [];
+	if (fromFile) candidates.push(resolveLinkRelativeTo(fromFile, rel));
+	candidates.push(joinVaultPath(vaultPath, normalizeVaultRel(rel)));
+
+	let target = candidates[0];
+	for (const candidate of candidates) {
+		try {
+			if (await vaultPathExists(candidate)) {
+				target = candidate;
+				break;
+			}
+		} catch {
+			// Browser preview has no filesystem; fall through to the first candidate.
+			break;
+		}
+	}
+	openTab(target, {
+		preferMode: "html",
+		placement: { direction: "right", referencePanelId: null },
+	});
+	return true;
+}
+
 /** Graph: paper NOTES / paper folder → open paper (PDF + Notes). */
 export function openGraphPath(rel: string): void {
 	if (tryOpenCitationHref(rel)) return;
@@ -780,6 +862,11 @@ export function openCitation(source: string): void {
 	if (!trimmed) return;
 	if (/^https?:\/\//i.test(trimmed)) {
 		openExternalUrl(trimmed);
+		return;
+	}
+	// Local HTML opens in the built-in viewer beside the active pane (#825).
+	if (isLocalHtmlLink(trimmed)) {
+		void openHtmlPreviewLink(trimmed);
 		return;
 	}
 

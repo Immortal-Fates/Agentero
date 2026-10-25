@@ -152,7 +152,9 @@ Markdown 已能表达的语法不做 HTML 语义化转换，只处理 Markdown �
 | `<br>` | Markdown 硬换行；保存写回 `\` + 换行 |
 | `<u>` `<sub>` `<sup>` `<mark>` `<kbd>` | 沿用既有 mark 插件 |
 
-单击 HTML 块打开源码编辑气泡；净化后为空（例如标签整体被剥离）时退化为等宽源码，保证内容仍可见可编辑。
+单击 HTML 块在编辑器右侧展开 HTML 预览面板（`html-preview-panel.tsx`）：面板以 `clip-path` 从右边缘裁开，带 spring 过渡，`prefers-reduced-motion` 下仅淡入；宽面板占编辑器宽度的 72%（上限 42rem），`Esc` 或右上角关闭按钮收起。预览走与行内相同的净化结果，因此脚本/样式仍被剥离，只在更大的区域里阅读。悬停块右上角的铅笔按钮打开源码编辑气泡（原单击编辑改为该按钮，避免与预览手势冲突）。净化后为空（例如标签整体被剥离）时退化为等宽源码，保证内容仍可见可编辑。
+
+Markdown 里指向本地 `.html` / `.htm` 的链接（`[report](./figures/report.html)`、`[demo](papers/x/demo.html)`）不再走只索引 Markdown 的 wiki resolver：相对路径先按源笔记目录解析，再回退 Vault 根路径，命中后把 `LocalHtmlViewer` 作为右侧分屏打开（`openHtmlPreviewLink`）。Agent 对话里的本地 HTML 链接同样由 `openCitation` 接到这条路径，避免落回系统浏览器或静默失效。
 
 渲染前经 `DOMPurify` 净化：剥离 `script` / `style` / 表单与内联事件，`iframe` 强制 `sandbox` + `referrerpolicy="no-referrer"` 且仅允许 http(s) `src`，链接强制 `target="_blank" rel="noopener noreferrer"`。应用未启用 CSP，因此净化是唯一防线——Markdown 文件始终保存作者原文，只收窄进入 DOM 的部分。
 
@@ -175,7 +177,8 @@ Markdown 已能表达的语法不做 HTML 语义化转换，只处理 Markdown �
 | `src/lib/markdown/callout.ts` | Callout marker 解析、portable rules 与类型/标题的 AST 更新 |
 | `src/lib/markdown/html.ts` | 内嵌 HTML 的 remark 变换与 portable rules（逐字保留 / `<p>` 还原） |
 | `src/lib/markdown/html-sanitize.ts` | 渲染前的 DOMPurify 净化与 iframe / 链接加固 |
-| `src/components/editor/nodes/block/html-node.tsx` | HTML 块渲染与源码编辑气泡 |
+| `src/components/editor/nodes/block/html-node.tsx` | HTML 块渲染、右侧预览触发与源码编辑气泡 |
+| `src/components/editor/overlays/html-preview-panel.tsx` | 编辑器内右侧 HTML 预览面板（裁切动画、Esc / 关闭按钮） |
 | `src/lib/markdown/slash-command.ts` | Slash trigger、过滤、stale guard 与格式转换 |
 | `src/components/editor/overlays/slash-command-menu.tsx` | 图标列表、键盘选择与浮层交互 |
 | `src/components/editor/plugins/block-selection-kit.tsx` | 仅 live editor：块选插件与选中叠层 |

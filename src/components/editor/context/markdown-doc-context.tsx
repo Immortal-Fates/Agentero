@@ -7,6 +7,8 @@ export type MarkdownDocContextValue = {
 	filePath: string | null;
 	/** Called after a binary is written under `./assets/` (e.g. refresh file tree). */
 	onAssetsChanged?: () => void;
+	/** Show sanitized HTML in the editor's right-side preview panel (#825). */
+	openHtmlPreview?: (html: string) => void;
 };
 
 const MarkdownDocContext = createContext<MarkdownDocContextValue>({

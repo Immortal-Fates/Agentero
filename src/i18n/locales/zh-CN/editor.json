@@ -216,6 +216,8 @@
 	},
 	"html": {
 		"edit": "编辑 HTML",
+		"preview": "HTML 预览",
+		"closePreview": "关闭预览",
 		"placeholder": "<div align=\"center\">…</div>"
 	}
 }
