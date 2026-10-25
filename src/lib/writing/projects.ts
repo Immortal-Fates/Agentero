@@ -11,20 +11,19 @@ import {
 	writeVaultFile,
 } from "@/lib/vault";
 import { refreshTree } from "@/lib/vault/store";
+import {
+	type WritingTemplateId,
+	writingTemplateFiles,
+} from "@/lib/writing/templates";
 
 export type CreateWritingProjectResult =
 	| { ok: true; rootFile: string }
 	| { ok: false; reason: "invalid" | "exists" | "failed"; message?: string };
 
-function latexText(name: string): string {
-	return name
-		.replace(/\\/g, "\\textbackslash{}")
-		.replace(/([&%$#_{}])/g, "\\$1");
-}
-
 export async function createWritingProject(
 	vaultPath: string,
 	name: string,
+	template: WritingTemplateId = "blank",
 ): Promise<CreateWritingProjectResult> {
 	const trimmed = name.trim();
 	if (!isValidVaultEntryName(trimmed)) return { ok: false, reason: "invalid" };
@@ -33,18 +32,11 @@ export async function createWritingProject(
 	if ((await vaultPathExists(dir)) || (await vaultPathExists(rootFile))) {
 		return { ok: false, reason: "exists" };
 	}
-	const source = [
-		"\\documentclass{article}",
-		`\\title{${latexText(trimmed)}}`,
-		"\\author{}",
-		"\\begin{document}",
-		"\\maketitle",
-		"",
-		"\\end{document}",
-		"",
-	].join("\n");
+	const starter = writingTemplateFiles(template, trimmed);
 	try {
-		await writeVaultFile(rootFile, source);
+		for (const file of starter) {
+			await writeVaultFile(joinVaultPath(dir, file.name), file.contents);
+		}
 		await refreshTree(vaultPath);
 	} catch (error) {
 		return { ok: false, reason: "failed", message: errorText(error) };

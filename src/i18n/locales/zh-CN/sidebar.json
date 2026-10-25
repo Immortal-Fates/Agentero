@@ -479,6 +479,15 @@
 		"writeHint": "各自编译的项目。引用从论文库插入",
 		"emptyTitle": "还没有项目",
 		"newProject": "新建项目",
+		"template": "模板",
+		"templates": {
+			"blank": "空白",
+			"cvpr": "CVPR",
+			"icml": "ICML",
+			"iclr": "ICLR",
+			"neurips": "NeurIPS",
+			"acl": "ACL"
+		},
 		"projectName": "项目名称",
 		"create": "创建",
 		"createFailed": "项目创建失败",

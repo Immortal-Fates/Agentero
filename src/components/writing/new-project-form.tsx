@@ -1,12 +1,18 @@
 /**
- * Name and create one writing project. The same form sits in the rail and
- * on the project home.
+ * Name, template, and create one writing project on the project home.
  */
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { notifyError } from "@/lib/core/notify";
 import { discoverWritingProjects } from "@/lib/writing/discover";
 import { createWritingProject } from "@/lib/writing/projects";
@@ -14,6 +20,11 @@ import {
 	selectManuscript,
 	setDiscoveredManuscripts,
 } from "@/lib/writing/store";
+import {
+	isWritingTemplateId,
+	WRITING_TEMPLATE_IDS,
+	type WritingTemplateId,
+} from "@/lib/writing/templates";
 
 export function NewProjectForm({
 	vaultPath,
@@ -25,13 +36,14 @@ export function NewProjectForm({
 	const { t } = useTranslation("sidebar");
 	const [open, setOpen] = useState(startOpen);
 	const [name, setName] = useState("");
+	const [template, setTemplate] = useState<WritingTemplateId>("blank");
 	const [busy, setBusy] = useState(false);
 
 	const submit = async () => {
 		if (busy) return;
 		setBusy(true);
 		try {
-			const result = await createWritingProject(vaultPath, name);
+			const result = await createWritingProject(vaultPath, name, template);
 			if (!result.ok) {
 				if (result.reason === "invalid") notifyError(t("fileTree.invalidName"));
 				else if (result.reason === "exists") {
@@ -63,27 +75,50 @@ export function NewProjectForm({
 
 	return (
 		<form
-			className="flex items-center gap-1.5"
+			className="flex flex-col gap-1.5"
 			onSubmit={(event) => {
 				event.preventDefault();
 				void submit();
 			}}
 		>
-			<Input
-				value={name}
+			<Select
+				value={template}
 				disabled={busy}
-				placeholder={t("writing.projectName")}
-				aria-label={t("writing.projectName")}
-				onChange={(event) => setName(event.target.value)}
-				className="h-8 min-w-0 flex-1 text-sm"
-			/>
-			<Button
-				type="submit"
-				size="sm"
-				disabled={busy || name.trim().length === 0}
+				onValueChange={(value) => {
+					if (isWritingTemplateId(value)) setTemplate(value);
+				}}
 			>
-				{t("writing.create")}
-			</Button>
+				<SelectTrigger
+					className="h-8 w-full text-sm"
+					aria-label={t("writing.template")}
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{WRITING_TEMPLATE_IDS.map((id) => (
+						<SelectItem key={id} value={id}>
+							{t(`writing.templates.${id}`)}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			<div className="flex items-center gap-1.5">
+				<Input
+					value={name}
+					disabled={busy}
+					placeholder={t("writing.projectName")}
+					aria-label={t("writing.projectName")}
+					onChange={(event) => setName(event.target.value)}
+					className="h-8 min-w-0 flex-1 text-sm"
+				/>
+				<Button
+					type="submit"
+					size="sm"
+					disabled={busy || name.trim().length === 0}
+				>
+					{t("writing.create")}
+				</Button>
+			</div>
 		</form>
 	);
 }

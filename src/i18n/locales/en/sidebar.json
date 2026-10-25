@@ -480,6 +480,15 @@
 		"writeHint": "Projects that each compile on their own. Citations come from the library",
 		"emptyTitle": "No projects yet",
 		"newProject": "New project",
+		"template": "Template",
+		"templates": {
+			"blank": "Blank",
+			"cvpr": "CVPR",
+			"icml": "ICML",
+			"iclr": "ICLR",
+			"neurips": "NeurIPS",
+			"acl": "ACL"
+		},
 		"projectName": "Project name",
 		"create": "Create",
 		"createFailed": "Could not create the project",
