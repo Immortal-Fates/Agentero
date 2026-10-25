@@ -478,7 +478,6 @@
 		"readHint": "论文、笔记和文件",
 		"writeHint": "各自编译的项目。引用从论文库插入",
 		"emptyTitle": "还没有项目",
-		"homeBody": "每个项目单独编译。写作时可以从论文库插入引用。",
 		"newProject": "新建项目",
 		"projectName": "项目名称",
 		"create": "创建",

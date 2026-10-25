@@ -479,7 +479,6 @@
 		"readHint": "Papers, notes, and files",
 		"writeHint": "Projects that each compile on their own. Citations come from the library",
 		"emptyTitle": "No projects yet",
-		"homeBody": "Each project compiles on its own. Insert citations from the library while you write.",
 		"newProject": "New project",
 		"projectName": "Project name",
 		"create": "Create",

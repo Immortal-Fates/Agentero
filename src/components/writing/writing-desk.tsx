@@ -61,9 +61,6 @@ export function WritingDesk() {
 			<div className="mx-auto flex h-full w-full max-w-xl flex-col gap-6 overflow-y-auto px-6 py-10">
 				<div>
 					<h1 className="text-lg font-medium">{t("writing.write")}</h1>
-					<p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-						{t("writing.homeBody")}
-					</p>
 				</div>
 				<NewProjectForm vaultPath={vaultPath} startOpen />
 				{discovering && manuscripts.length === 0 ? (
