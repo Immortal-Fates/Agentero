@@ -54,7 +54,7 @@ AGENTERO_UPDATE_BINDINGS=1 cargo test -p agentero export_typescript_bindings
 
 `latex_project_inspect(texPath, vaultPath, rootPath?, build?)` 返回主文件、候选根、TeX 文件、BibTeX 文件和实际依赖。显式 root 可用于 standalone subfiles；build 参数决定读取哪份 `.fls`。普通 include 优先按项目编译目录解析，再尝试声明文件目录。
 
-SyncTeX command 调用本机 `synctex`，返回页码、PDF 点坐标或源码文件 / 行 / 列；前端负责缩放与旋转转换，保持与 EmbedPDF 的坐标体系一致。
+SyncTeX command 调用本机 `synctex`，返回页码、PDF 点坐标或源码文件 / 行 / 列；前端负责缩放与旋转转换，保持与 EmbedPDF 的坐标体系一致。Windows 上路径含非 ASCII 时，`synctex` 的标准输出可能是 UTF-16 或系统 ANSI（中文环境常见 GBK）。`tools.rs` 先识别 UTF-16，再按 UTF-8、GBK 解码，解析失败时才退回有损 UTF-8，避免非 UTF-8 直接报错。
 
 本地 TeX 工具由用户安装。正式构建与 SyncTeX 属于本机桌面能力，不提供远程编译服务。
 

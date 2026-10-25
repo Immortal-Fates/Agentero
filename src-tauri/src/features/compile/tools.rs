@@ -51,7 +51,67 @@ async fn tool_output(name: &str, args: &[String], cwd: &Path) -> Result<String, 
                 .collect::<String>()
         ));
     }
-    String::from_utf8(output.stdout).map_err(|_| format!("{name} returned non-UTF-8 output"))
+    Ok(decode_tool_stdout(&output.stdout))
+}
+
+/// synctex on Windows writes UTF-16 or the ANSI code page when a path is not
+/// ASCII. The records we parse (`Page`, `Input`) are ASCII either way.
+fn decode_tool_stdout(bytes: &[u8]) -> String {
+    if let Some(text) = decode_utf16_stdout(bytes) {
+        return text;
+    }
+    match String::from_utf8(bytes.to_vec()) {
+        Ok(text) => text,
+        Err(error) => {
+            let (gbk, _, gbk_errors) = encoding_rs::GBK.decode(error.as_bytes());
+            if !gbk_errors {
+                return gbk.into_owned();
+            }
+            String::from_utf8_lossy(error.as_bytes()).into_owned()
+        }
+    }
+}
+
+fn decode_utf16_stdout(bytes: &[u8]) -> Option<String> {
+    let bom = bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]);
+    let (rest, little) = if bytes.starts_with(&[0xFF, 0xFE]) {
+        (&bytes[2..], true)
+    } else if bytes.starts_with(&[0xFE, 0xFF]) {
+        (&bytes[2..], false)
+    } else {
+        (bytes, true)
+    };
+    if rest.len() < 8 || rest.len() % 2 != 0 {
+        return None;
+    }
+    let high_index = if little { 1 } else { 0 };
+    let zeros = rest
+        .iter()
+        .skip(high_index)
+        .step_by(2)
+        .filter(|byte| **byte == 0)
+        .count();
+    // A BOM is enough. Without one, require some ASCII (the Page/Input keys)
+    // so a GBK path is not mistaken for UTF-16.
+    if !bom && zeros < rest.len() / 8 {
+        return None;
+    }
+    let units: Vec<u16> = rest
+        .chunks_exact(2)
+        .map(|chunk| {
+            if little {
+                u16::from_le_bytes([chunk[0], chunk[1]])
+            } else {
+                u16::from_be_bytes([chunk[0], chunk[1]])
+            }
+        })
+        .collect();
+    let text = String::from_utf16(&units).ok()?;
+    if text.contains("Page:") || text.contains("Input:") || text.contains("SyncTeX") {
+        Some(text)
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Serialize, specta::Type)]
@@ -235,5 +295,21 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert_eq!(values[0].x, 72.5);
         assert_eq!(values[1].page, 2);
+    }
+
+    #[test]
+    fn synctex_stdout_accepts_utf16_and_gbk_paths() {
+        let utf16: Vec<u8> = "Page:3\nx:1\ny:2\nW:3\nH:4\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let text = decode_tool_stdout(&utf16);
+        assert_eq!(parse_forward(&text)[0].page, 3);
+
+        let (gbk, _, _) =
+            encoding_rs::GBK.encode("Output:论文.pdf\nPage:1\nx:10\ny:20\nW:5\nH:6\n");
+        let text = decode_tool_stdout(gbk.as_ref());
+        assert!(text.contains("论文"));
+        assert_eq!(parse_forward(&text)[0].x, 10.0);
     }
 }
