@@ -7,6 +7,12 @@ import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { NewProjectForm } from "@/components/writing/new-project-form";
 import { useVaultStore, useWritingStore } from "@/hooks/use-app-stores";
 import { errorText } from "@/lib/core/error";
@@ -21,6 +27,8 @@ import { resolveTexPdfPath } from "@/lib/workspace/tex-compile";
 import { compileTexOnManualSave } from "@/lib/workspace/viewer-actions";
 import { mergeManuscripts } from "@/lib/writing/session";
 import {
+	closeAllWritingFiles,
+	closeOtherWritingFiles,
 	closeWritingFile,
 	selectManuscript,
 	setWritingFile,
@@ -95,8 +103,7 @@ export function WritingDesk() {
 		);
 	}
 
-	const filePath = activeFile ?? activeRoot;
-	const tabs = openFiles.length > 0 ? openFiles : [filePath];
+	const tabs = openFiles;
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div
@@ -105,53 +112,72 @@ export function WritingDesk() {
 				className="flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-border bg-muted/40 px-1"
 			>
 				{tabs.map((path) => {
-					const selected = normalizePath(path) === normalizePath(filePath);
+					const selected =
+						activeFile != null &&
+						normalizePath(path) === normalizePath(activeFile);
 					const title = basenameOf(path);
 					return (
-						<div
-							key={normalizePath(path)}
-							className={cn(
-								"flex h-7 max-w-48 min-w-0 items-center rounded-t-md",
-								selected
-									? "bg-background text-foreground"
-									: "text-muted-foreground hover:bg-background/70",
-							)}
-						>
-							<button
-								type="button"
-								role="tab"
-								aria-selected={selected}
-								title={title}
-								onClick={() => setWritingFile(path)}
-								className="h-full min-w-0 flex-1 truncate px-2 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-							>
-								{title}
-							</button>
-							{tabs.length > 1 ? (
-								<button
-									type="button"
-									aria-label={t("app:tabs.close", { title })}
-									onClick={() => closeWritingFile(path)}
-									className="mr-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/60"
+						<ContextMenu key={normalizePath(path)}>
+							<ContextMenuTrigger asChild>
+								<div
+									className={cn(
+										"flex h-7 max-w-48 min-w-0 items-center rounded-t-md",
+										selected
+											? "bg-background text-foreground"
+											: "text-muted-foreground hover:bg-background/70",
+									)}
 								>
-									<X className="size-3" aria-hidden />
-								</button>
-							) : null}
-						</div>
+									<button
+										type="button"
+										role="tab"
+										aria-selected={selected}
+										title={title}
+										onClick={() => setWritingFile(path)}
+										className="h-full min-w-0 flex-1 truncate px-2 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+									>
+										{title}
+									</button>
+									<button
+										type="button"
+										aria-label={t("app:tabs.close", { title })}
+										onClick={() => closeWritingFile(path)}
+										className="mr-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/60"
+									>
+										<X className="size-3" aria-hidden />
+									</button>
+								</div>
+							</ContextMenuTrigger>
+							<ContextMenuContent>
+								<ContextMenuItem onSelect={() => closeWritingFile(path)}>
+									{t("app:tabs.contextClose")}
+								</ContextMenuItem>
+								<ContextMenuItem
+									disabled={tabs.length < 2}
+									onSelect={() => closeOtherWritingFiles(path)}
+								>
+									{t("app:tabs.contextCloseOthers")}
+								</ContextMenuItem>
+								<ContextMenuItem onSelect={() => closeAllWritingFiles()}>
+									{t("app:tabs.contextCloseAll")}
+								</ContextMenuItem>
+							</ContextMenuContent>
+						</ContextMenu>
 					);
 				})}
 			</div>
 			<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
 				<div className="flex min-h-0 min-w-0 flex-col border-r border-border">
-					<Suspense
-						fallback={
-							<p className="text-muted-foreground px-3 py-2 text-sm">
-								{t("writing.loadingFiles")}
-							</p>
-						}
-					>
-						<ProjectEditor path={filePath} />
-					</Suspense>
+					{activeFile ? (
+						<Suspense
+							fallback={
+								<p className="text-muted-foreground px-3 py-2 text-sm">
+									{t("writing.loadingFiles")}
+								</p>
+							}
+						>
+							<ProjectEditor path={activeFile} />
+						</Suspense>
+					) : null}
 				</div>
 				<div className="min-h-0 min-w-0">
 					<ProjectPdf rootFile={activeRoot} vaultPath={vaultPath} />

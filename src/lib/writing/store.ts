@@ -114,21 +114,40 @@ export function setWritingFile(path: string): void {
 	});
 }
 
-/** Drop one writing tab. The project root stays open when it was the last tab. */
+/** Drop one writing tab. Closing the last tab leaves the project open with no editor. */
 export function closeWritingFile(path: string): void {
 	const state = writingStore.getState();
 	const key = normalizePath(path);
-	const next = state.openFiles.filter((item) => normalizePath(item) !== key);
-	const files =
-		next.length > 0 ? next : state.activeRoot ? [state.activeRoot] : [];
+	const index = state.openFiles.findIndex(
+		(item) => normalizePath(item) === key,
+	);
+	if (index < 0) return;
+	const next = state.openFiles.filter((_, item) => item !== index);
 	const closingActive =
 		state.activeFile != null && normalizePath(state.activeFile) === key;
 	writingStore.setState({
-		openFiles: files,
+		openFiles: next,
 		activeFile: closingActive
-			? (files[files.length - 1] ?? state.activeRoot)
+			? (next[Math.min(index, next.length - 1)] ?? null)
 			: state.activeFile,
 	});
+}
+
+/** Keep one writing tab and close the rest. */
+export function closeOtherWritingFiles(path: string): void {
+	const state = writingStore.getState();
+	const key = normalizePath(path);
+	const kept = state.openFiles.filter((item) => normalizePath(item) === key);
+	writingStore.setState({
+		openFiles: kept,
+		activeFile: kept[0] ?? null,
+	});
+}
+
+/** Close every writing tab. The project and its PDF stay open. */
+export function closeAllWritingFiles(): void {
+	if (writingStore.getState().openFiles.length === 0) return;
+	writingStore.setState({ openFiles: [], activeFile: null });
 }
 
 function rememberWritingFile(
