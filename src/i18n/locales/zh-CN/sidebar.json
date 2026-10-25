@@ -470,5 +470,26 @@
 			"remoteUnsupported": "远程 Vault 暂不支持编辑元数据。",
 			"saveFailed": "元数据保存失败。"
 		}
+	},
+	"writing": {
+		"switch": "工作区",
+		"read": "阅读",
+		"write": "文稿",
+		"readHint": "论文、笔记和文件",
+		"writeHint": "各自编译的项目。引用从论文库插入",
+		"emptyTitle": "还没有项目",
+		"homeBody": "每个项目单独编译。写作时可以从论文库插入引用。",
+		"newProject": "新建项目",
+		"projectName": "项目名称",
+		"create": "创建",
+		"createFailed": "项目创建失败",
+		"untitled": "未命名项目",
+		"allProjects": "全部项目",
+		"previewEmpty": "编译后在这里预览",
+		"previewLoading": "正在读取 PDF…",
+		"files": "文件",
+		"loading": "正在查找项目…",
+		"loadingFiles": "正在读取…",
+		"noSources": "没有可编辑的源文件"
 	}
 }

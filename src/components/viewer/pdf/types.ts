@@ -118,6 +118,8 @@ export type PdfViewerProps = {
 	/** Canonical TeX source and actual output path for compiled-document SyncTeX. */
 	texRootPath?: string | null;
 	pdfPath?: string | null;
+	/** Keep forward search on the writing preview instead of a reading tab. */
+	syncTexScope?: "writing";
 	/**
 	 * Identifier used by the "Import to library" action for remote papers.
 	 * Usually the arXiv abs/source URL.

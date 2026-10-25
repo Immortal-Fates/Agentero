@@ -1,6 +1,6 @@
 # LaTeX 写作与编译
 
-LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有 EmbedPDF 查看器；实时预览走独立 LuaLaTeX/rtex 会话。后端见 [../backend/latex.md](../backend/latex.md)。
+LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有 EmbedPDF 查看器；实时预览走独立 LuaLaTeX/rtex 会话。后端见 [../backend/latex.md](../backend/latex.md)。文稿工作面把写作和阅读分成两个画面：中间是项目源码和 PDF，论文库留在阅读；多个项目各自编译。见 [writing.md](writing.md)。
 
 ## 界面与编译
 

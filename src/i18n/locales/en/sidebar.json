@@ -471,5 +471,26 @@
 			"remoteUnsupported": "Editing metadata is not supported for remote vaults yet.",
 			"saveFailed": "Failed to save metadata."
 		}
+	},
+	"writing": {
+		"switch": "Workspace",
+		"read": "Read",
+		"write": "Write",
+		"readHint": "Papers, notes, and files",
+		"writeHint": "Projects that each compile on their own. Citations come from the library",
+		"emptyTitle": "No projects yet",
+		"homeBody": "Each project compiles on its own. Insert citations from the library while you write.",
+		"newProject": "New project",
+		"projectName": "Project name",
+		"create": "Create",
+		"createFailed": "Could not create the project",
+		"untitled": "Untitled project",
+		"allProjects": "All projects",
+		"previewEmpty": "Compile to preview",
+		"previewLoading": "Reading PDF…",
+		"files": "Files",
+		"loading": "Looking for projects…",
+		"loadingFiles": "Loading…",
+		"noSources": "No editable source files"
 	}
 }

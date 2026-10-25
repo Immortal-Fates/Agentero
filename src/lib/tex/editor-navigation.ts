@@ -1,5 +1,6 @@
 import type { EditorView } from "@codemirror/view";
 import { normalizePath } from "@/lib/core/path";
+import { writingStore } from "@/lib/writing/store";
 
 export type TexEditorCursor = { path: string; line: number; column: number };
 type EditorRegistration = {
@@ -7,6 +8,7 @@ type EditorRegistration = {
 	view: EditorView;
 	activate?: () => void;
 	canonical: boolean;
+	owner: "reading" | "writing";
 	lastFocused: number;
 };
 const editors = new Map<string, Set<EditorRegistration>>();
@@ -20,7 +22,7 @@ function remember(editor: EditorRegistration): void {
 }
 
 function editorForPath(path: string): EditorRegistration | undefined {
-	const entries = [...(editors.get(normalizePath(path)) ?? [])];
+	const entries = candidates(normalizePath(path));
 	const focused = entries.find((entry) => entry.view.hasFocus);
 	if (focused) {
 		remember(focused);
@@ -33,6 +35,16 @@ function editorForPath(path: string): EditorRegistration | undefined {
 		entries.find((entry) => entry.canonical) ??
 		entries[0]
 	);
+}
+
+function candidates(key: string): EditorRegistration[] {
+	const entries = [...(editors.get(key) ?? [])];
+	const writing = writingStore.getState().surface === "writing";
+	const preferred = entries.filter((entry) =>
+		writing ? entry.owner === "writing" : entry.owner !== "writing",
+	);
+	if (writing) return preferred;
+	return preferred.length > 0 ? preferred : entries;
 }
 
 export function markTexEditorActive(path: string, view?: EditorView): void {
@@ -59,7 +71,11 @@ function jump(editor: EditorRegistration, line: number, column: number): void {
 export function registerTexEditor(
 	path: string,
 	view: EditorView,
-	options?: { activate?: () => void; canonical?: boolean },
+	options?: {
+		activate?: () => void;
+		canonical?: boolean;
+		owner?: "reading" | "writing";
+	},
 ): () => void {
 	const key = normalizePath(path);
 	const owner: EditorRegistration = {
@@ -67,6 +83,7 @@ export function registerTexEditor(
 		view,
 		activate: options?.activate,
 		canonical: options?.canonical !== false,
+		owner: options?.owner ?? "reading",
 		lastFocused: 0,
 	};
 	const entries = editors.get(key) ?? new Set<EditorRegistration>();
@@ -126,6 +143,13 @@ export function navigateTexSource(
 	}
 	const request = { line, column };
 	pending.set(key, request);
+	if (writingStore.getState().surface === "writing") {
+		void import("@/lib/writing/store").then(({ setWritingFile }) => {
+			if (pending.get(key) !== request) return;
+			setWritingFile(path);
+		});
+		return;
+	}
 	void import("@/lib/workspace/navigation").then(({ openTab }) => {
 		if (pending.get(key) !== request) return;
 		openTab(path, { preferMode: "text" });

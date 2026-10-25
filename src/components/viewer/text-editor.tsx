@@ -72,6 +72,8 @@ interface TextEditorProps {
 	onManualSave?: (path: string) => void;
 	/** Whether the owning tab is the active panel — gates the selection toolbar. */
 	active?: boolean;
+	/** Reading opens live preview as a dock tab. Writing keeps that off. */
+	showLivePreview?: boolean;
 	className?: string;
 }
 
@@ -124,6 +126,7 @@ export function TextEditor({
 	onDirtyChange,
 	onManualSave,
 	active = true,
+	showLivePreview = true,
 	className,
 }: TextEditorProps) {
 	const { t } = useTranslation("settings");
@@ -362,6 +365,7 @@ export function TextEditor({
 		if (!view) return;
 		const unregisterEditor = registerTexEditor(path, view, {
 			canonical: !panelId || panelId === tabIdForPath(path),
+			owner: showLivePreview ? "reading" : "writing",
 			activate: panelId
 				? () => {
 						setActiveTabId(panelId);
@@ -376,7 +380,7 @@ export function TextEditor({
 			unregisterEditor();
 			unregisterBuffer();
 		};
-	}, [path, panelId]);
+	}, [path, panelId, showLivePreview]);
 
 	// Mounted TeX buffer owns the sidebar outline and the click-to-jump
 	// target, including while the PDF tab is the one in front. Runs after
@@ -583,13 +587,14 @@ export function TextEditor({
 										path,
 										line.number,
 										position - line.from + 1,
+										showLivePreview ? undefined : { scope: "writing" },
 									);
 								},
 							}
 						: null
 				}
 				livePreview={
-					isTexPath(path) && (canLive || liveOn)
+					showLivePreview && isTexPath(path) && (canLive || liveOn)
 						? {
 								disabled: !liveOn && liveStatus?.available !== true,
 								pressed: liveOn,
