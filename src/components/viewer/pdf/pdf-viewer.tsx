@@ -1161,6 +1161,9 @@ function PdfViewerInner({
 		handleJumpToLayoutRegion,
 		handleRenderLayoutThumb,
 		screenPointForRegion,
+		reflowBusy,
+		reflowReady,
+		exportTranslatedPdf,
 		layoutTranslateItemsByPage,
 		layoutTranslatePageStateByPage,
 		layoutTranslateRunning,
@@ -2371,6 +2374,8 @@ function PdfViewerInner({
 			)}
 			{!translationOnly && !plainViewer && (
 				<PdfToolbar
+					reflowBusy={reflowBusy}
+					onExportTranslatedPdf={reflowReady ? exportTranslatedPdf : undefined}
 					regionSelecting={regionSelecting}
 					visualCropPending={visualCropPending}
 					engine={engine}

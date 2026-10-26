@@ -1,3 +1,4 @@
+import { type Paragraph, reflowDisplayText } from "@/lib/pdf/reflow/types";
 /**
  * Resolve a translation-overlay selection to English sentence quotes and the
  * PDF text-layer boxes that should carry the annotation.
@@ -18,6 +19,7 @@ import {
 import type { LayoutTranslateSentence } from "@/lib/pdf/layout/types";
 
 export type TranslationBlockRef = {
+	reflow?: Paragraph;
 	id: string;
 	pageIndex: number;
 	bbox: { x: number; y: number; w: number; h: number };
@@ -34,6 +36,7 @@ export type TranslationSpanHit = {
 };
 
 export type TranslationPagePick = {
+	glyphRects?: Rect[];
 	pageIndex: number;
 	bbox: TranslationBlockRef["bbox"];
 	/** Text-layer slice to search on this page. */
@@ -104,7 +107,7 @@ export function translationSelectionFromHits(
 		const quotes = chosen.length
 			? chosen.map((sentence) => sentence.quote)
 			: item.source.trim()
-				? [item.source]
+				? [item.reflow?.source ?? item.source]
 				: [];
 		if (!quotes.length) continue;
 		const paired = chosen.length
@@ -116,7 +119,9 @@ export function translationSelectionFromHits(
 			if (!sentenceQuotes.includes(quote)) sentenceQuotes.push(quote);
 		}
 		for (const part of paired) {
-			const text = part.trim();
+			const text = (
+				item.reflow ? reflowDisplayText(item.reflow, part) : part
+			).trim();
 			if (text && !pairedParts.includes(text)) pairedParts.push(text);
 		}
 		const locateText = memberLocateText(item, quotes);
@@ -126,6 +131,16 @@ export function translationSelectionFromHits(
 			bbox: item.bbox,
 			locateText,
 			blockText: normalizeSentenceKey(item.raw || item.source),
+			...(item.reflow
+				? {
+						glyphRects: item.reflow.characters
+							.filter((c) => c.text.trim())
+							.map((c) => ({
+								origin: { x: c.visualBox.x, y: c.visualBox.y },
+								size: { width: c.visualBox.w, height: c.visualBox.h },
+							})),
+					}
+				: {}),
 		});
 	}
 	const quote = sentenceQuotes.join(" ");

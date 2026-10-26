@@ -1,3 +1,4 @@
+import { type ReflowContext, usePdfReflow } from "./use-pdf-reflow";
 /**
  * Bulk (whole-document) translation of body-text layout regions.
  *
@@ -42,6 +43,7 @@ import { openSettingsWindow } from "@/lib/shell/settings-window";
 import { displayTranslateError } from "@/lib/translate";
 
 export type UsePdfLayoutTranslateOptions = {
+	reflowContext?: ReflowContext;
 	docId: string;
 	/** Translation-only panes hydrate completed overlays from the shared cache. */
 	translationPane?: boolean;
@@ -58,6 +60,9 @@ export type UsePdfLayoutTranslateOptions = {
 };
 
 export type PdfLayoutTranslate = {
+	reflowBusy: boolean;
+	reflowReady: boolean;
+	exportTranslatedPdf: (dual?: boolean) => Promise<void>;
 	/** Progressive bulk-translate overlays (body text / abstract / header), bucketed by page. */
 	layoutTranslateItemsByPage: ReadonlyMap<
 		number,
@@ -137,6 +142,7 @@ function resetRunningTranslateItems(
 }
 
 export function usePdfLayoutTranslate({
+	reflowContext,
 	docId,
 	layoutRawRegions,
 	translationPane = false,
@@ -153,6 +159,23 @@ export function usePdfLayoutTranslate({
 	}>({ status: "idle", items: [] });
 	const layoutTranslateJobRef = useRef(layoutTranslateJob);
 	layoutTranslateJobRef.current = layoutTranslateJob;
+	const updateReflowItems = useCallback(
+		(items: LayoutTranslateItem[]) =>
+			setLayoutTranslateJob((prev) => ({ ...prev, items })),
+		[],
+	);
+	const {
+		prepare: prepareReflow,
+		reflowBusy,
+		reflowReady,
+		exportTranslatedPdf,
+	} = usePdfReflow(
+		reflowContext,
+		layoutRawRegions,
+		layoutTranslateJob.items,
+		layoutTranslateJob.status === "running",
+		updateReflowItems,
+	);
 	const layoutTranslateAbortRef = useRef<AbortController | null>(null);
 	const hiddenPageIndexesRef = useRef(new Set<number>());
 	/** Queued target to auto-start once layout regions land. */
@@ -311,7 +334,9 @@ export function usePdfLayoutTranslate({
 		void (async () => {
 			const sidecar = await readLayoutTranslateSidecar(paperAbsPath, cacheKey);
 			if (ac.signal.aborted) return;
-			const items = applyLayoutTranslateSidecar(pendingItems, sidecar);
+			const prepared = await prepareReflow(pendingItems, ac.signal);
+			if (ac.signal.aborted) return;
+			const items = applyLayoutTranslateSidecar(prepared, sidecar);
 			const needsRun = hasPendingLayoutTranslateItems(items);
 			setLayoutTranslateJob({
 				status: needsRun ? "running" : "done",
@@ -367,6 +392,7 @@ export function usePdfLayoutTranslate({
 		vaultPath,
 		applyHiddenPages,
 		enterWaitingLayout,
+		prepareReflow,
 		notifyTranslateItemErrors,
 		notifyTranslateFailure,
 		t,
@@ -411,7 +437,9 @@ export function usePdfLayoutTranslate({
 					cacheKey,
 				);
 				if (ac.signal.aborted) return;
-				const pageItems = applyLayoutTranslateSidecar(pendingItems, sidecar);
+				const prepared = await prepareReflow(pendingItems, ac.signal);
+				if (ac.signal.aborted) return;
+				const pageItems = applyLayoutTranslateSidecar(prepared, sidecar);
 				const needsRun = hasPendingLayoutTranslateItems(pageItems);
 				setLayoutTranslateJob((prev) => {
 					const merged = mergeTranslatePageItems(
@@ -499,6 +527,7 @@ export function usePdfLayoutTranslate({
 			vaultPath,
 			applyHiddenPages,
 			enterWaitingLayout,
+			prepareReflow,
 			notifyTranslateItemErrors,
 			notifyTranslateFailure,
 			t,
@@ -656,22 +685,31 @@ export function usePdfLayoutTranslate({
 		void readLayoutTranslateSidecar(
 			paperAbsPath,
 			currentLayoutTranslateCacheKey(),
-		).then((sidecar) => {
-			if (cancelled || !sidecar?.items.length) return;
-			const items = layoutRawRegions?.length
-				? applyLayoutTranslateSidecar(
-						toLayoutTranslateItems(
+		)
+			.then(async (sidecar) => {
+				if (cancelled || !sidecar?.items.length) return;
+				const seed = layoutRawRegions?.length
+					? toLayoutTranslateItems(
 							listTranslatableLayoutRegions(layoutRawRegions),
-						),
-						sidecar,
-					)
-				: sidecar.items.map((item) => ({ ...item, status: "done" as const }));
-			setLayoutTranslateJob({ status: "done", items });
-		});
+						)
+					: sidecar.items.map((item) => ({ ...item, status: "done" as const }));
+				const items = applyLayoutTranslateSidecar(
+					await prepareReflow(seed),
+					sidecar,
+				);
+
+				if (!cancelled) setLayoutTranslateJob({ status: "done", items });
+			})
+			.catch((error) => {
+				if (!cancelled)
+					notifyError(t("pdf.layoutTranslate.reflowFailed"), {
+						description: errorText(error),
+					});
+			});
 		return () => {
 			cancelled = true;
 		};
-	}, [translationPane, paperAbsPath, layoutRawRegions]);
+	}, [translationPane, paperAbsPath, layoutRawRegions, prepareReflow, t]);
 
 	// Bucket once per job update (not per page); unchanged buckets keep their
 	// previous array identity so memoized page overlays bail out while another
@@ -723,6 +761,9 @@ export function usePdfLayoutTranslate({
 					: t("pdf.layoutTranslate.start");
 
 	return {
+		reflowBusy,
+		reflowReady,
+		exportTranslatedPdf,
 		layoutTranslateItemsByPage,
 		layoutTranslatePageStateByPage,
 		layoutTranslateRunning,

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { LayoutTranslateItem } from "@/lib/pdf/layout/layout-translate";
 import { runLayoutRegionTranslate } from "@/lib/pdf/layout/layout-translate";
 import { runLayoutRegionTranslate as runPublicLayoutTranslate } from "@/lib/pdf/layout/layout-translate-reliable";
+import { paragraphFromCharacters } from "@/lib/pdf/reflow/extract";
 
 const runTranslate = vi.fn<(...args: unknown[]) => Promise<string>>();
 
@@ -207,4 +207,71 @@ describe("runLayoutRegionTranslate paragraph chains", () => {
 		expect(out[0]?.sentences).toBeUndefined();
 		expect(out[0]?.translated).toBeUndefined();
 	});
+});
+
+it("retries structural formulas with nonnumeric placeholders when MT interprets token IDs as quantities", async () => {
+	runTranslate.mockReset();
+	const reflow = paragraphFromCharacters(
+		"p",
+		0,
+		{ x: 0, y: 0, w: 100, h: 30 },
+		[],
+		[],
+		false,
+	);
+	reflow.source = "Factor x";
+	reflow.protectedText = "Factor ⟪F0⟫";
+	reflow.formulas = [
+		{
+			id: "0",
+			text: "x",
+			box: { x: 0, y: 0, w: 5, h: 10 },
+			characterIndexes: [0],
+			baselineOffset: 0,
+		},
+	];
+	runTranslate
+		.mockResolvedValueOnce("倍数 0")
+		.mockResolvedValueOnce("倍数 0")
+		.mockImplementation(async (task) =>
+			(task as { text: string }).text.replace("Factor", "倍数"),
+		);
+	const out = await runLayoutRegionTranslate({
+		items: [{ ...item("p", reflow.protectedText, 0), reflow }],
+		onUpdate: () => {},
+	});
+	expect(out[0].status).toBe("done");
+	expect(out[0].translated).toContain("⟪F0⟫");
+	expect(runTranslate.mock.calls[2]?.[0]).toMatchObject({
+		text: "Factor ZXQAQXZ",
+	});
+});
+it("retains style order through an audited prose-only fallback", async () => {
+	runTranslate.mockReset();
+	const reflow = paragraphFromCharacters(
+		"p",
+		0,
+		{ x: 0, y: 0, w: 100, h: 30 },
+		[],
+		[],
+		false,
+	);
+	reflow.source = ". A word";
+	reflow.protectedText = ". A ⟪S0⟫word⟪/S0⟫";
+	reflow.styles = { "0": { ...reflow.style, bold: true } };
+	runTranslate
+		.mockResolvedValueOnce("坏结果")
+		.mockResolvedValueOnce("坏结果")
+		.mockResolvedValueOnce("坏结果")
+		.mockImplementation(async (task) =>
+			(task as { text: string }).text.trim() === "A" ? "一个" : "词",
+		);
+	const out = await runLayoutRegionTranslate({
+		items: [{ ...item("p", reflow.protectedText, 0), reflow }],
+		onUpdate: () => {},
+	});
+	expect(out[0].status).toBe("done");
+	expect(out[0].reflowFallback).toBe("protected-spans");
+	expect(out[0].translated).toContain(". 一个");
+	expect(out[0].translated).toContain("⟪S0⟫ 词 ⟪/S0⟫");
 });
