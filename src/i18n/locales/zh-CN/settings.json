@@ -6,6 +6,7 @@
 	},
 	"nav": {
 		"general": "通用",
+		"writing": "写作",
 		"appearance": "外观",
 		"agent": "Agent",
 		"translate": "翻译",
@@ -19,6 +20,22 @@
 		"featureTour": "功能导引",
 		"sync": "同步",
 		"plugins": "插件"
+	},
+	"writing": {
+		"title": "写作",
+		"engine": "LaTeX 引擎",
+		"projectSettings": "项目设置",
+		"noProject": "打开一个写作项目后才能改这些。",
+		"github": "GitHub",
+		"githubHint": "写作目录会推送到这个仓库。请先在 GitHub 上建好空仓库。地址存在这台电脑上。没有改动时不会多出一条记录。",
+		"uploadMode": "何时上传",
+		"uploadManual": "手动",
+		"uploadOnCompile": "每次编译后",
+		"uploadInterval": "定时",
+		"uploadEvery": "间隔",
+		"uploadMinutes": "{{count}} 分钟",
+		"save": "保存",
+		"saved": "已保存"
 	},
 	"remoteAccess": {
 		"title": "远程访问",
