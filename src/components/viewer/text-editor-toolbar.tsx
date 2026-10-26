@@ -35,6 +35,7 @@ interface TextEditorToolbarProps {
 		onCitation: () => void;
 		onSyncPdf: () => void;
 	} | null;
+	placement?: "overlay" | "bar";
 }
 
 export function TextEditorToolbar({
@@ -42,6 +43,7 @@ export function TextEditorToolbar({
 	onFontSizeChange,
 	livePreview,
 	texTools,
+	placement = "overlay",
 }: TextEditorToolbarProps) {
 	const { t } = useTranslation("settings");
 	const { t: tx } = useTranslation("latexLanguage");
@@ -70,13 +72,21 @@ export function TextEditorToolbar({
 		}
 	}, [fontSize, onFontSizeChange]);
 
+	const bar = placement === "bar";
+
 	return (
-		<div className="pointer-events-none absolute top-2 right-3 z-20 flex origin-top-right items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+		<div
+			className={
+				bar
+					? "flex h-8 shrink-0 items-center justify-end gap-1 border-b border-border px-2"
+					: "pointer-events-none absolute top-2 right-3 z-20 flex origin-top-right items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+			}
+		>
 			<div
 				data-text-editor-chrome
 				className={cn(
-					"pointer-events-auto flex h-7 select-none items-center gap-0.5 rounded-lg p-0.5",
-					PDF_CHROME_CHIP,
+					"pointer-events-auto flex h-7 select-none items-center gap-0.5",
+					bar ? "" : cn("rounded-lg p-0.5", PDF_CHROME_CHIP),
 				)}
 			>
 				{texTools ? (

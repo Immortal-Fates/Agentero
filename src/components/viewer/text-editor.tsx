@@ -30,6 +30,10 @@ import { basenameOf, dirnameOf, normalizePath } from "@/lib/core/path";
 import { texSettingsStore } from "@/lib/tex/config";
 import { insertTexCitation } from "@/lib/tex/editor-intelligence";
 import {
+	editorLintStore,
+	pendingEditorLineJump,
+} from "@/lib/tex/editor-lint-bridge";
+import {
 	markTexEditorActive,
 	registerTexEditor,
 } from "@/lib/tex/editor-navigation";
@@ -74,6 +78,10 @@ interface TextEditorProps {
 	active?: boolean;
 	/** Reading opens live preview as a dock tab. Writing keeps that off. */
 	showLivePreview?: boolean;
+	/** Writing draws lint counts on the PDF bar. */
+	hideLintFooter?: boolean;
+	/** Writing pins source actions in a bar. Reading keeps the hover chip. */
+	toolbarPlacement?: "overlay" | "bar";
 	className?: string;
 }
 
@@ -127,6 +135,8 @@ export function TextEditor({
 	onManualSave,
 	active = true,
 	showLivePreview = true,
+	hideLintFooter = false,
+	toolbarPlacement = "overlay",
 	className,
 }: TextEditorProps) {
 	const { t } = useTranslation("settings");
@@ -296,6 +306,46 @@ export function TextEditor({
 		});
 		view.focus();
 	}, []);
+	const jumpToLine = useCallback((line: number) => {
+		const view = viewRef.current;
+		if (!view || line < 1) return;
+		const info = view.state.doc.line(Math.min(line, view.state.doc.lines));
+		view.dispatch({
+			selection: { anchor: info.from },
+			scrollIntoView: true,
+		});
+		view.focus();
+	}, []);
+
+	useEffect(() => {
+		if (!hideLintFooter || !hasLintSources) return;
+		editorLintStore.setState({
+			current: { path, diagnostics, jump: jumpToDiagnostic, jumpToLine },
+		});
+		return () => {
+			if (editorLintStore.getState().current?.path === path) {
+				editorLintStore.setState({ current: null });
+			}
+		};
+	}, [
+		hideLintFooter,
+		hasLintSources,
+		path,
+		diagnostics,
+		jumpToDiagnostic,
+		jumpToLine,
+	]);
+
+	useEffect(() => {
+		const pending = pendingEditorLineJump.getState();
+		if (!pending.path || normalizePath(pending.path) !== normalizePath(path)) {
+			return;
+		}
+		const line = pending.line;
+		pendingEditorLineJump.setState({ path: "", line: 0 });
+		const timer = window.setTimeout(() => jumpToLine(line), 0);
+		return () => window.clearTimeout(timer);
+	}, [path, jumpToLine]);
 
 	// Expose the flush to lib actions: the compile button builds disk bytes,
 	// so it must first land this editor's debounced autosave.
@@ -574,6 +624,7 @@ export function TextEditor({
 			<TextEditorToolbar
 				fontSize={fontSize}
 				onFontSizeChange={setFontSize}
+				placement={toolbarPlacement}
 				texTools={
 					isTexPath(path)
 						? {
@@ -625,7 +676,7 @@ export function TextEditor({
 				/>
 			) : null}
 			<div ref={hostRef} className="min-h-0 w-full flex-1 overflow-hidden" />
-			{hasLintSources ? (
+			{hasLintSources && !hideLintFooter ? (
 				<TextEditorLintFooter
 					path={path}
 					diagnostics={diagnostics}

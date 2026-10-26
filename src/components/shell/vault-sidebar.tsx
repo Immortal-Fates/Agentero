@@ -19,9 +19,7 @@ import {
 	type FileTreeHandle,
 	VaultSidebarHeader,
 } from "@/components/sidebar/file-tree";
-import { LatexPanel } from "@/components/sidebar/latex-panel";
 import { PaperInfoPanel } from "@/components/sidebar/paper-info-panel";
-import { useTexProject } from "@/components/sidebar/use-tex-project";
 import { WorkspaceModeSwitch } from "@/components/writing/workspace-mode-switch";
 import { WritingRail } from "@/components/writing/writing-rail";
 import {
@@ -157,13 +155,6 @@ export function VaultSidebar() {
 		(s) => s.tabs.find((tab) => tab.id === s.activeTabId) ?? null,
 	);
 	const paperMeta = activeTab?.paperMeta ?? null;
-	// Any file inside a TeX project (the PDF, a chapter, a figure) keeps
-	// the LaTeX panel. Library hover does not override it.
-	const texProjectPath = useTexProject(
-		vaultPath,
-		activeTab?.path ?? null,
-		activeTab?.texRoot,
-	);
 	const writingSurface = useWritingStore((s) => s.surface);
 	useLayoutEffect(() => {
 		bindWritingVault(vaultPath);
@@ -348,14 +339,12 @@ export function VaultSidebar() {
 				</div>
 				{writingSurface === "writing" ? <WritingRail /> : null}
 			</div>
-			{writingSurface === "writing" ? null : texProjectPath ? (
-				<LatexPanel texPath={texProjectPath} />
-			) : displayedPaperMeta ? (
+			{writingSurface === "writing" || !displayedPaperMeta ? null : (
 				<PaperInfoPanel
 					meta={displayedPaperMeta}
 					onTagsChange={onPaperTagsChange}
 				/>
-			) : null}
+			)}
 		</>
 	);
 }

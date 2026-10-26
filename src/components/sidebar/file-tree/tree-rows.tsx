@@ -9,7 +9,6 @@ import {
 	Loader2,
 	Notebook,
 	NotebookPen,
-	Play,
 	ScrollText,
 	Sparkles,
 	Trash2,
@@ -235,7 +234,6 @@ export function NodeTreeRow({
 	isCut,
 	pendingLoad,
 	expanded,
-	texCompile,
 	vaultPath,
 	skillLabels,
 }: NodeTreeRowProps) {
@@ -308,8 +306,6 @@ export function NodeTreeRow({
 	}
 
 	const Icon = contextPathIcon(node.name);
-	const isTex = texCompile?.isTexFile(node.path) ?? false;
-	const isCompiling = texCompile?.compilingPath === node.path;
 
 	return (
 		<FileTreeFile
@@ -323,14 +319,6 @@ export function NodeTreeRow({
 			<FileTreeName className="min-w-0 flex-1 truncate" title={node.name}>
 				{node.name}
 			</FileTreeName>
-			{isTex && texCompile ? (
-				<TexCompileActions
-					actions={texCompile}
-					texPath={node.path}
-					vaultPath={vaultPath ?? null}
-					isCompiling={isCompiling}
-				/>
-			) : null}
 		</FileTreeFile>
 	);
 }
@@ -413,70 +401,6 @@ function VaultRootIcon({ face }: { face: VaultRootFace }) {
 	const Icon =
 		face === "notes" ? Notebook : face === "thesis" ? ScrollText : Database;
 	return <Icon className="size-4 text-muted-foreground" aria-hidden />;
-}
-
-/** Play button for a .tex row. Engine, live preview, and clean live in the LaTeX panel. */
-function TexCompileActions({
-	actions,
-	texPath,
-	vaultPath,
-	isCompiling,
-}: {
-	actions: TexCompileHookActions;
-	texPath: string;
-	vaultPath: string | null;
-	isCompiling: boolean;
-}) {
-	const { t } = useTranslation("sidebar");
-	const hasEngines = !actions.enginesLoading && actions.engines.length > 0;
-
-	if (isCompiling) {
-		return (
-			<FileTreeActions
-				className="shrink-0"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={(e) => e.stopPropagation()}
-			>
-				<Loader2
-					className="size-3.5 animate-spin text-muted-foreground"
-					aria-label={t("fileTree.compileTex")}
-				/>
-			</FileTreeActions>
-		);
-	}
-
-	return (
-		<FileTreeActions
-			className="shrink-0"
-			onClick={(e) => e.stopPropagation()}
-			onKeyDown={(e) => e.stopPropagation()}
-		>
-			<Tooltip disableHoverableContent>
-				<TooltipTrigger asChild>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-xs"
-						className="size-5 bg-transparent hover:bg-transparent active:bg-transparent dark:hover:bg-transparent dark:active:bg-transparent group-aria-selected:focus-visible:border-sidebar-primary-foreground/70 group-aria-selected:focus-visible:ring-sidebar-primary-foreground/50"
-						data-tex-compile=""
-						aria-label={t("fileTree.compileTex")}
-						disabled={!hasEngines || !vaultPath}
-						onClick={(e) => {
-							e.stopPropagation();
-							if (vaultPath && hasEngines) {
-								void actions.compileTex(texPath, vaultPath);
-							}
-						}}
-					>
-						<Play className="size-3.5" />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="right" className="select-none cursor-default">
-					{t("fileTree.compileTex")}
-				</TooltipContent>
-			</Tooltip>
-		</FileTreeActions>
-	);
 }
 
 export function TrashRow() {

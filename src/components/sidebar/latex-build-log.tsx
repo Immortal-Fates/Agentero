@@ -13,7 +13,13 @@ import { cancelTask } from "@/lib/core/tasks";
 import { texBuildStore } from "@/lib/tex/build-state";
 
 /** The sidebar has one log action; all problems remain in the editor footer. */
-export function LatexBuildLog({ rootPath }: { rootPath: string }) {
+export function LatexBuildLog({
+	rootPath,
+	compact = false,
+}: {
+	rootPath: string;
+	compact?: boolean;
+}) {
 	const { t } = useTranslation("latexBuild");
 	const snapshot = useStore(
 		texBuildStore,
@@ -22,16 +28,33 @@ export function LatexBuildLog({ rootPath }: { rootPath: string }) {
 	return (
 		<Dialog>
 			<DialogTrigger asChild>
-				<button
-					type="button"
-					className="flex min-h-7 w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-				>
-					<FileText
-						className="size-3.5 shrink-0 text-muted-foreground"
-						aria-hidden
-					/>
-					<span>{t("log")}</span>
-				</button>
+				{compact ? (
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						className={
+							snapshot?.status === "failed"
+								? "shrink-0 text-destructive"
+								: "shrink-0 text-muted-foreground"
+						}
+						aria-label={t("log")}
+						title={t("log")}
+					>
+						<FileText aria-hidden />
+					</Button>
+				) : (
+					<button
+						type="button"
+						className="flex min-h-7 w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+					>
+						<FileText
+							className="size-3.5 shrink-0 text-muted-foreground"
+							aria-hidden
+						/>
+						<span>{t("log")}</span>
+					</button>
+				)}
 			</DialogTrigger>
 			<DialogContent
 				className="flex h-[65vh] flex-col gap-3 sm:max-w-3xl"

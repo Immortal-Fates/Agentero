@@ -80,7 +80,7 @@ type CountKey =
 	| "textEditor.warningCount"
 	| "textEditor.infoCount";
 
-const SEVERITY_META: Record<
+export const SEVERITY_META: Record<
 	LintSeverity,
 	{ Icon: LucideIcon; iconClasses: string; countKey: CountKey }
 > = {
@@ -116,10 +116,13 @@ export function TextEditorLintFooter({
 	diagnostics,
 	onJump,
 	path = "",
+	chrome = "footer",
 }: {
 	diagnostics: EditorDiagnostic[];
 	onJump: (diagnostic: EditorDiagnostic) => void;
 	path?: string;
+	/** `inline` sits in the writing PDF bar and opens the list downward. */
+	chrome?: "footer" | "inline";
 }) {
 	const { t } = useTranslation("viewer");
 	const { t: tb } = useTranslation("latexBuild");
@@ -135,17 +138,40 @@ export function TextEditorLintFooter({
 		info: 0,
 	};
 	for (const diagnostic of diagnostics) counts[diagnostic.severity] += 1;
+	const shown =
+		chrome === "inline"
+			? SEVERITY_ORDER.filter((severity) => counts[severity] > 0)
+			: SEVERITY_ORDER;
+	if (chrome === "inline" && shown.length === 0) return null;
 	return (
-		<div className="flex h-7 shrink-0 items-center border-t bg-muted/30 px-3">
-			<div className="group/lint relative flex items-center gap-3">
+		<div
+			className={
+				chrome === "inline"
+					? "flex shrink-0 items-center"
+					: "flex h-7 shrink-0 items-center border-t bg-muted/30 px-3"
+			}
+		>
+			<div
+				className={cn(
+					"group/lint relative flex items-center",
+					chrome === "inline" ? "gap-2" : "gap-3",
+				)}
+			>
 				<button
 					type="button"
-					className="flex min-h-7 items-center gap-3 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-					aria-label={SEVERITY_ORDER.map((severity) =>
-						t(SEVERITY_META[severity].countKey, { count: counts[severity] }),
-					).join(", ")}
+					className={cn(
+						"flex min-h-7 items-center rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+						chrome === "inline" ? "gap-2" : "gap-3",
+					)}
+					aria-label={shown
+						.map((severity) =>
+							t(SEVERITY_META[severity].countKey, {
+								count: counts[severity],
+							}),
+						)
+						.join(", ")}
 				>
-					{SEVERITY_ORDER.map((severity) => {
+					{shown.map((severity) => {
 						const { Icon, iconClasses, countKey } = SEVERITY_META[severity];
 						const count = counts[severity];
 						return (
@@ -164,7 +190,12 @@ export function TextEditorLintFooter({
 					})}
 				</button>
 				{diagnostics.length ? (
-					<div className="pointer-events-none invisible absolute bottom-full left-0 z-20 max-h-72 w-[28rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border bg-popover p-1 text-foreground opacity-0 shadow-lg group-hover/lint:pointer-events-auto group-hover/lint:visible group-hover/lint:opacity-100 group-focus-within/lint:pointer-events-auto group-focus-within/lint:visible group-focus-within/lint:opacity-100">
+					<div
+						className={cn(
+							"pointer-events-none invisible absolute left-0 z-20 max-h-72 w-[28rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border bg-popover p-1 text-foreground opacity-0 shadow-lg group-hover/lint:pointer-events-auto group-hover/lint:visible group-hover/lint:opacity-100 group-focus-within/lint:pointer-events-auto group-focus-within/lint:visible group-focus-within/lint:opacity-100",
+							chrome === "inline" ? "top-full mt-1" : "bottom-full",
+						)}
+					>
 						{diagnostics.map((diagnostic) => {
 							const key = `${diagnostic.from}:${diagnostic.to}:${diagnostic.message}`;
 							const { Icon, iconClasses } = SEVERITY_META[diagnostic.severity];
