@@ -3,7 +3,7 @@
  */
 
 import { createStore } from "zustand/vanilla";
-import type { EditorDiagnostic } from "@/components/viewer/text-editor-lint-footer";
+import type { EditorDiagnostic } from "@/lib/tex/editor-diagnostic";
 
 export type EditorLintBridge = {
 	path: string;

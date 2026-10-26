@@ -7,6 +7,10 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "@/lib/core/clipboard";
 import { cn } from "@/lib/core/utils";
+import type {
+	EditorDiagnostic,
+	LintSeverity,
+} from "@/lib/tex/editor-diagnostic";
 
 /**
  * IDE-style lint status bar for the text editor: per-severity counts
@@ -14,18 +18,10 @@ import { cn } from "@/lib/core/utils";
  * diagnostic — click a card to jump to the offending span.
  */
 
-export type LintSeverity = "error" | "warning" | "info";
-
-export type EditorDiagnostic = {
-	from: number;
-	to: number;
-	severity: LintSeverity;
-	message: string;
-	source?: string;
-	/** 1-based position of the diagnostic start, IDE-style. */
-	line: number;
-	column: number;
-};
+export type {
+	EditorDiagnostic,
+	LintSeverity,
+} from "@/lib/tex/editor-diagnostic";
 
 /**
  * Collect the current lint diagnostics with 1-based line/column, in document
