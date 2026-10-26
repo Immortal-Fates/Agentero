@@ -73,3 +73,5 @@ cargo test -p agentero export_typescript_bindings --lib
 ```
 
 回归覆盖参数注入、cwd 与相对路径、产物推导、章节诊断、配置后的 recorder、SyncTeX、subfiles 和管道关闭后的取消。跨平台发布仍走项目现有 CI。
+
+SyncTeX 的 UTF-16 输出按两个字节的定长数组解码，兼容 CI stable Clippy 的分块检查；编码识别及大小端处理保持不变。

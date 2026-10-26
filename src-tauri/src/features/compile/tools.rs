@@ -97,7 +97,9 @@ fn decode_utf16_stdout(bytes: &[u8]) -> Option<String> {
         return None;
     }
     let units: Vec<u16> = rest
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             if little {
                 u16::from_le_bytes([chunk[0], chunk[1]])
