@@ -519,6 +519,7 @@
 		"compiling": "正在编译…",
 		"compileFailed": "编译失败",
 		"history": "历史",
+		"historyTab": "修改历史",
 		"historyEmpty": "还没有上传过",
 		"historyPending": "尚未上传的修改",
 		"historyRestore": "回退到这一版",

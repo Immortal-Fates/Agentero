@@ -3,55 +3,39 @@
  * The reading dock stays mounted underneath and is not shown here.
  */
 
-import { Trash2, X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import {
 	ResizableGroup,
 	ResizableHandle,
 	ResizablePanel,
 } from "@/components/ui/resizable";
-import { RecycleBinView } from "@/components/workspace/recycle-bin-view";
 import { NewProjectForm } from "@/components/writing/new-project-form";
 import { WritingDeleteDialog } from "@/components/writing/writing-delete-dialog";
+import { WritingFileTabs } from "@/components/writing/writing-file-tabs";
 import { WritingHistory } from "@/components/writing/writing-history";
 import { WritingPdfBar } from "@/components/writing/writing-pdf-bar";
 import { WritingSyncButtons } from "@/components/writing/writing-sync-buttons";
+import { WritingSyncTab } from "@/components/writing/writing-sync-tab";
 import { useVaultStore, useWritingStore } from "@/hooks/use-app-stores";
 import { useTexRoot } from "@/hooks/use-tex-root";
 import { errorText } from "@/lib/core/error";
 import { notifyError } from "@/lib/core/notify";
-import { basenameOf, normalizePath } from "@/lib/core/path";
-import { cn } from "@/lib/core/utils";
+import { normalizePath } from "@/lib/core/path";
 import { localFileToArrayBuffer } from "@/lib/paper/media";
 import { texBuildStore } from "@/lib/tex/build-state";
 import { readVaultFile } from "@/lib/vault";
-import { handleTrashChanged } from "@/lib/vault/actions";
 import { persistTextFile } from "@/lib/workspace/persistence";
 import { resolveTexPdfPath } from "@/lib/workspace/tex-compile";
 import { compileTexOnManualSave } from "@/lib/workspace/viewer-actions";
-import { discoverWritingProjects } from "@/lib/writing/discover";
 import { writingFileReloadStore } from "@/lib/writing/history";
 import {
 	mergeManuscripts,
 	writingProjectTrashRel,
 } from "@/lib/writing/session";
-import {
-	closeAllWritingFiles,
-	closeOtherWritingFiles,
-	closeWritingFile,
-	selectManuscript,
-	setDiscoveredManuscripts,
-	setWritingDiscovering,
-	setWritingFile,
-} from "@/lib/writing/store";
+import { selectManuscript } from "@/lib/writing/store";
 
 const TextEditor = lazy(() =>
 	import("@/components/viewer/text-editor").then((mod) => ({
@@ -77,12 +61,11 @@ export function WritingDesk() {
 	const activeRoot = useWritingStore((s) => s.activeRoot);
 	const compileRoot = useTexRoot(activeRoot);
 	const activeFile = useWritingStore((s) => s.activeFile);
-	const openFiles = useWritingStore((s) => s.openFiles);
 	const discovered = useWritingStore((s) => s.manuscripts);
 	const recents = useWritingStore((s) => s.recents);
 	const discovering = useWritingStore((s) => s.discovering);
-	const showTrash = useWritingStore((s) => s.showTrash);
-	const historyOpen = useWritingStore((s) => s.historyOpen);
+	const historyActive = useWritingStore((s) => s.historyActive);
+	const syncActive = useWritingStore((s) => s.syncActive);
 	const [pendingDelete, setPendingDelete] = useState<{
 		rootFile: string;
 		title: string;
@@ -90,9 +73,6 @@ export function WritingDesk() {
 	const manuscripts = mergeManuscripts(discovered, recents, activeRoot);
 
 	if (!vaultPath) return null;
-	if (showTrash) {
-		return <WritingTrash vaultPath={vaultPath} />;
-	}
 	if (!activeRoot) {
 		return (
 			<div className="mx-auto flex h-full w-full max-w-xl flex-col gap-6 overflow-y-auto px-6 py-10">
@@ -160,143 +140,59 @@ export function WritingDesk() {
 		);
 	}
 
-	const tabs = openFiles;
 	return (
-		<div className="flex h-full min-h-0 flex-col">
-			{historyOpen ? null : (
-				<div
-					role="tablist"
-					aria-label={t("writing.files")}
-					className="flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-border bg-muted/40 px-1"
-				>
-					{tabs.map((path) => {
-						const selected =
-							activeFile != null &&
-							normalizePath(path) === normalizePath(activeFile);
-						const title = basenameOf(path);
-						return (
-							<ContextMenu key={normalizePath(path)}>
-								<ContextMenuTrigger asChild>
-									<div
-										className={cn(
-											"flex h-7 max-w-48 min-w-0 items-center rounded-t-md",
-											selected
-												? "bg-background text-foreground"
-												: "text-muted-foreground hover:bg-background/70",
-										)}
-									>
-										<button
-											type="button"
-											role="tab"
-											aria-selected={selected}
-											title={title}
-											onClick={() => setWritingFile(path)}
-											className="h-full min-w-0 flex-1 truncate px-2 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-										>
-											{title}
-										</button>
-										<button
-											type="button"
-											aria-label={t("app:tabs.close", { title })}
-											onClick={() => closeWritingFile(path)}
-											className="mr-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/60"
-										>
-											<X className="size-3" aria-hidden />
-										</button>
-									</div>
-								</ContextMenuTrigger>
-								<ContextMenuContent>
-									<ContextMenuItem onSelect={() => closeWritingFile(path)}>
-										{t("app:tabs.contextClose")}
-									</ContextMenuItem>
-									<ContextMenuItem
-										disabled={tabs.length < 2}
-										onSelect={() => closeOtherWritingFiles(path)}
-									>
-										{t("app:tabs.contextCloseOthers")}
-									</ContextMenuItem>
-									<ContextMenuItem onSelect={() => closeAllWritingFiles()}>
-										{t("app:tabs.contextCloseAll")}
-									</ContextMenuItem>
-								</ContextMenuContent>
-							</ContextMenu>
-						);
-					})}
-				</div>
-			)}
-			<ResizableGroup orientation="horizontal" className="min-h-0 flex-1">
-				<ResizablePanel
-					id="writing-editor"
-					defaultSize="58"
-					minSize="24"
-					className="min-h-0 min-w-0"
-				>
-					{historyOpen ? (
-						<WritingHistory />
-					) : (
-						<div className="flex h-full min-h-0 min-w-0 flex-col">
-							{activeFile ? (
-								<Suspense
-									fallback={
-										<p className="text-muted-foreground px-3 py-2 text-sm">
-											{t("writing.loadingFiles")}
-										</p>
-									}
-								>
-									<ProjectEditor path={activeFile} />
-								</Suspense>
-							) : null}
-						</div>
-					)}
-				</ResizablePanel>
-				<ResizableHandle className="z-30">
-					<WritingSyncButtons activeFile={activeFile} />
-				</ResizableHandle>
-				<ResizablePanel
-					id="writing-pdf"
-					defaultSize="42"
-					minSize="20"
-					className="min-h-0 min-w-0"
-				>
-					<div className="flex h-full min-h-0 min-w-0 flex-col">
-						<WritingPdfBar rootFile={compileRoot ?? activeRoot} />
-						<div className="min-h-0 flex-1">
-							<ProjectPdf
-								rootFile={compileRoot ?? activeRoot}
-								vaultPath={vaultPath}
-							/>
-						</div>
+		<ResizableGroup orientation="horizontal" className="h-full min-h-0">
+			<ResizablePanel
+				id="writing-editor"
+				defaultSize="58"
+				minSize="24"
+				className="min-h-0 min-w-0"
+			>
+				<div className="flex h-full min-h-0 min-w-0 flex-col">
+					<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
+						<WritingFileTabs />
 					</div>
-				</ResizablePanel>
-			</ResizableGroup>
-		</div>
-	);
-}
-
-function WritingTrash({ vaultPath }: { vaultPath: string }) {
-	const { t } = useTranslation("sidebar");
-	return (
-		<div className="flex h-full min-h-0 flex-col">
-			<div className="flex h-10 shrink-0 items-center border-b border-border px-4">
-				<h1 className="text-sm font-medium">{t("recycleBin.title")}</h1>
-			</div>
-			<RecycleBinView
-				vaultPath={vaultPath}
-				active
-				className="min-h-0 flex-1"
-				onChanged={() => {
-					void handleTrashChanged().then(async () => {
-						try {
-							setDiscoveredManuscripts(
-								await discoverWritingProjects(vaultPath),
-							);
-						} catch {
-							setWritingDiscovering(false);
-						}
-					});
-				}}
-			/>
-		</div>
+					<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+						{historyActive ? (
+							<WritingHistory />
+						) : syncActive ? (
+							<WritingSyncTab vaultPath={vaultPath} />
+						) : activeFile ? (
+							<Suspense
+								fallback={
+									<p className="text-muted-foreground px-3 py-2 text-sm">
+										{t("writing.loadingFiles")}
+									</p>
+								}
+							>
+								<ProjectEditor path={activeFile} />
+							</Suspense>
+						) : null}
+					</div>
+				</div>
+			</ResizablePanel>
+			<ResizableHandle className="z-30">
+				<WritingSyncButtons activeFile={activeFile} />
+			</ResizableHandle>
+			<ResizablePanel
+				id="writing-pdf"
+				defaultSize="42"
+				minSize="20"
+				className="min-h-0 min-w-0"
+			>
+				<div className="flex h-full min-h-0 min-w-0 flex-col">
+					<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
+						<WritingPdfBar rootFile={compileRoot ?? activeRoot} />
+					</div>
+					<div className="min-h-0 flex-1">
+						<ProjectPdf
+							rootFile={compileRoot ?? activeRoot}
+							vaultPath={vaultPath}
+						/>
+					</div>
+				</div>
+			</ResizablePanel>
+		</ResizableGroup>
 	);
 }
 
@@ -440,6 +336,7 @@ function ProjectPdf({
 					vaultPath={vaultPath}
 					isActive
 					plainViewer
+					showBottomBar
 					texRootPath={rootFile}
 					pdfPath={pdf.path}
 					syncTexScope="writing"

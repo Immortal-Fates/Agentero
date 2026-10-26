@@ -56,7 +56,7 @@ export function RightSidebar() {
 	);
 	const writingActive = useStore(
 		writingStore,
-		(state) => state.surface === "writing" && !state.showTrash,
+		(state) => state.surface === "writing",
 	);
 	const writingFile = useStore(
 		writingStore,

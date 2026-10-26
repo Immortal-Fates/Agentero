@@ -17,7 +17,7 @@ import { cn } from "@/lib/core/utils";
 import { joinVaultPath } from "@/lib/vault/path";
 import { getVaultPath } from "@/lib/vault/store";
 import { reloadOpenWritingFiles } from "@/lib/writing/history";
-import { writingStore } from "@/lib/writing/store";
+import { closeWritingHistory } from "@/lib/writing/store";
 import {
 	loadWritingGitDiff,
 	loadWritingGitLog,
@@ -120,8 +120,8 @@ export function WritingHistory() {
 	return (
 		<div className="flex h-full min-h-0 min-w-0">
 			<div className="flex w-56 shrink-0 flex-col border-r border-border">
-				<div className="flex h-9 shrink-0 items-center border-b border-border px-3">
-					<span className="text-sm font-medium">{t("writing.history")}</span>
+				<div className="flex h-10 shrink-0 items-center border-b border-border px-3">
+					<span className="text-sm font-medium">{t("writing.historyTab")}</span>
 				</div>
 				<div className="min-h-0 flex-1 overflow-auto p-1">
 					{loading ? (
@@ -158,7 +158,7 @@ export function WritingHistory() {
 				</div>
 			</div>
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-				<div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
+				<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
 					<span className="min-w-0 flex-1 truncate text-sm">
 						{selected
 							? selected.id === "pending"
@@ -181,7 +181,7 @@ export function WritingHistory() {
 						type="button"
 						variant="ghost"
 						size="sm"
-						onClick={() => writingStore.setState({ historyOpen: false })}
+						onClick={() => closeWritingHistory()}
 					>
 						{t("writing.historyBack")}
 					</Button>

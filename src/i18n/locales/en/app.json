@@ -87,6 +87,7 @@
 	},
 	"tabs": {
 		"strip": "Open documents",
+		"more": "More tabs",
 		"close": "Close {{title}}",
 		"showHtml": "Show HTML version",
 		"showPdf": "Show PDF version",

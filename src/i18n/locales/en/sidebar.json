@@ -520,6 +520,7 @@
 		"compiling": "Compiling…",
 		"compileFailed": "Compile failed",
 		"history": "History",
+		"historyTab": "Change history",
 		"historyEmpty": "Nothing has been uploaded yet",
 		"historyPending": "Not uploaded yet",
 		"historyRestore": "Restore this version",

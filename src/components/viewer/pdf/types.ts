@@ -115,6 +115,11 @@ export type PdfViewerProps = {
 	 * (pages, zoom, search, text selection + copy) stays.
 	 */
 	plainViewer?: boolean;
+	/**
+	 * Keep the floating page / zoom / paper-tone bar in a plain viewer. The
+	 * writing preview opts in so its PDF chrome matches the reading layout.
+	 */
+	showBottomBar?: boolean;
 	/** Canonical TeX source and actual output path for compiled-document SyncTeX. */
 	texRootPath?: string | null;
 	pdfPath?: string | null;

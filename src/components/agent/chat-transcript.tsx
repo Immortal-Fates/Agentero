@@ -1010,7 +1010,7 @@ export const ChatTranscript = memo(function ChatTranscript({
 	const hasOpenSource = Boolean(onOpenSource);
 	const writing = useStore(
 		writingStore,
-		(state) => state.surface === "writing" && !state.showTrash,
+		(state) => state.surface === "writing",
 	);
 	const suggestions = suggestionItems(writing);
 	const rowHandlers = useMemo<RowHandlers>(

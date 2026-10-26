@@ -183,7 +183,6 @@ import {
 	translateHighlightsByPage as translateHighlightsByPageOf,
 	translateHighlightsFingerprint,
 } from "@/lib/pdf/translate/highlights";
-import { writingPdfChromeStore } from "@/lib/pdf/writing-chrome";
 import { PDF_ZOOM_MAX, PDF_ZOOM_MIN } from "@/lib/pdf/zoom";
 import { loadSettings } from "@/lib/settings";
 import type { MenuContext } from "@/lib/shell/commands/menu-contributions";
@@ -480,6 +479,7 @@ function PdfViewerInner({
 	isActive = true,
 	isRemotePaper = false,
 	plainViewer = false,
+	showBottomBar = false,
 	translationPane = false,
 	translationOnly = false,
 	texRootPath = null,
@@ -2369,48 +2369,6 @@ function PdfViewerInner({
 		zoomCapRef.current?.requestZoom(next);
 	}, []);
 
-	useEffect(() => {
-		if (!plainViewer) {
-			writingPdfChromeStore.setState({ current: null });
-			return;
-		}
-		writingPdfChromeStore.setState({
-			current: {
-				totalPages,
-				pageField,
-				onPageFieldChange: setPageField,
-				pageFocusedRef,
-				onCommitPageField: handleCommitPageField,
-				currentPage,
-				onGoToPage: handleGoToPage,
-				pdfTone,
-				onSetPdfTone: setPdfTone,
-				zoomLevel,
-				onZoomChange: handleZoomSliderChange,
-			},
-		});
-	}, [
-		plainViewer,
-		totalPages,
-		pageField,
-		setPageField,
-		pageFocusedRef,
-		handleCommitPageField,
-		currentPage,
-		handleGoToPage,
-		pdfTone,
-		setPdfTone,
-		zoomLevel,
-		handleZoomSliderChange,
-	]);
-
-	useEffect(() => {
-		if (!plainViewer) return;
-		return () => {
-			writingPdfChromeStore.setState({ current: null });
-		};
-	}, [plainViewer]);
-
 	return (
 		<div
 			ref={hostRef}
@@ -2544,7 +2502,7 @@ function PdfViewerInner({
 				/>
 			)}
 
-			{!translationOnly && !plainViewer && (
+			{!translationOnly && (!plainViewer || showBottomBar) && (
 				<PdfBottomBar
 					totalPages={totalPages}
 					pageField={pageField}

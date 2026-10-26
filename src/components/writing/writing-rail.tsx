@@ -24,7 +24,6 @@ import { discoverWritingProjects } from "@/lib/writing/discover";
 import { manuscriptDir, mergeManuscripts } from "@/lib/writing/session";
 import {
 	closeManuscript,
-	openWritingTrash,
 	selectManuscript,
 	setDiscoveredManuscripts,
 	setWritingDiscovering,
@@ -38,7 +37,6 @@ export function WritingRail() {
 	const recents = useWritingStore((s) => s.recents);
 	const discovered = useWritingStore((s) => s.manuscripts);
 	const discovering = useWritingStore((s) => s.discovering);
-	const showTrash = useWritingStore((s) => s.showTrash);
 	const compileRoot = useTexRoot(activeRoot);
 	const manuscripts = mergeManuscripts(discovered, recents, activeRoot);
 	const active = manuscripts.find(
@@ -54,11 +52,9 @@ export function WritingRail() {
 		const dir = normalizePath(manuscriptDir(item.rootFile));
 		if (dir && dir !== here) projectDirs.add(dir);
 	}
-	const label = showTrash
-		? t("recycleBin.title")
-		: active
-			? active.title || t("writing.untitled")
-			: t("writing.allProjects");
+	const label = active
+		? active.title || t("writing.untitled")
+		: t("writing.allProjects");
 
 	useEffect(() => {
 		if (!vaultPath) return;
@@ -106,14 +102,6 @@ export function WritingRail() {
 						<DropdownMenuItem onSelect={() => setCreating(true)}>
 							{t("writing.newProject")}
 						</DropdownMenuItem>
-						<DropdownMenuItem
-							onSelect={() => {
-								setCreating(false);
-								openWritingTrash();
-							}}
-						>
-							{t("recycleBin.title")}
-						</DropdownMenuItem>
 						{manuscripts.length > 0 ? <DropdownMenuSeparator /> : null}
 						{manuscripts.map((item) => {
 							const selected =
@@ -146,7 +134,7 @@ export function WritingRail() {
 					</div>
 				) : null}
 			</div>
-			{active && rootDir && !showTrash ? (
+			{active && rootDir ? (
 				<>
 					<p className="text-muted-foreground shrink-0 px-3 pt-1 pb-0.5 text-xs">
 						{t("writing.files")}

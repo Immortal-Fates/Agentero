@@ -25,10 +25,14 @@ type WritingStore = {
 	recents: string[];
 	manuscripts: Manuscript[];
 	discovering: boolean;
-	/** Writing canvas shows the vault recycle bin. Session only. */
-	showTrash: boolean;
-	/** Editor pane shows upload history instead of the source. Session only. */
+	/** Change-history tab is open beside the source tabs. Session only. */
 	historyOpen: boolean;
+	/** The change-history tab is selected instead of a source file. */
+	historyActive: boolean;
+	/** Upload tab is open beside the source tabs. Session only. */
+	syncOpen: boolean;
+	/** The upload tab is selected instead of a source file. */
+	syncActive: boolean;
 };
 
 export const writingStore = createStore<WritingStore>(() => ({
@@ -40,8 +44,10 @@ export const writingStore = createStore<WritingStore>(() => ({
 	recents: [],
 	manuscripts: [],
 	discovering: false,
-	showTrash: false,
 	historyOpen: false,
+	historyActive: false,
+	syncOpen: false,
+	syncActive: false,
 }));
 
 function persist(): void {
@@ -64,8 +70,10 @@ export function bindWritingVault(vaultPath: string | null): void {
 			recents: [],
 			manuscripts: [],
 			discovering: false,
-			showTrash: false,
 			historyOpen: false,
+			historyActive: false,
+			syncOpen: false,
+			syncActive: false,
 		});
 		return;
 	}
@@ -79,8 +87,10 @@ export function bindWritingVault(vaultPath: string | null): void {
 		recents: prefs.recents,
 		manuscripts: [],
 		discovering: false,
-		showTrash: false,
 		historyOpen: false,
+		historyActive: false,
+		syncOpen: false,
+		syncActive: false,
 	});
 }
 
@@ -105,8 +115,14 @@ export function selectManuscript(rootFile: string): void {
 		activeFile: same ? (state.activeFile ?? rootFile) : rootFile,
 		openFiles: files,
 		recents,
-		showTrash: false,
-		...(same ? {} : { historyOpen: false }),
+		...(same
+			? {}
+			: {
+					historyOpen: false,
+					historyActive: false,
+					syncOpen: false,
+					syncActive: false,
+				}),
 	});
 	persist();
 }
@@ -114,24 +130,17 @@ export function selectManuscript(rootFile: string): void {
 /** Leave the open project and return to the project list. Stays on writing. */
 export function closeManuscript(): void {
 	const state = writingStore.getState();
-	if (!state.activeRoot && !state.activeFile && !state.showTrash) return;
+	if (!state.activeRoot && !state.activeFile) return;
 	writingStore.setState({
 		activeRoot: null,
 		activeFile: null,
 		openFiles: [],
-		showTrash: false,
 		historyOpen: false,
+		historyActive: false,
+		syncOpen: false,
+		syncActive: false,
 	});
 	persist();
-}
-
-/** Show the vault recycle bin on the writing canvas. */
-export function openWritingTrash(): void {
-	writingStore.setState({
-		showTrash: true,
-		surface: "writing",
-		historyOpen: false,
-	});
 }
 
 /**
@@ -156,7 +165,10 @@ export function forgetWritingProject(
 						activeRoot: null,
 						activeFile: null,
 						openFiles: [],
-						showTrash: false,
+						historyOpen: false,
+						historyActive: false,
+						syncOpen: false,
+						syncActive: false,
 					}
 				: {}),
 		});
@@ -181,11 +193,40 @@ export function forgetWritingProject(
 					activeRoot: null,
 					activeFile: null,
 					openFiles: [],
-					showTrash: false,
+					historyOpen: false,
+					historyActive: false,
+					syncOpen: false,
+					syncActive: false,
 				}
 			: {}),
 	});
 	persist();
+}
+
+/** Open or focus the change-history tab beside the source tabs. */
+export function openWritingHistory(): void {
+	writingStore.setState({
+		historyOpen: true,
+		historyActive: true,
+		syncActive: false,
+	});
+}
+
+export function closeWritingHistory(): void {
+	writingStore.setState({ historyOpen: false, historyActive: false });
+}
+
+/** Open or focus the upload tab beside the source tabs. */
+export function openWritingSync(): void {
+	writingStore.setState({
+		syncOpen: true,
+		syncActive: true,
+		historyActive: false,
+	});
+}
+
+export function closeWritingSync(): void {
+	writingStore.setState({ syncOpen: false, syncActive: false });
 }
 
 /** Open a source file in the writing editor. Does not touch the reading dock. */
@@ -194,6 +235,8 @@ export function setWritingFile(path: string): void {
 	writingStore.setState({
 		activeFile: path,
 		openFiles: rememberWritingFile(state.openFiles, path),
+		historyActive: false,
+		syncActive: false,
 	});
 }
 
@@ -224,13 +267,26 @@ export function closeOtherWritingFiles(path: string): void {
 	writingStore.setState({
 		openFiles: kept,
 		activeFile: kept[0] ?? null,
+		historyOpen: false,
+		historyActive: false,
+		syncOpen: false,
+		syncActive: false,
 	});
 }
 
 /** Close every writing tab. The project and its PDF stay open. */
 export function closeAllWritingFiles(): void {
-	if (writingStore.getState().openFiles.length === 0) return;
-	writingStore.setState({ openFiles: [], activeFile: null });
+	const state = writingStore.getState();
+	if (state.openFiles.length === 0 && !state.historyOpen && !state.syncOpen)
+		return;
+	writingStore.setState({
+		openFiles: [],
+		activeFile: null,
+		historyOpen: false,
+		historyActive: false,
+		syncOpen: false,
+		syncActive: false,
+	});
 }
 
 function rememberWritingFile(

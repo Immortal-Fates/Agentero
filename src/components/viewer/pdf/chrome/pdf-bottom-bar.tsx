@@ -1,5 +1,5 @@
-import { ChevronLeft, ChevronRight, Minus, Palette, Plus } from "lucide-react";
-import type { ReactNode, RefObject } from "react";
+import { Palette } from "lucide-react";
+import type { RefObject } from "react";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SiArxiv } from "react-icons/si";
@@ -26,7 +26,6 @@ import {
 	formatPdfZoomPercentage,
 	PDF_ZOOM_MAX,
 	PDF_ZOOM_MIN,
-	stepPdfZoom,
 } from "@/lib/pdf/zoom";
 
 type PdfBottomBarProps = {
@@ -38,9 +37,6 @@ type PdfBottomBarProps = {
 	/** True while the field owns focus, so scrolling does not clobber typing. */
 	pageFocusedRef: RefObject<boolean>;
 	onCommitPageField: () => void;
-	/** Page the viewer is actually showing. Writing steppers use this. */
-	currentPage?: number;
-	onGoToPage?: (page: number) => void;
 	pdfTone: PdfPaperTone;
 	onSetPdfTone: (tone: PdfPaperTone) => void;
 	/** Current zoom scale (1 = 100%). */
@@ -49,8 +45,6 @@ type PdfBottomBarProps = {
 	onZoomChange: (zoom: number) => void;
 	/** True for remote arXiv papers with no local sidecar. */
 	isRemotePaper?: boolean;
-	/** Floating chip over the page, or a row inside another toolbar. */
-	variant?: "floating" | "inline";
 };
 
 /** Bottom bar: page nav + zoom slider + PDF paper tone. */
@@ -60,14 +54,11 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 	onPageFieldChange,
 	pageFocusedRef,
 	onCommitPageField,
-	currentPage,
-	onGoToPage,
 	pdfTone,
 	onSetPdfTone,
 	zoomLevel,
 	onZoomChange,
 	isRemotePaper = false,
-	variant = "floating",
 }: PdfBottomBarProps) {
 	const { t } = useTranslation("viewer");
 	const [tonePickerOpen, setTonePickerOpen] = useState(false);
@@ -78,24 +69,13 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 	const zoomPercent = Math.round(zoomLevel * 100);
 	const zoomMinPercent = Math.round(PDF_ZOOM_MIN * 100);
 	const zoomMaxPercent = Math.round(PDF_ZOOM_MAX * 100);
-	const toneSide = variant === "inline" ? "bottom" : "top";
-	const shownPage = currentPage ?? Number.parseInt(pageField, 10);
-	const inline = variant === "inline";
 
 	const pageFieldNode = (
-		<div
-			className={cn(
-				"flex items-center",
-				inline ? "shrink-0" : "min-w-0 shrink",
-			)}
-		>
+		<div className="flex min-w-0 shrink items-center">
 			<input
 				type="text"
 				inputMode="numeric"
-				className={cn(
-					"min-w-6 rounded bg-transparent px-0.5 text-center font-medium text-foreground tabular-nums outline-none focus:bg-muted",
-					inline ? "h-7 text-xs" : "text-sm",
-				)}
+				className="min-w-6 rounded bg-transparent px-0.5 text-center font-medium text-foreground text-sm tabular-nums outline-none focus:bg-muted"
 				style={{ width: `${pageDigits + 1}ch` }}
 				aria-label={t("pdf.goToPage")}
 				value={pageField}
@@ -118,12 +98,7 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 					onCommitPageField();
 				}}
 			/>
-			<span
-				className={cn(
-					"shrink-0 px-0.5 text-muted-foreground tabular-nums",
-					inline ? "text-xs" : "text-sm",
-				)}
-			>
+			<span className="shrink-0 px-0.5 text-muted-foreground text-sm tabular-nums">
 				/ {totalPages}
 			</span>
 		</div>
@@ -133,7 +108,7 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 		<PdfPaperToneButton
 			pdfTone={pdfTone}
 			onSetPdfTone={onSetPdfTone}
-			side={toneSide}
+			side="top"
 			size="icon-xs"
 			open={tonePickerOpen}
 			onOpenChange={setTonePickerOpen}
@@ -145,10 +120,8 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 			<div
 				data-pdf-chrome
 				className={cn(
-					"pointer-events-auto flex max-w-full select-none items-center",
-					inline
-						? "h-7 shrink-0 whitespace-nowrap rounded-[min(var(--radius-md),12px)] border border-border bg-background text-xs"
-						: cn("gap-0.5 rounded-lg p-0.5", PDF_CHROME_CHIP),
+					"pointer-events-auto flex max-w-full select-none items-center gap-0.5 rounded-lg p-0.5",
+					PDF_CHROME_CHIP,
 				)}
 			>
 				{isRemotePaper ? (
@@ -172,84 +145,36 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 						<TooltipContent side="top">{t("pdf.remoteMode")}</TooltipContent>
 					</Tooltip>
 				) : null}
-				{inline ? (
-					<StepButton
-						label={t("pdf.previousPage")}
-						disabled={!onGoToPage || shownPage <= 1}
-						onClick={() => onGoToPage?.(shownPage - 1)}
-					>
-						<ChevronLeft />
-					</StepButton>
-				) : null}
 				{pageFieldNode}
-				{inline ? (
-					<StepButton
-						label={t("pdf.nextPage")}
-						disabled={!onGoToPage || shownPage >= totalPages}
-						onClick={() => onGoToPage?.(shownPage + 1)}
-					>
-						<ChevronRight />
-					</StepButton>
-				) : null}
 				<span aria-hidden className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
-				{inline ? (
-					<>
-						<StepButton
-							label={t("pdf.zoomOut")}
-							disabled={zoomLevel <= PDF_ZOOM_MIN}
-							onClick={() => onZoomChange(stepPdfZoom(zoomLevel, -1))}
-						>
-							<Minus />
-						</StepButton>
-						<span className="w-9 shrink-0 text-center text-muted-foreground tabular-nums">
-							{formatPdfZoomPercentage(zoomLevel)}%
-						</span>
-						<StepButton
-							label={t("pdf.zoomIn")}
-							disabled={zoomLevel >= PDF_ZOOM_MAX}
-							onClick={() => onZoomChange(stepPdfZoom(zoomLevel, 1))}
-						>
-							<Plus />
-						</StepButton>
-					</>
-				) : (
-					<div className="flex shrink-0 items-center gap-1.5 px-1">
-						<input
-							type="range"
-							min={zoomMinPercent}
-							max={zoomMaxPercent}
-							step={1}
-							value={zoomPercent}
-							aria-label={t("pdf.zoomPercentage")}
-							aria-valuemin={zoomMinPercent}
-							aria-valuemax={zoomMaxPercent}
-							aria-valuenow={zoomPercent}
-							aria-valuetext={`${formatPdfZoomPercentage(zoomLevel)}%`}
-							className="pdf-zoom-slider"
-							onChange={(e) => onZoomChange(Number(e.target.value) / 100)}
-						/>
-						<span
-							aria-hidden
-							className="min-w-[3.25ch] text-right text-muted-foreground text-xs tabular-nums"
-						>
-							{formatPdfZoomPercentage(zoomLevel)}%
-						</span>
-					</div>
-				)}
-				{inline ? null : (
-					<>
-						<span
-							aria-hidden
-							className="mx-0.5 h-3.5 w-px shrink-0 bg-border"
-						/>
-						{tone}
-					</>
-				)}
+				<div className="flex shrink-0 items-center gap-1.5 px-1">
+					<input
+						type="range"
+						min={zoomMinPercent}
+						max={zoomMaxPercent}
+						step={1}
+						value={zoomPercent}
+						aria-label={t("pdf.zoomPercentage")}
+						aria-valuemin={zoomMinPercent}
+						aria-valuemax={zoomMaxPercent}
+						aria-valuenow={zoomPercent}
+						aria-valuetext={`${formatPdfZoomPercentage(zoomLevel)}%`}
+						className="pdf-zoom-slider"
+						onChange={(e) => onZoomChange(Number(e.target.value) / 100)}
+					/>
+					<span
+						aria-hidden
+						className="min-w-[3.25ch] text-right text-muted-foreground text-xs tabular-nums"
+					>
+						{formatPdfZoomPercentage(zoomLevel)}%
+					</span>
+				</div>
+				<span aria-hidden className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
+				{tone}
 			</div>
 		</TooltipProvider>
 	);
 
-	if (variant === "inline") return chrome;
 	return (
 		<div className="pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2">
 			{chrome}
@@ -257,7 +182,7 @@ export const PdfBottomBar = memo(function PdfBottomBar({
 	);
 });
 
-export function PdfPaperToneButton({
+function PdfPaperToneButton({
 	pdfTone,
 	onSetPdfTone,
 	side = "bottom",
@@ -328,29 +253,5 @@ export function PdfPaperToneButton({
 				})}
 			</PopoverContent>
 		</Popover>
-	);
-}
-
-function StepButton({
-	label,
-	disabled,
-	onClick,
-	children,
-}: {
-	label: string;
-	disabled: boolean;
-	onClick: () => void;
-	children: ReactNode;
-}) {
-	return (
-		<button
-			type="button"
-			aria-label={label}
-			disabled={disabled}
-			className="flex h-7 w-6 items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5"
-			onClick={onClick}
-		>
-			{children}
-		</button>
 	);
 }

@@ -87,6 +87,7 @@
 	},
 	"tabs": {
 		"strip": "已打开的文档",
+		"more": "更多标签页",
 		"close": "关闭 {{title}}",
 		"showHtml": "显示 HTML 版本",
 		"showPdf": "显示 PDF 版本",
