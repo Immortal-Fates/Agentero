@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SiGithub } from "react-icons/si";
 import { SettingsGroup } from "@/components/settings/settings-layout";
 import { WritingSyncForm } from "@/components/writing/writing-sync-form";
 import type { WritingGitHubLink } from "@/lib/writing/github";
@@ -29,7 +30,10 @@ export function WritingSyncTab({ vaultPath }: { vaultPath: string }) {
 	return (
 		<div className="h-full overflow-y-auto">
 			<div className="mx-auto flex w-full max-w-xl flex-col px-6 py-8">
-				<h2 className="font-semibold text-base">{t("writing.syncSetup")}</h2>
+				<h2 className="flex items-center gap-2 font-semibold text-base">
+					<SiGithub className="size-4 shrink-0" aria-hidden />
+					{t("writing.syncSetup")}
+				</h2>
 				<p className="mt-1 mb-6 text-muted-foreground text-sm">
 					{t("writing.syncSetupHint")}
 				</p>
