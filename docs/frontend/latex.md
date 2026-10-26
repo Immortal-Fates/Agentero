@@ -50,7 +50,7 @@ LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有
 - `\cite{}` 搜索整项目 bibliography，按 key、标题和作者过滤；同时识别 `.tex` 中 `thebibliography` 的 `\bibitem`，用于补全、预览与定义跳转。
 - `\ref{}` 等引用搜索所有章节的标签；F12 或修饰键点击打开定义。`\href` 的 URL 与 `\hyperref` 的显示文字不会被当成 label。
 - 悬停公式、标签引用和文献引用显示预览；公式使用 KaTeX，完整排版以编译 PDF 为准。
-- 大纲内联章节文件中的标题，并列出图、表、标签；点击章节定位，点击 include 文件行打开对应子文件。
+- 大纲按章节层级列出整篇论文的结构，跨文件合并成同一棵树，不显示源文件、标签、图、表行；点击章节定位。
 - 工具栏的论文库引用入口可以搜索当前 Vault 论文，写入项目 bibliography 并插入 citation key；按 DOI / arXiv / 标题去重，处理 key 冲突。已声明但不存在的 `.bib` 会按声明创建；没有声明时添加必要的 bibliography 接入代码。
 - 保存成功或外部 `.tex` / `.bib` 变化会刷新项目索引与大纲；格式化入口已按产品决定移除。
 
