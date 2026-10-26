@@ -846,10 +846,11 @@ html[data-linux-scrollbars]:has(
 	--dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
 	--dv-tab-divider-color: var(--border);
 	--dv-separator-border: var(--border);
-	/* IDE-style sash (VS Code): rest is invisible, only the 1px separator
-	 * line shows; hover/drag paints a translucent highlight over it. */
+	/* IDE-style sash: the sash itself stays invisible; the 1px separator
+	 * line is the divider and darkens in place on hover/drag, like the
+	 * writing split handle. */
 	--dv-sash-color: transparent;
-	--dv-active-sash-color: color-mix(in oklab, var(--primary) 40%, transparent);
+	--dv-active-sash-color: transparent;
 	--dv-drag-over-background-color: color-mix(
 		in oklab,
 		var(--primary) 16%,
@@ -943,13 +944,37 @@ html[data-linux-scrollbars]:has(
 }
 
 /*
- * Drag feedback for the sash being moved. Class-based (see dockview-sash.ts)
- * because the frame loop prevents pointerdown default, which suppresses
- * `:active`, and dockview never sets pointer capture — so pseudo-class
- * styling cannot be relied on while dragging.
+ * Sash feedback matches the writing split handle: keep the 1px separator as
+ * the divider and recolor that line in place (hover 25%, drag 35%) instead of
+ * painting a band over it.
  */
-.agentero-dockview .dv-sash.agentero-dock-sash-dragging {
-	background-color: var(--dv-active-sash-color);
+.agentero-dockview .dv-split-view-container.dv-separator-border
+	> .dv-view-container
+	> .dv-view:not(:first-child)::before {
+	transition: background-color 150ms;
+}
+
+.agentero-dockview
+	.dv-split-view-container.dv-separator-border:has(
+		> .dv-sash-container > .dv-sash:hover
+	)
+	> .dv-view-container
+	> .dv-view:not(:first-child)::before {
+	background-color: color-mix(in oklab, var(--foreground) 25%, transparent);
+}
+
+/*
+ * The dragged sash is tagged with `agentero-dock-sash-dragging` (see
+ * dockview-sash.ts): the frame loop prevents pointerdown default, which
+ * suppresses `:active`, and dockview sets no pointer capture, so `:hover`
+ * cannot be relied on once the pointer leaves the 4px strip mid-drag.
+ */
+.agentero-dockview .dv-split-view-container.dv-separator-border:has(
+		> .dv-sash-container > .dv-sash.agentero-dock-sash-dragging
+	)
+	> .dv-view-container
+	> .dv-view:not(:first-child)::before {
+	background-color: color-mix(in oklab, var(--foreground) 35%, transparent);
 }
 
 /*
