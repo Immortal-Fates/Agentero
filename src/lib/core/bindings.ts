@@ -696,6 +696,10 @@ export const commands = {
 	jobLatexCompileEnqueue: (args: JobLatexCompileEnqueueArgs) => typedError<ApiResult<JobSnapshot>, string>(__TAURI_INVOKE("job_latex_compile_enqueue", { args })),
 	jobJevSmartHighlightsEnqueue: (args: JobEnqueueArgs) => typedError<ApiResult<JobSnapshot>, string>(__TAURI_INVOKE("job_jev_smart_highlights_enqueue", { args })),
 	jevProbeHealth: () => typedError<ApiResult<null>, string>(__TAURI_INVOKE("jev_probe_health")),
+	writingSyncProject: (thesisDir: string, remote: string, branch: string) => __TAURI_INVOKE<ApiResult<WritingSyncReport>>("writing_sync_project", { thesisDir, remote, branch }),
+	writingGitLog: (thesisDir: string) => __TAURI_INVOKE<ApiResult<WritingGitLog>>("writing_git_log", { thesisDir }),
+	writingGitDiff: (thesisDir: string, commit: string) => __TAURI_INVOKE<ApiResult<WritingGitDiff>>("writing_git_diff", { thesisDir, commit }),
+	writingGitRestore: (thesisDir: string, commit: string) => __TAURI_INVOKE<ApiResult<WritingSyncReport>>("writing_git_restore", { thesisDir, commit }),
 };
 
 /** Events */
@@ -5889,6 +5893,38 @@ export type WindowClosedEvent_Deserialize = {
 export type WindowClosedEvent_Serialize = {
 	kind: string,
 	view?: string | null,
+};
+
+export type WritingGitCommit = {
+	id: string,
+	at: number,
+	summary: string,
+	files: WritingGitFile[],
+};
+
+export type WritingGitDiff = {
+	code: string,
+	patch: string,
+	truncated: boolean,
+};
+
+export type WritingGitFile = {
+	path: string,
+	added: number,
+	removed: number,
+};
+
+export type WritingGitLog = {
+	code: string,
+	commits: WritingGitCommit[],
+};
+
+export type WritingSyncReport = {
+	committed: boolean,
+	pushed: boolean,
+	remote: boolean,
+	code: string,
+	detail: string,
 };
 
 /**  A Zotero collection surfaced in the scan preview (for the folder picker). */

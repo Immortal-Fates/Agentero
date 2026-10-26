@@ -45,3 +45,5 @@ pub mod translate;
 pub mod vault;
 #[cfg(feature = "desktop")]
 pub mod web;
+#[cfg(feature = "desktop")]
+pub mod writing;

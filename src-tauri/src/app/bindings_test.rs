@@ -261,6 +261,10 @@ pub(crate) fn export_typescript_bindings() {
             crate::features::jobs::commands::job_latex_compile_enqueue,
             crate::features::jobs::commands::job_jev_smart_highlights_enqueue,
             crate::features::jev::commands::jev_probe_health,
+            crate::features::writing::sync::writing_sync_project,
+            crate::features::writing::sync::writing_git_log,
+            crate::features::writing::sync::writing_git_diff,
+            crate::features::writing::sync::writing_git_restore,
         ])
         // Desktop event surface (see `app::events_contract`): emit sites keep
         // using `app.emit("<literal>", payload)`; the wrappers/mirrors there
