@@ -410,7 +410,7 @@
 		"engineSettings": "编译引擎",
 		"engineFromFile": "根文件指定了这个引擎。",
 		"fileMissing": "找不到「{{name}}」。",
-		"emptyStructure": "这个文件里没有章节。"
+		"emptyStructure": "这个项目里没有章节。"
 	},
 	"paperInfo": {
 		"info": "信息",

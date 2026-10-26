@@ -411,7 +411,7 @@
 		"engineSettings": "Compile engine",
 		"engineFromFile": "The root file sets this engine.",
 		"fileMissing": "Could not find {{name}}.",
-		"emptyStructure": "No sections in this file."
+		"emptyStructure": "No sections in this project."
 	},
 	"paperInfo": {
 		"info": "Info",
