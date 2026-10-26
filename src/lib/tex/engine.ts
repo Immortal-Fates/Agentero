@@ -2,8 +2,9 @@
  * Which engine latexmk should call.
  *
  * The document wins (`% !TEX program` / `% !TEX TS-program` on the root
- * file). Otherwise the last choice saved for that root, then XeLaTeX when
- * it is installed. The sidebar does not ask on every compile.
+ * file). Otherwise the last choice saved for that root, then the engine
+ * its class or packages require (conference kits are pdfLaTeX), then
+ * XeLaTeX when it is installed.
  */
 
 import { normalizePath } from "@/lib/core/path";
@@ -23,15 +24,61 @@ export function parseTexProgram(content: string): string | null {
 	return null;
 }
 
+const CONFERENCE_ENGINE =
+	/\\(?:usepackage|documentclass)(?:\[[^\]]*\])?\{[^}]*\b(?:cvpr|iccv|iclr\d*(?:_conference)?|icml\d*|neurips(?:_\d+)?|acl|eccvabbrv|eccv|llncs)\b/;
+
+function preambleOf(content: string): string {
+	const head = content.split(/\\begin\s*\{document\}/)[0] ?? content;
+	return head
+		.split(/\r?\n/)
+		.map((line) => {
+			for (let index = 0; index < line.length; index++) {
+				if (line[index] === "%" && (index === 0 || line[index - 1] !== "\\")) {
+					return line.slice(0, index);
+				}
+			}
+			return line;
+		})
+		.join("\n");
+}
+
+/**
+ * Engine a template needs when it does not say so with `% !TEX program`.
+ * Conference classes here are pdfLaTeX. `fontspec` / `babelfont` are not.
+ */
+export function inferRequiredEngine(content: string): string | null {
+	const preamble = preambleOf(content);
+	if (/\\(?:babelfont|babelprovide)\b/.test(preamble)) return "lualatex";
+	if (
+		/\\usepackage(?:\[[^\]]*\])?\{[^}]*\b(?:fontspec|polyglossia|xeCJK)\b/.test(
+			preamble,
+		) ||
+		/\\documentclass(?:\[[^\]]*\])?\{[^}]*\bctex(?:art|rep|book)?\b/.test(
+			preamble,
+		)
+	) {
+		return "xelatex";
+	}
+	if (CONFERENCE_ENGINE.test(preamble)) return "pdflatex";
+	return null;
+}
+
 export function chooseTexEngine(opts: {
 	magic: string | null;
 	remembered: string | null;
+	required: string | null;
 	available: readonly string[];
 }): string | null {
 	const has = (id: string | null): id is string =>
 		id != null && opts.available.includes(id);
 	if (has(opts.magic)) return opts.magic;
 	if (has(opts.remembered)) return opts.remembered;
+	if (opts.required) {
+		if (has(opts.required)) return opts.required;
+		if (opts.required === "lualatex" && has("xelatex")) return "xelatex";
+		if (opts.required === "xelatex" && has("lualatex")) return "lualatex";
+		return null;
+	}
 	if (has("xelatex")) return "xelatex";
 	return opts.available[0] ?? null;
 }

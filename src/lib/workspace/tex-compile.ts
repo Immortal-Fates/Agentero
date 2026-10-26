@@ -26,6 +26,7 @@ import {
 } from "@/lib/tex/config";
 import {
 	chooseTexEngine,
+	inferRequiredEngine,
 	parseTexProgram,
 	rememberedTexEngine,
 } from "@/lib/tex/engine";
@@ -108,14 +109,6 @@ export type TexEngineChoice = {
 	locked: boolean;
 };
 
-async function magicProgram(rootPath: string): Promise<string | null> {
-	try {
-		return parseTexProgram(await readVaultFile(rootPath));
-	} catch {
-		return null;
-	}
-}
-
 /** Engine for an already-resolved root file. */
 export async function engineChoiceForRoot(
 	rootPath: string,
@@ -124,12 +117,19 @@ export async function engineChoiceForRoot(
 	const available = texCompileStore
 		.getState()
 		.engines.map((engine) => engine.id);
-	const magic = await magicProgram(rootPath);
+	let source = "";
+	try {
+		source = await readVaultFile(rootPath);
+	} catch {
+		source = "";
+	}
+	const magic = parseTexProgram(source);
 	return {
 		rootPath,
 		engineId: chooseTexEngine({
 			magic,
 			remembered: rememberedTexEngine(rootPath),
+			required: inferRequiredEngine(source),
 			available,
 		}),
 		locked: magic != null && available.includes(magic),
