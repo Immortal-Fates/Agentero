@@ -1,4 +1,4 @@
-import { Check, Copy, Languages } from "lucide-react";
+import { Bookmark, Check, Copy, Languages } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -41,6 +41,7 @@ type SelectionMenuProps = {
 	onAddToChat: () => void;
 	onTranslate: () => void;
 	onCopy?: () => Promise<boolean>;
+	onBookmark?: () => void;
 	/** Show the highlight color stack (needs marks/ to persist into). */
 	showHighlight?: boolean;
 	/** Show the translate action (ephemeral cards on surfaces without marks/). */
@@ -133,6 +134,7 @@ export function SelectionMenu({
 	onAddToChat,
 	onTranslate,
 	onCopy,
+	onBookmark,
 	showHighlight = true,
 	showTranslate = true,
 	contributionContext,
@@ -254,6 +256,24 @@ export function SelectionMenu({
 						</TooltipContent>
 					</Tooltip>
 				) : null}
+				{onBookmark && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								className="size-7"
+								aria-label={t("pdf.bookmarks.add")}
+								onPointerDown={(event) => event.preventDefault()}
+								onClick={onBookmark}
+							>
+								<Bookmark className="size-3.5" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>{t("pdf.bookmarks.add")}</TooltipContent>
+					</Tooltip>
+				)}
 				{onCopy ? (
 					<SelectionCopyButton
 						onCopy={onCopy}

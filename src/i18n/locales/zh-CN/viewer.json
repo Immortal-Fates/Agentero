@@ -71,6 +71,32 @@
 		},
 		"latexTranslation": {
 			"missingPaperPath": "论文路径缺失，无法启动 LaTeX 翻译。"
+		},
+		"bookmarks": {
+			"add": "添加书签",
+			"addChild": "添加子书签",
+			"actions": "{{title}}的操作",
+			"up": "上移",
+			"down": "下移",
+			"indent": "降一级",
+			"outdent": "升一级",
+			"delete": "删除",
+			"cancel": "取消",
+			"apply": "应用",
+			"title": "标题",
+			"defaultTitle": "第 {{page}} 页",
+			"empty": "点击页面右上角添加书签。",
+			"failed": "无法保存书签，编辑内容已保留。",
+			"conflict": "PDF 已被其他操作修改，请取消编辑并重新打开文件后再试。",
+			"protected": "此 PDF 已加密、带有签名或为只读文件，无法保存书签。",
+			"unsupported": "此 PDF 含有暂不支持的书签动作或结构，原文件未被修改。",
+			"useCurrentPage": "设为当前页",
+			"addPage": "为第 {{page}} 页添加书签",
+			"rename": "重命名",
+			"removePage": "取消第 {{page}} 页的书签",
+			"saving": "正在保存书签…",
+			"retry": "重试保存",
+			"discard": "放弃未保存修改"
 		}
 	},
 	"pdfAsk": {

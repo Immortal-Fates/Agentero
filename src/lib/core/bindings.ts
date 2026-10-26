@@ -614,6 +614,8 @@ export const commands = {
 	 *  the main thread (Windows UI message pump).
 	 */
 	exportSystemCjkFont: () => __TAURI_INVOKE<ApiResult<ExportFontPayload>>("export_system_cjk_font"),
+	/**  Replace only the exact PDF revision the outline editor read. */
+	pdfSaveBookmarks: (path: string, expectedHash: string, bytesBase64: string) => __TAURI_INVOKE<ApiResult<null>>("pdf_save_bookmarks", { path, expectedHash, bytesBase64 }),
 	/**
 	 *  Ensure `host` may be served by the `agentero-web` proxy before its viewer
 	 *  frame loads.

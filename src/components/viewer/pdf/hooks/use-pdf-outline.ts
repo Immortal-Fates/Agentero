@@ -14,7 +14,10 @@ import type { BookmarkCapability } from "@embedpdf/plugin-bookmark/react";
 import { useCallback, useEffect, useState } from "react";
 import { setPaperOutline } from "@/lib/pdf/outline-location";
 
+const openOutlines = new Set<string>();
+
 export type UsePdfOutlineOptions = {
+	pdfPath: string | null;
 	/** EmbedPDF capability; owned by `PdfViewerInner` (plugin context). */
 	bookmarkCap: Readonly<BookmarkCapability> | null;
 	docId: string;
@@ -27,10 +30,12 @@ export type UsePdfOutlineOptions = {
 export type PdfOutline = {
 	outline: PdfBookmarkObject[];
 	showOutline: boolean;
+	outlineReady: boolean;
 	toggleOutline: () => void;
 };
 
 export function usePdfOutline({
+	pdfPath,
 	bookmarkCap,
 	docId,
 	totalPages,
@@ -38,7 +43,11 @@ export function usePdfOutline({
 	paperRelPath,
 }: UsePdfOutlineOptions): PdfOutline {
 	const [outline, setOutline] = useState<PdfBookmarkObject[]>([]);
-	const [showOutline, setShowOutline] = useState(false);
+	const [outlineReady, setOutlineReady] = useState(false);
+	const panelKey = pdfPath ?? docId;
+	const [showOutline, setShowOutline] = useState(() =>
+		openOutlines.has(panelKey),
+	);
 
 	// Load the document outline (bookmarks / TOC) once available.
 	useEffect(() => {
@@ -51,6 +60,7 @@ export function usePdfOutline({
 			.then((res) => {
 				if (cancelled) return;
 				const bookmarks = res?.bookmarks ?? [];
+				setOutlineReady(true);
 				setOutline(bookmarks);
 				// Share with annotation embeds for location breadcrumbs.
 				const paperKey = paperAbsPath || paperRelPath;
@@ -63,8 +73,12 @@ export function usePdfOutline({
 	}, [bookmarkCap, docId, totalPages, paperAbsPath, paperRelPath]);
 
 	const toggleOutline = useCallback(() => {
-		setShowOutline((v) => !v);
-	}, []);
+		setShowOutline((v) => {
+			if (v) openOutlines.delete(panelKey);
+			else openOutlines.add(panelKey);
+			return !v;
+		});
+	}, [panelKey]);
 
-	return { outline, showOutline, toggleOutline };
+	return { outline, outlineReady, showOutline, toggleOutline };
 }
