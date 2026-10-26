@@ -22,6 +22,8 @@ type TexPdfPeer = {
 	scope?: "writing";
 	navigate(location: SyncTexLocation): void;
 	isActive(): boolean;
+	/** Writing split: map the current viewport back to the .tex cursor. */
+	syncFromView?: () => boolean;
 };
 const viewers = new Map<string, Set<TexPdfPeer>>();
 const pending = new Map<
@@ -58,6 +60,18 @@ export function registerTexPdfViewer(
 		peers.delete(peer);
 		if (peers.size === 0) viewers.delete(key);
 	};
+}
+
+/** Backward sync from the writing preview's current viewport, if mounted. */
+export function syncWritingPdfToSource(): boolean {
+	for (const peers of viewers.values()) {
+		for (const peer of peers) {
+			if (peer.scope === "writing" && peer.syncFromView) {
+				return peer.syncFromView();
+			}
+		}
+	}
+	return false;
 }
 
 function deliver(

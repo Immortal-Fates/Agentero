@@ -5,6 +5,7 @@
 	"loading": "Loading",
 	"goToDefinition": "Go to definition",
 	"syncPdf": "Locate in PDF",
+	"syncSource": "Locate in source",
 	"saveFailed": "Save the project changes before inserting a citation.",
 	"noDocumentEnd": "Add a bibliography declaration to the root document before inserting a citation."
 }

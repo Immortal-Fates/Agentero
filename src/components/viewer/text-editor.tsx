@@ -60,6 +60,7 @@ import { ensureTexEngines, texCompileStore } from "@/lib/workspace/tex-compile";
 import { bindTexOutline } from "@/lib/workspace/tex-outline-bridge";
 import { registerTextEditorFlusher } from "@/lib/workspace/text-editor-flush";
 import { isTexPath, textLanguageIdForPath } from "@/lib/workspace/viewer";
+import { writingStore } from "@/lib/writing/store";
 
 interface TextEditorProps {
 	panelId?: string;
@@ -82,6 +83,8 @@ interface TextEditorProps {
 	hideLintFooter?: boolean;
 	/** Writing pins source actions in a bar. Reading keeps the hover chip. */
 	toolbarPlacement?: "overlay" | "bar";
+	/** Writing moves forward sync onto the split handle. */
+	showSyncPdf?: boolean;
 	className?: string;
 }
 
@@ -137,6 +140,7 @@ export function TextEditor({
 	showLivePreview = true,
 	hideLintFooter = false,
 	toolbarPlacement = "overlay",
+	showSyncPdf = true,
 	className,
 }: TextEditorProps) {
 	const { t } = useTranslation("settings");
@@ -263,6 +267,9 @@ export function TextEditor({
 						pathRef.current,
 						line.number,
 						position - line.from + 1,
+						writingStore.getState().surface === "writing"
+							? { scope: "writing" }
+							: undefined,
 					);
 					return true;
 				},
@@ -641,6 +648,7 @@ export function TextEditor({
 										showLivePreview ? undefined : { scope: "writing" },
 									);
 								},
+								hideSyncPdf: !showSyncPdf,
 							}
 						: null
 				}

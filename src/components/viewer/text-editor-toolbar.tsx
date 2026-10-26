@@ -34,6 +34,8 @@ interface TextEditorToolbarProps {
 	texTools?: {
 		onCitation: () => void;
 		onSyncPdf: () => void;
+		/** Writing places forward sync on the split handle instead. */
+		hideSyncPdf?: boolean;
 	} | null;
 	placement?: "overlay" | "bar";
 }
@@ -91,16 +93,18 @@ export function TextEditorToolbar({
 			>
 				{texTools ? (
 					<>
-						<Button
-							type="button"
-							size="icon-xs"
-							variant="ghost"
-							aria-label={tx("syncPdf")}
-							title={`${tx("syncPdf")} (⌘/Ctrl+Alt+J)`}
-							onClick={texTools.onSyncPdf}
-						>
-							<Crosshair className="size-3.5" aria-hidden />
-						</Button>
+						{texTools.hideSyncPdf ? null : (
+							<Button
+								type="button"
+								size="icon-xs"
+								variant="ghost"
+								aria-label={tx("syncPdf")}
+								title={`${tx("syncPdf")} (⌘/Ctrl+Alt+J)`}
+								onClick={texTools.onSyncPdf}
+							>
+								<Crosshair className="size-3.5" aria-hidden />
+							</Button>
+						)}
 						<Button
 							type="button"
 							size="icon-xs"

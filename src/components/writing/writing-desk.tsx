@@ -23,6 +23,7 @@ import { NewProjectForm } from "@/components/writing/new-project-form";
 import { WritingDeleteDialog } from "@/components/writing/writing-delete-dialog";
 import { WritingHistory } from "@/components/writing/writing-history";
 import { WritingPdfBar } from "@/components/writing/writing-pdf-bar";
+import { WritingSyncButtons } from "@/components/writing/writing-sync-buttons";
 import { useVaultStore, useWritingStore } from "@/hooks/use-app-stores";
 import { useTexRoot } from "@/hooks/use-tex-root";
 import { errorText } from "@/lib/core/error";
@@ -248,7 +249,9 @@ export function WritingDesk() {
 						</div>
 					)}
 				</ResizablePanel>
-				<ResizableHandle />
+				<ResizableHandle className="z-30">
+					<WritingSyncButtons activeFile={activeFile} />
+				</ResizableHandle>
 				<ResizablePanel
 					id="writing-pdf"
 					defaultSize="42"
@@ -348,6 +351,7 @@ function ProjectEditor({ path }: { path: string }) {
 			}}
 			hideLintFooter
 			toolbarPlacement="bar"
+			showSyncPdf={false}
 			className="min-h-0 flex-1"
 		/>
 	);
