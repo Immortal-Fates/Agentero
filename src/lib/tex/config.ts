@@ -162,6 +162,20 @@ export function setTexProjectRoot(sourcePath: string, rootPath: string): void {
 	writeJsonStorage(STORAGE_KEY, texSettingsStore.getState());
 }
 
+/** Make one file the compile root for every source under `directory`. */
+export function setDirectoryTexRoot(directory: string, rootPath: string): void {
+	const dir = normalizePath(directory);
+	texSettingsStore.setState((state) => {
+		const roots = { ...state.roots };
+		for (const key of Object.keys(roots)) {
+			if (key === dir || key.startsWith(`${dir}/`)) delete roots[key];
+		}
+		roots[dir] = rootPath;
+		return { roots };
+	});
+	writeJsonStorage(STORAGE_KEY, texSettingsStore.getState());
+}
+
 export function explicitTexRoot(sourcePath: string): string | undefined {
 	const path = normalizePath(sourcePath);
 	return Object.entries(texSettingsStore.getState().roots)
