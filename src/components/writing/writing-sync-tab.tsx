@@ -5,16 +5,13 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-	SettingsGroup,
-	SettingsSectionLabel,
-} from "@/components/settings/settings-layout";
+import { SettingsGroup } from "@/components/settings/settings-layout";
 import { WritingSyncForm } from "@/components/writing/writing-sync-form";
 import type { WritingGitHubLink } from "@/lib/writing/github";
 import { uploadWritingProject } from "@/lib/writing/upload";
 
 export function WritingSyncTab({ vaultPath }: { vaultPath: string }) {
-	const { t } = useTranslation(["sidebar", "settings"]);
+	const { t } = useTranslation("sidebar");
 	const [syncing, setSyncing] = useState(false);
 
 	async function saveAndUpload(link: WritingGitHubLink) {
@@ -36,9 +33,6 @@ export function WritingSyncTab({ vaultPath }: { vaultPath: string }) {
 				<p className="mt-1 mb-6 text-muted-foreground text-sm">
 					{t("writing.syncSetupHint")}
 				</p>
-				<SettingsSectionLabel>
-					{t("settings:writing.github")}
-				</SettingsSectionLabel>
 				<SettingsGroup>
 					<WritingSyncForm
 						vaultPath={vaultPath}

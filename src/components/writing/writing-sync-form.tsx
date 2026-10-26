@@ -165,13 +165,16 @@ export function WritingSyncForm({
 					</Select>
 				</SettingsRow>
 			) : null}
-			<div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-				<p className="text-muted-foreground text-xs">
-					{invalid ? t("sidebar:writing.syncInvalid") : t("writing.githubHint")}
-				</p>
+			<div className="flex items-center gap-3 px-3.5 py-2.5">
+				{invalid ? (
+					<p className="text-muted-foreground text-xs">
+						{t("sidebar:writing.syncInvalid")}
+					</p>
+				) : null}
 				<Button
 					type="button"
 					size="sm"
+					className="ml-auto"
 					disabled={!vaultPath || busy}
 					onClick={save}
 				>

@@ -27,7 +27,6 @@
 		"projectSettings": "Project settings",
 		"noProject": "Open a writing project to change these.",
 		"github": "GitHub",
-		"githubHint": "The writing folder is pushed to this repository. Create the empty repository on GitHub first. The address stays on this computer. Nothing new is recorded when the folder has not changed.",
 		"uploadMode": "When to upload",
 		"uploadManual": "Manually",
 		"uploadOnCompile": "After each compile",
