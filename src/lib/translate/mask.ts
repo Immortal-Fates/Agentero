@@ -18,8 +18,10 @@ export type MaskedText = {
 
 export type RestoredText = {
 	text: string;
-	/** Placeholders the engine dropped or rewrote; caller may retry unmasked. */
+	/** Placeholders the engine dropped or rewrote; caller decides retry policy. */
 	missing: number;
+	/** Duplicated or invented placeholders invalidate structural restoration. */
+	invalid?: boolean;
 };
 
 /**
@@ -81,9 +83,16 @@ export function restoreInlineTokens(
 ): RestoredText {
 	let out = text;
 	let missing = 0;
+	let invalid = false;
+	const known = new Set(tokens.map((token) => token.placeholder.slice(1, -1)));
+	for (const match of text.matchAll(/⟦\s*(\d+)\s*⟧/g)) {
+		if (!known.has(match[1] ?? "")) invalid = true;
+	}
 	for (const token of tokens) {
 		// Engines sometimes pad the brackets ("⟦ 0 ⟧") or drop the token entirely.
 		const body = token.placeholder.slice(1, -1);
+		if ([...text.matchAll(new RegExp(`⟦\\s*${body}\\s*⟧`, "g"))].length > 1)
+			invalid = true;
 		if (!new RegExp(`⟦\\s*${body}\\s*⟧`).test(out)) {
 			missing += 1;
 			continue;
@@ -93,5 +102,7 @@ export function restoreInlineTokens(
 			() => token.original,
 		);
 	}
-	return { text: out, missing };
+	return invalid
+		? { text: out, missing, invalid: true }
+		: { text: out, missing };
 }

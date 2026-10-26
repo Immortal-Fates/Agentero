@@ -43,6 +43,21 @@ describe("layout sidecar", () => {
 		const parsed = parseLayoutSidecar(updated);
 		expect(parsed && layoutSidecarNeedsTextLayer(parsed)).toBe(false);
 	});
+	it("round-trips source metrics after backfill without rerunning layout", () => {
+		const old: PdfLayoutSidecar = {
+			schemaVersion: 3,
+			source: { mode: "embedpdf-layout", generatedAt: "now" },
+			regions: [region()],
+		};
+		const sourceStyle = { fontSize: 10 / 792, bold: false, italic: true };
+		const updated = layoutTextBackfillSidecar(old, [
+			{ ...region(), sourceStyle },
+		]);
+		const parsed = parseLayoutSidecar(JSON.parse(JSON.stringify(updated)));
+		expect(parsed?.regions[0]?.sourceStyle).toEqual(sourceStyle);
+		expect(parsed && layoutSidecarNeedsTextLayer(parsed)).toBe(false);
+		expect(parsed?.source.generatedAt).toBe(old.source.generatedAt);
+	});
 	it("reloads an open viewer only when the sidecar parse is new", () => {
 		expect(
 			layoutSidecarNeedsViewerReload(null, {
@@ -154,7 +169,8 @@ describe("layout sidecar", () => {
 			regions: [region()],
 		});
 		expect(sidecar?.source.textLayerExtracted).toBe(true);
-		expect(sidecar && layoutSidecarNeedsTextLayer(sidecar)).toBe(false);
+		// Older text-only caches need a one-time style backfill, not a model run.
+		expect(sidecar && layoutSidecarNeedsTextLayer(sidecar)).toBe(true);
 
 		const stale = parseLayoutSidecar({
 			schemaVersion: 3,

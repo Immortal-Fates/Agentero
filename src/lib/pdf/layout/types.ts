@@ -1,4 +1,5 @@
 import type { PdfAskNormalizedRect } from "@/lib/pdf/ask/types";
+import type { LayoutSourceStyle } from "@/lib/pdf/layout/source-style";
 
 /**
  * Layout kinds we may store from PP-DocLayoutV3.
@@ -55,6 +56,8 @@ export type PdfLayoutRegion = {
 	 * this region's bbox (not used for figure-caption merge).
 	 */
 	text?: string;
+	/** Dominant source style, preserved through cache and translation. */
+	sourceStyle?: LayoutSourceStyle;
 	/**
 	 * Normalized caption box (before union into bbox), if a title was attached.
 	 * For formulas: the model `formula_number` box geometry (no text parse).
@@ -114,7 +117,8 @@ export type LayoutTranslateRegion = {
 	bbox: PdfLayoutRegion["bbox"];
 	kind: PdfLayoutRegion["kind"];
 	readingOrder: number;
-	/** Source PDF text (trimmed, possibly truncated for the API). */
+	sourceStyle?: LayoutSourceStyle;
+	/** Complete normalized source; request limits apply only to transport. */
 	source: string;
 	/**
 	 * Text-layer string before hyphen healing. Sentence quotes are cut from

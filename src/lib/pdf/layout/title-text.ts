@@ -1,5 +1,4 @@
 import type { PdfTextRun } from "@embedpdf/models";
-
 import type { PdfAskNormalizedRect } from "@/lib/pdf/ask/types";
 import { recoverFigureCaptionsFromRuns } from "@/lib/pdf/layout/captions-from-runs";
 import { figureCaptionKey } from "@/lib/pdf/layout/figure-caption-text";
@@ -12,6 +11,7 @@ import {
 	orderByReadingLine,
 	type ReadingBox,
 } from "@/lib/pdf/layout/reading-order";
+import { sourceStyleFromRuns } from "@/lib/pdf/layout/source-style";
 import type { PdfLayoutRegion } from "@/lib/pdf/layout/types";
 
 /** Semantic role of a caption box (from PDF text, not model label alone). */
@@ -263,7 +263,17 @@ export function enrichCaptionRegionsWithText(
 
 		return region;
 	});
-	return recoverFigureCaptionsFromRuns(enriched, pageIndex, runs, pageSize);
+	return recoverFigureCaptionsFromRuns(enriched, pageIndex, runs, pageSize).map(
+		(region) => {
+			if (region.pageIndex !== pageIndex || !(region.text || region.title))
+				return region;
+			const sourceStyle = sourceStyleFromRuns(
+				runsInBbox(runs, region.bbox, pageSize.width, pageSize.height),
+				pageSize.height,
+			);
+			return sourceStyle ? { ...region, sourceStyle } : region;
+		},
+	);
 }
 
 /**

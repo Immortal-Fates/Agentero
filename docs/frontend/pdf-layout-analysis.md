@@ -52,7 +52,7 @@ PP-DocLayoutV3  每页: render → detect → map to PDF points（仅无 sidecar
         ▼
 ①b source/layout.json 缓存命中（打开论文 / 点「重新分析」默认路径）
         │  跳过 PP-DocLayoutV3，只从 raw regions 重新 `mergeCaptionsIntoHosts` + 去重
-        │  `source.textLayerExtracted === true`：通常不再读文字层；旧 MinerU 缓存还需
+        │  `source.textLayerExtracted === true` 且 `source.sourceStylesExtracted === true`：通常不再读文字层；旧缓存补读一次源字号与粗斜体，不重新跑模型。旧 MinerU 缓存还需
         │  `source.figureCaptionsExtracted === true`，否则本地补读一次编号图注，不重新上传 PDF
         │  标记缺失（含已经存了正文的旧文件）：再抽一次文字层。抽完才写回，
         │  保留 generatedAt；写之前核对 mode、generatedAt 和框几何仍是同一次解析。

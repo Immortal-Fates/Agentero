@@ -7,6 +7,7 @@ import {
 	parseLayoutIndexSidecar,
 } from "@/lib/pdf/layout/layout-index";
 import { mergeCaptionsIntoHosts } from "@/lib/pdf/layout/merge-captions";
+import { parseLayoutSourceStyle } from "@/lib/pdf/layout/source-style";
 import type { PdfLayoutKind, PdfLayoutRegion } from "@/lib/pdf/layout/types";
 import { joinVaultPath, readVaultFile, writeVaultFile } from "@/lib/vault";
 
@@ -39,6 +40,8 @@ export type PdfLayoutSidecar = {
 		textLayerExtracted?: boolean;
 		/** Numbered captions have been recovered directly from PDF text runs. */
 		figureCaptionsExtracted?: boolean;
+		/** Rich PDF run styles sampled; old caches need only a text walk. */
+		sourceStylesExtracted?: boolean;
 	};
 	/** Raw text-enriched model regions, before caption/formula merge. */
 	regions: PdfLayoutRegion[];
@@ -94,6 +97,8 @@ function parseRegion(value: unknown): PdfLayoutRegion | null {
 	};
 	if (typeof value.title === "string") out.title = value.title;
 	if (typeof value.text === "string") out.text = value.text;
+	const sourceStyle = parseLayoutSourceStyle(value.sourceStyle);
+	if (sourceStyle) out.sourceStyle = sourceStyle;
 	const titleBbox = parseBbox(value.titleBbox);
 	if (titleBbox) out.titleBbox = titleBbox;
 	if (
@@ -148,6 +153,8 @@ export function parseLayoutSidecar(raw: unknown): PdfLayoutSidecar | null {
 		generatedAt: raw.source.generatedAt,
 	};
 	if (raw.source.textLayerExtracted === true) source.textLayerExtracted = true;
+	if (raw.source.sourceStylesExtracted === true)
+		source.sourceStylesExtracted = true;
 	if (raw.source.figureCaptionsExtracted === true)
 		source.figureCaptionsExtracted = true;
 	return {
@@ -200,6 +207,7 @@ export function layoutSidecarNeedsTextLayer(
 	sidecar: PdfLayoutSidecar,
 ): boolean {
 	return (
+		sidecar.source.sourceStylesExtracted !== true ||
 		sidecar.source.textLayerExtracted !== true ||
 		(sidecar.source.mode === "mineru-layout" &&
 			sidecar.source.figureCaptionsExtracted !== true)
@@ -232,6 +240,7 @@ export async function writeLayoutSidecar(
 	if (options.textLayerExtracted === true) {
 		source.textLayerExtracted = true;
 		source.figureCaptionsExtracted = true;
+		source.sourceStylesExtracted = true;
 	}
 	const sidecar: PdfLayoutSidecar = {
 		schemaVersion: LAYOUT_SIDECAR_SCHEMA_VERSION,
@@ -293,6 +302,7 @@ export function layoutTextBackfillSidecar(
 			generatedAt: expected.source.generatedAt,
 			textLayerExtracted: true,
 			figureCaptionsExtracted: true,
+			sourceStylesExtracted: true,
 		},
 		regions,
 	};

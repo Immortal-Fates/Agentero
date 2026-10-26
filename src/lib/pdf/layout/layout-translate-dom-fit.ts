@@ -41,11 +41,13 @@ export function layoutTranslateDomFitKey(input: {
 	boxHeightPx: number;
 	initialFontSize: number;
 	isHeading: boolean;
+	/** Font metrics change with weight/style even when text and size do not. */
+	fontStyleKey?: string;
 }): string {
 	const width = Math.round(input.boxWidthPx * 2);
 	const height = Math.round(input.boxHeightPx * 2);
 	const fontSize = Math.round(input.initialFontSize * 100);
-	return `${width}x${height}@${fontSize}${input.isHeading ? "h" : "b"}\n${input.text}`;
+	return `${width}x${height}@${fontSize}${input.isHeading ? "h" : "b"}:${input.fontStyleKey ?? ""}\n${input.text}`;
 }
 
 const domFitCache = new Map<string, LayoutTranslateDomFit>();
@@ -98,6 +100,7 @@ export function fitLayoutTranslateParagraph(
 	input: { text: string; initialFontSize: number; isHeading: boolean },
 ): LayoutTranslateDomFit | null {
 	if (element.textContent !== input.text) return null;
+	element.style.overflowWrap = "normal";
 
 	let lineHeight: number = LINE_HEIGHT;
 	let overflowWrap: LayoutTranslateDomFit["overflowWrap"] = "normal";

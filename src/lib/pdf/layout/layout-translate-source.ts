@@ -122,7 +122,7 @@ export function isLayoutParagraphContinuation(
 	const head = prev.source.trim();
 	const tail = next.source.trim();
 	if (!head || !tail) return false;
-	// Source truncated at LAYOUT_TRANSLATE_MAX_CHARS: the join would be wrong.
+	// An explicit source ellipsis cannot establish a continuation.
 	if (head.endsWith("…")) return false;
 	if (/[-\u2010\u2011]$/.test(head)) return true;
 	if (SENTENCE_END.test(head)) return false;
