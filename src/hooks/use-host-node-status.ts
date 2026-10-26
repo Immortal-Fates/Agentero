@@ -19,6 +19,7 @@ import {
 	HOST_NODE_INSTALLED_EVENT,
 	installNodeInBackground,
 } from "@/lib/doctor/install-node";
+import type { HostNodeGap } from "@/lib/doctor/node-guidance";
 
 export type HostNodeStatus = {
 	nodeMissing: boolean;
@@ -27,6 +28,12 @@ export type HostNodeStatus = {
 	installing: boolean;
 	/** Re-probe Node.js/npm (manual refresh or after an install elsewhere). */
 	refresh: () => Promise<void>;
+	/**
+	 * Node/npm readiness for a lifecycle guard. Waits for the mount probe (or
+	 * starts one if it failed) so a click that lands before the first result
+	 * cannot start a Node-dependent install blindly.
+	 */
+	checkNodeGap: () => Promise<HostNodeGap | null>;
 	/** One-click Node.js install + success/failure toast, then re-probe. */
 	installNode: () => Promise<void>;
 };
@@ -41,18 +48,58 @@ export function useHostNodeStatus(
 	const { t } = useTranslation("settings");
 	const [report, setReport] = useState<HostDoctorReport | null>(null);
 	const [installing, setInstalling] = useState(false);
+	const reportRef = useRef<HostDoctorReport | null>(null);
+	const probeRef = useRef<Promise<HostDoctorReport | null> | null>(null);
 	const checkedRef = useRef(false);
 
-	const refresh = useCallback(async () => {
-		if (!isTauri()) return;
+	const runProbe = useCallback(async (): Promise<HostDoctorReport | null> => {
+		if (!isTauri()) return null;
 		try {
-			setReport(await doctorCheckHost());
+			const next = await doctorCheckHost();
+			reportRef.current = next;
+			setReport(next);
+			return next;
 		} catch {
 			// Environment diagnostics surfaces this failure in its own section;
 			// the Agent pane stays quiet instead of adding a second error banner.
+			reportRef.current = null;
 			setReport(null);
+			return null;
 		}
 	}, []);
+
+	const probe = useCallback(
+		async (force: boolean): Promise<HostDoctorReport | null> => {
+			if (!force && reportRef.current) return reportRef.current;
+			if (probeRef.current) {
+				if (!force) return probeRef.current;
+				// A forced refresh must observe the post-install state, not the
+				// result of a probe that started before the install finished.
+				await probeRef.current;
+			}
+			const request = runProbe();
+			probeRef.current = request;
+			try {
+				return await request;
+			} finally {
+				if (probeRef.current === request) probeRef.current = null;
+			}
+		},
+		[runProbe],
+	);
+
+	const refresh = useCallback(async () => {
+		await probe(true);
+	}, [probe]);
+
+	const checkNodeGap = useCallback(async (): Promise<HostNodeGap | null> => {
+		const current = await probe(false);
+		if (!current) return null;
+		return {
+			nodeMissing: current.node.status !== "available",
+			npmMissing: current.npm.status !== "available",
+		};
+	}, [probe]);
 
 	const handleInstalled = useCallback(async () => {
 		await refresh();
@@ -73,8 +120,8 @@ export function useHostNodeStatus(
 		// Probe once per mount; remounts (e.g. a new settings window) re-check.
 		if (checkedRef.current) return;
 		checkedRef.current = true;
-		void refresh();
-	}, [refresh]);
+		void checkNodeGap();
+	}, [checkNodeGap]);
 
 	const installNode = useCallback(async () => {
 		if (!isTauri() || installing) return;
@@ -105,6 +152,7 @@ export function useHostNodeStatus(
 		npmMissing: report ? report.npm.status !== "available" : false,
 		installing,
 		refresh,
+		checkNodeGap,
 		installNode,
 	};
 }

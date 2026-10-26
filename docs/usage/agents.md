@@ -32,7 +32,7 @@ Agentero 使用 **BYOA**（Bring Your Own Agent）：Agent 由你安装和登录
 
 如果你希望这些应用操作 Vault，可参考：
 
-- **Codex**：安装 Codex CLI 并通过 `codex-acp` 接入（见上表）。
+- **Codex**：安装 Codex CLI 并通过 `codex-acp` 接入（见上表）。`codex-acp` 是 Node 包；Codex 自身的官方安装器只安装 host CLI，不能替代它，所以 Agentero 的 Codex 接入仍需要 Node.js/npm。
 - **WorkBuddy**：暂无可行接入方式；如 WorkBuddy 后续提供兼容 ACP 的 CLI/bridge，可尝试「自定义 `command` / `args` / `env`」，但未经官方测试。
 
 ## 添加 Agent

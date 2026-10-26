@@ -61,10 +61,11 @@ pub const CODEX_ACP_INSTALL_COMMAND: &str = if cfg!(windows) {
     "npm i -g @agentclientprotocol/codex-acp@latest --prefix \"$HOME/.local\""
 };
 
-/// Codex host CLI (`@openai/codex`). Unlike the official installers used by
-/// Claude/OpenCode/Grok/Kimi, this package only has the npm path on Unix, so it
-/// needs the same user-prefix treatment as the adapters: the default npm prefix
-/// on macOS pkg-installed Node is the root-owned `/usr/local` (#791).
+/// Codex host CLI (`@openai/codex`). Codex also ships a standalone installer,
+/// but Agentero's Codex entry needs the npm-only `codex-acp` adapter, so the
+/// lifecycle keeps both layers on npm instead of mixing an officially installed
+/// Codex with the adapter's own dependency. The user prefix avoids the
+/// root-owned `/usr/local` default on macOS pkg-installed Node (#791).
 pub const CODEX_HOST_INSTALL_COMMAND: &str = if cfg!(windows) {
     "npm i -g @openai/codex@latest"
 } else {

@@ -5,9 +5,7 @@
 //! Scoped to Motif catalog templates.
 
 use crate::features::agent::registry::antigravity;
-#[cfg(target_os = "windows")]
-use crate::features::agent::registry::discovery::path_entries;
-use crate::features::agent::registry::discovery::resolve_command;
+use crate::features::agent::registry::discovery::{login_shell_env, path_entries, resolve_command};
 use crate::features::agent::registry::templates::{
     antigravity_install_dir, antigravity_server_name, kimi_launcher_dir, template_info,
     zcode_host_path, CLAUDE_ACP_INSTALL_COMMAND, CODEX_ACP_INSTALL_COMMAND,
@@ -711,6 +709,15 @@ pub fn run_template_lifecycle(
     if command.trim().is_empty() {
         return Err(format!("empty lifecycle command for {template_id}"));
     }
+    // Fail with the message the UI already recognizes before starting a doomed
+    // `bash -c "npm ..."`. Commands that put an official installer first (with
+    // npm only as an `||` fallback) are not npm-only and stay allowed.
+    if command_needs_npm(&command) && !npm_available_for_lifecycle() {
+        return Err(
+            "npm is not available on PATH; install Node.js (npm ships with it), then retry"
+                .to_string(),
+        );
+    }
 
     log::info!(
         target: "agentero::agent",
@@ -1237,6 +1244,31 @@ fn chain_commands(parts: &[String]) -> String {
     }
 }
 
+/// True when every non-empty line is a direct `npm` invocation. Official
+/// installers that only use npm as an `||` fallback are excluded: they can
+/// succeed without Node, so a missing npm must not reject them up front.
+fn command_needs_npm(command: &str) -> bool {
+    let mut lines = command
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .peekable();
+    lines.peek().is_some()
+        && lines.all(|line| line.starts_with("npm ") || line.starts_with("npm.cmd "))
+}
+
+fn npm_available_for_lifecycle() -> bool {
+    if resolve_command("npm").is_some() {
+        return true;
+    }
+    login_shell_env()
+        .and_then(|environment| environment.get("PATH").cloned())
+        .is_some_and(|path| {
+            let paths = std::env::split_paths(&path).collect::<Vec<_>>();
+            crate::core::process::resolve_command_in_paths("npm", &paths).is_some()
+        })
+}
+
 #[cfg(target_os = "windows")]
 fn powershell_encoded_command(script: &str) -> String {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -1431,9 +1463,25 @@ fn run_tool_lifecycle_silently(
             cmd.env("npm_config_prefix", prefix);
         }
         let shell_env = crate::core::process::discover::refresh_login_shell_env();
-        if let Some(login_path) = shell_env.as_ref().and_then(|env| env.get("PATH")) {
-            let inherited = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", merge_path_segments(login_path, &inherited));
+        // Match `diagnose_host` / ACP spawn: nvm, fnm, Homebrew and the
+        // agent-specific user bins are often absent from both a GUI-launched
+        // process and a non-interactive login shell. Without them npm can be
+        // reported available by Doctor and still be `command not found` here.
+        let inherited = std::env::var("PATH").unwrap_or_default();
+        let base_path = shell_env
+            .as_ref()
+            .and_then(|env| env.get("PATH"))
+            .map_or(inherited.clone(), |login_path| {
+                merge_path_segments(login_path, &inherited)
+            });
+        let mut merged_paths = std::env::split_paths(&base_path).collect::<Vec<_>>();
+        for entry in path_entries() {
+            if !merged_paths.iter().any(|existing| existing == &entry) {
+                merged_paths.push(entry);
+            }
+        }
+        if let Ok(path) = std::env::join_paths(&merged_paths) {
+            cmd.env("PATH", path);
         }
         let output = run_command_with_cancellation(cmd, app, task_id, phase);
         crate::core::process::discover::invalidate_login_shell_env();
@@ -1993,6 +2041,18 @@ mod tests {
                 "codex host install/update/uninstall must all target the user prefix: {command}"
             );
         }
+    }
+
+    #[test]
+    fn npm_guard_only_covers_pure_npm_commands() {
+        assert!(command_needs_npm("npm i -g @openai/codex@latest"));
+        assert!(command_needs_npm(
+            "npm i -g @openai/codex@latest && npm i -g @agentclientprotocol/codex-acp@latest"
+        ));
+        assert!(!command_needs_npm(
+            "bash -c 'curl -fsSL https://example.test/install.sh | bash' || npm i -g foo"
+        ));
+        assert!(!command_needs_npm(""));
     }
 
     /// Every npm global install/uninstall on Unix must use the user prefix.

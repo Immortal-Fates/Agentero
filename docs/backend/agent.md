@@ -208,7 +208,9 @@ Agentero 作为 **ACP Client**，stdio JSON-RPC 连接用户本机或远端 Agen
     详见 [Windows 内置 ACP 启动失败](../bug_fix/windows-bundled-acp-node-path.md)。
   - Node 门槛：claude-agent-acp 需 Node ≥22（manifest `nodeMajor`）；node 缺失或版本不足
     时该层静默关闭（`bundled_spawnable` = false），catalog 的 `last_probe_error` 显示
-    `node_blocker_message` 提示，安装按钮回归 npm 路径。
+    `node_blocker_message` 提示，安装按钮回归 npm 路径。Codex 的 `codex-acp` 同样是 Node
+    包：Codex 官方安装器只装 host CLI，不能替代适配器，因此 Codex 接入仍然要求
+    Node.js/npm；生命周期守卫会在首次 host 探测返回后再决定是否启动 npm 安装。
   - Lifecycle 跳过（`registry/lifecycle.rs`）：`bundled_tier_active`（PATH 无适配器且内置层
     可 spawn）时 install/update 只装/升级 host，不再 npm 安装适配器；PATH 装上适配器后自动
     恢复双装语义。uninstall 不受影响（npm 卸载只作用于 PATH 安装）。
