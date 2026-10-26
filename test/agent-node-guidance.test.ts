@@ -62,7 +62,7 @@ describe("lifecycleNeedsNode", () => {
 	});
 
 	it("keeps native ACP binary installs and updates unchanged", () => {
-		for (const templateId of ["hermes", "qodercli", "kimi-code"]) {
+		for (const templateId of ["hermes", "qodercli", "qoder-cn", "kimi-code"]) {
 			expect(lifecycleNeedsNode(entry({ templateId }), "install")).toBe(false);
 			expect(lifecycleNeedsNode(entry({ templateId }), "update")).toBe(false);
 		}

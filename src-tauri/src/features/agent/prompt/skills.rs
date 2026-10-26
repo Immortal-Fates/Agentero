@@ -37,6 +37,7 @@ pub fn skill_mention_style(template: &AgentTemplate) -> SkillMentionStyle {
         | AgentTemplate::Hermes
         | AgentTemplate::CursorAgent
         | AgentTemplate::QoderCli
+        | AgentTemplate::QoderCn
         | AgentTemplate::GrokBuild
         | AgentTemplate::Dsh
         | AgentTemplate::KimiCode

@@ -522,6 +522,21 @@ pub fn builtin_templates() -> Vec<AgentTemplateInfo> {
             login_command: None,
         },
         AgentTemplateInfo {
+            id: AgentTemplate::QoderCn.as_str().to_string(),
+            name: "Qoder CN".to_string(),
+            description: "Qoder CN CLI with native ACP (`qodercn --acp`).".to_string(),
+            command: "qodercn".to_string(),
+            args: vec!["--acp".to_string()],
+            detect_command: Some("qodercn".to_string()),
+            install_hint:
+                "Official installer (https://static.qoder.com.cn/qoder-cli-cn/install.sh) or npm: \
+                 `npm i -g @qodercn-ai/qoderclicn`  ·  then `qodercn login`  ·  \
+                 https://docs.qoder.cn/cli/installation"
+                    .to_string(),
+            install_command: None,
+            login_command: Some("qodercn login".to_string()),
+        },
+        AgentTemplateInfo {
             id: AgentTemplate::GrokBuild.as_str().to_string(),
             name: "Grok Build".to_string(),
             description: "xAI Grok Build with native ACP (`grok agent stdio`).".to_string(),
@@ -660,6 +675,7 @@ pub fn template_from_id(id: &str) -> AgentTemplate {
         "cursor-agent" => AgentTemplate::CursorAgent,
         "antigravity-acp" => AgentTemplate::AntigravityAcp,
         "qodercli" => AgentTemplate::QoderCli,
+        "qoder-cn" => AgentTemplate::QoderCn,
         "grok-build" => AgentTemplate::GrokBuild,
         "pi" => AgentTemplate::Pi,
         "dsh" => AgentTemplate::Dsh,

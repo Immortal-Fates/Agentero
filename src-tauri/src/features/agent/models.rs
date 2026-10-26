@@ -18,6 +18,9 @@ pub enum AgentTemplate {
     /// Qoder CLI native ACP (`qodercli --acp`).
     /// Docs: https://docs.qoder.com/en/cli/acp
     QoderCli,
+    /// Qoder CN CLI (mainland build) with native ACP (`qodercn --acp`).
+    /// Docs: https://docs.qoder.cn/cli/acp
+    QoderCn,
     /// Grok Build native ACP (`grok agent stdio`).
     /// Docs: https://zed.dev/acp/agent/grok-build
     GrokBuild,
@@ -61,6 +64,7 @@ impl<'de> serde::Deserialize<'de> for AgentTemplate {
             "cursor-agent" => Self::CursorAgent,
             "antigravity-acp" => Self::AntigravityAcp,
             "qodercli" => Self::QoderCli,
+            "qoder-cn" => Self::QoderCn,
             "grok-build" => Self::GrokBuild,
             "pi" => Self::Pi,
             "dsh" => Self::Dsh,
@@ -88,6 +92,7 @@ impl AgentTemplate {
             Self::CursorAgent => "cursor-agent",
             Self::AntigravityAcp => "antigravity-acp",
             Self::QoderCli => "qodercli",
+            Self::QoderCn => "qoder-cn",
             Self::GrokBuild => "grok-build",
             Self::Pi => "pi",
             Self::Dsh => "dsh",

@@ -26,6 +26,7 @@ export type AgentLogoKey =
 	| "zcode"
 	| "minimax-code"
 	| "mimo-code"
+	| "qoder-cn"
 	| "custom";
 
 export function agentLogoKeyForTemplate(
@@ -46,6 +47,7 @@ export function agentLogoKeyForTemplate(
 		case "zcode":
 		case "minimax-code":
 		case "mimo-code":
+		case "qoder-cn":
 			return template;
 		default:
 			return "custom";
@@ -120,6 +122,7 @@ export function AgentLogo({
 			icon = <SiXiaomi className={cn(iconClass, "!text-[#FF6900]")} />;
 			break;
 		case "qodercli":
+		case "qoder-cn":
 			icon = <QoderMark className={neutralIconClass} />;
 			break;
 		case "antigravity-acp":

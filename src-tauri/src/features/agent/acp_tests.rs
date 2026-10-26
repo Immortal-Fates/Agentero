@@ -70,6 +70,7 @@ mod acp_live {
             !cfg!(all(target_os = "macos", target_arch = "x86_64"))
         );
         assert!(ids.contains(&"qodercli"));
+        assert!(ids.contains(&"qoder-cn"));
         assert!(ids.contains(&"grok-build"));
         assert!(ids.contains(&"pi"));
         assert!(ids.contains(&"dsh"));
@@ -126,6 +127,18 @@ mod acp_live {
         // "installed" badge tracks the adapter rather than a host `zcode` CLI.
         assert_eq!(zcode.detect_command.as_deref(), Some("zcode-acp-server"));
         assert!(zcode.install_command.is_some());
+    }
+
+    #[test]
+    fn qoder_cn_template_uses_native_acp() {
+        let qoder = catalog_templates()
+            .into_iter()
+            .find(|entry| entry.id == "qoder-cn")
+            .expect("Qoder CN template");
+        assert_eq!(qoder.command, "qodercn");
+        assert_eq!(qoder.args, vec!["--acp".to_string()]);
+        assert_eq!(qoder.detect_command.as_deref(), Some("qodercn"));
+        assert_eq!(qoder.login_command.as_deref(), Some("qodercn login"));
     }
 
     #[test]

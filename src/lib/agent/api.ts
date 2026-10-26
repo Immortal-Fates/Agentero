@@ -34,6 +34,7 @@ export type AgentTemplate =
 	| "zcode"
 	| "minimax-code"
 	| "mimo-code"
+	| "qoder-cn"
 	| "custom";
 
 export type AgentDescriptor = {
