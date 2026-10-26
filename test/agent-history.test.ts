@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	hydrateSessionTitles,
 	isSessionIdPrefixTitle,
@@ -15,6 +15,7 @@ import {
 } from "@/lib/agent/agent-session-store";
 import type { AcpSessionInfo } from "@/lib/agent/api";
 import * as titleCache from "@/lib/agent/history-title-cache";
+import { rememberEmptyAcpSession } from "@/lib/agent/history-title-cache";
 
 vi.mock("@/lib/agent", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/lib/agent")>();
@@ -151,6 +152,34 @@ describe("titleFromLoadedHistory", () => {
 });
 
 describe("mergeImportedSessions", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("omits sessions already known to have no transcript", () => {
+		const storage = new Map<string, string>();
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) => storage.get(key) ?? null,
+			setItem: (key: string, value: string) => {
+				storage.set(key, value);
+			},
+			removeItem: (key: string) => {
+				storage.delete(key);
+			},
+		});
+		rememberEmptyAcpSession("agent-1", "s1");
+
+		const { sessions } = mergeImportedSessions(
+			[],
+			[makeAcpSession({ sessionId: "s1", title: "New chat" })],
+			"agent-1",
+			"Agent",
+			"zh-CN",
+		);
+
+		expect(sessions).toHaveLength(0);
+	});
+
 	it("flags untitled external sessions as hydration candidates", () => {
 		const prev: AgentSessionRecord[] = [];
 		const chatSessions = [makeAcpSession({ sessionId: "s1", title: null })];
@@ -436,6 +465,39 @@ describe("hydrateSessionTitles", () => {
 
 		expect(mockedLoadSession).not.toHaveBeenCalled();
 		expect(setSessionHistory).not.toHaveBeenCalled();
+	});
+
+	it("drops a loaded session that has no transcript", async () => {
+		const mockedLoadSession = vi.mocked(agentApi.loadSession);
+		mockedLoadSession.mockResolvedValue({
+			sessionId: "s1",
+			title: "New chat",
+			lines: [],
+		});
+		vi.spyOn(titleCache, "rememberEmptyAcpSession").mockImplementation(
+			() => {},
+		);
+
+		const setSessionHistory = vi.fn();
+		const historyGenRef = { current: 1 };
+		const items = [makeRecord({ id: "s1", providerSessionId: "s1" })];
+
+		await hydrateSessionTitles(items, {
+			generation: 1,
+			historyGenRef,
+			selectedAgentId: "agent-1",
+			vaultPath: "/vault",
+			setSessionHistory,
+		});
+
+		expect(titleCache.rememberEmptyAcpSession).toHaveBeenCalledWith(
+			"agent-1",
+			"s1",
+		);
+		const updater = setSessionHistory.mock.calls[0][0] as (
+			prev: AgentSessionRecord[],
+		) => AgentSessionRecord[];
+		expect(updater(items)).toEqual([]);
 	});
 
 	it("ignores failed loads silently", async () => {

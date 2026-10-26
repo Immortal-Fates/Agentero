@@ -1551,7 +1551,7 @@ Host 作为 ACP Client：按注册表 spawn 用户本机 Agent（`cwd` = 当前 
 
 #### `agent_list_sessions`
 
-列出当前 Vault 的 Agent 会话历史（所有 provider 统一）。Host 通过 ACP `session/list` 获取会话列表，按最近活跃时间排序。`hideFromChatHistory` 的后台运行不出现在列表中。
+列出当前 Vault 的 Agent 会话历史（所有 provider 统一）。Host 通过 ACP `session/list` 获取会话列表，按最近活跃时间排序。`hideFromChatHistory` 的后台运行不出现在列表中。尚未发送用户 prompt 的 warm 会话也不会出现。
 
 ```ts
 { agentId?: string; vaultPath?: string }

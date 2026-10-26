@@ -32,6 +32,7 @@ use crate::features::agent::session::handlers::{
     agentero_turn_builder, clear_turn, install_turn, new_registry, ActiveTurn,
 };
 use crate::features::agent::session::pool::{pool_key, AgentWarmPool, PooledSlot};
+use crate::features::agent::session::warm::discard_unprompted_session;
 use agent_client_protocol::schema::v1::{
     CancelNotification, ContentBlock, ImageContent, LoadSessionRequest, NewSessionRequest,
     PromptRequest, ResumeSessionRequest, SessionConfigId, SessionConfigOptionValue, SessionId,
@@ -285,6 +286,9 @@ pub(crate) struct RunOnceContext {
     /// Until we open the gate, drop stream/tool/plan so turn N does not re-paint
     /// turn N-1 into the new streaming bubble (Grok multi-turn).
     live_stream: Arc<AtomicBool>,
+    /// Set immediately before `session/prompt` is sent. Cancel-before-send
+    /// leaves this false so an unused warm session stays hidden.
+    prompt_sent: Arc<AtomicBool>,
     stop_reason: Arc<Mutex<Option<String>>>,
     /// Terminal capability: headless command execution on behalf of the agent.
     terminals: Arc<tokio::sync::Mutex<AcpTerminalManager>>,
@@ -321,6 +325,7 @@ impl RunOnceContext {
             thought_buf: Arc::new(Mutex::new(String::new())),
             coalescer,
             live_stream: Arc::new(AtomicBool::new(params.resume_session_id.is_none())),
+            prompt_sent: Arc::new(AtomicBool::new(false)),
             stop_reason: Arc::new(Mutex::new(None)),
             terminals: acp_terminals(Some(cwd)),
             context_fingerprint: None,
@@ -575,6 +580,7 @@ impl RunOnceContext {
             }
         }
         self.live_stream.store(true, Ordering::SeqCst);
+        self.prompt_sent.store(true, Ordering::SeqCst);
 
         let mut content_blocks: Vec<ContentBlock> =
             vec![ContentBlock::Text(TextContent::new(full_prompt))];
@@ -993,6 +999,9 @@ async fn run_on_pooled(
     }
     slot.bump();
 
+    let warm_id = slot.acp_session_id.clone();
+    let warm_unused = !slot.used.load(Ordering::SeqCst);
+
     // Resolve the session: no resume id (or one matching the warm session)
     // prompts directly on the pooled session; a different id continues it via
     // session/resume|load on the same connection.
@@ -1017,10 +1026,26 @@ async fn run_on_pooled(
                 )
                 .await
             {
-                Ok(TurnPhase::Ready(session)) => session,
-                Ok(TurnPhase::Cancelled(payload)) => {
-                    clear_turn(&registry);
+                Ok(TurnPhase::Ready(session)) => {
+                    // The warm session never received this turn. Drop it before
+                    // the slot adopts the resumed id, so teardown cannot delete
+                    // the conversation the user is continuing.
+                    if warm_unused {
+                        discard_unprompted_session(
+                            &slot.connection,
+                            &warm_id,
+                            slot.supports_delete,
+                            pool,
+                        )
+                        .await;
+                    }
                     slot.mark_used();
+                    slot.acp_session_id = session.acp_session_id.clone();
+                    session
+                }
+                Ok(TurnPhase::Cancelled(payload)) => {
+                    // Resume never finished. Keep the unused warm session.
+                    clear_turn(&registry);
                     pool.release(slot);
                     return PooledOutcome::Done(Ok(payload));
                 }
@@ -1045,7 +1070,6 @@ async fn run_on_pooled(
         },
     };
     let used_session_id = session.acp_session_id.clone();
-    slot.mark_used();
 
     let preferences = RunPreferences::for_workflow(
         params.workflow.as_deref(),
@@ -1067,15 +1091,25 @@ async fn run_on_pooled(
         .await;
 
     clear_turn(&registry);
+    let prompted = state.prompt_sent.load(Ordering::SeqCst);
     match result {
         Ok(payload) => {
-            // Record the session that actually served the turn so the next
-            // turn's provider session id matches the slot.
+            // The client may resume this id even when send was cancelled
+            // first. Keep the session, but only show it once a prompt was sent.
+            slot.mark_used();
+            if prompted {
+                pool.forget_unprompted(&used_session_id.to_string());
+            }
             slot.acp_session_id = used_session_id;
             pool.release(slot);
             PooledOutcome::Done(Ok(payload))
         }
         Err(e) => {
+            if !e.pre_prompt {
+                slot.mark_used();
+                pool.forget_unprompted(&used_session_id.to_string());
+                slot.acp_session_id = used_session_id;
+            }
             pool.evict(&slot);
             if e.pre_prompt {
                 PooledOutcome::Handoff
@@ -1137,12 +1171,24 @@ pub async fn run_once(params: RunOnceParams) -> Result<AgentResultPayload, AppEr
     };
 
     // Phase 3 — connect, stream one turn, and finalize.
+    let warm_pool = params.warm_pool.clone();
     let mut state = RunOnceContext::new(&params, prep.cwd.clone());
     state.bind_context(&prep);
     let run_result = state.run(acp, params, prep).await;
 
     match run_result {
-        Ok(payload) => Ok(payload),
+        Ok(payload) => {
+            // A cold resume can deliver the first prompt on a session that
+            // warm created and then lost. Show it once that prompt landed.
+            if payload.stop_reason.as_deref() != Some("cancelled") {
+                if let Some(id) = payload.provider_session_id.as_deref() {
+                    if let Some(pool) = warm_pool.as_ref() {
+                        pool.forget_unprompted(id);
+                    }
+                }
+            }
+            Ok(payload)
+        }
         Err(e) => {
             let msg = e.to_string();
             state.coalescer.flush();

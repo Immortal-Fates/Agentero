@@ -265,7 +265,7 @@ prompt，结束后仍受 TTL 与退出清理约束。setup 总预算为 60 秒�
 slot 替换、evict 和 shutdown 均有独立取消 token，不依赖 slot 是否还在池中。
 取用时只有匹配的 setup 正在执行才等待（最多 5 秒），由发布/取消/退出通知唤醒；无匹配任务、
 连接已被其他请求取走或池已关闭时立即走冷启动。并发取用只允许一个请求领取同一连接。
-若 Agent 声明 `sessionCapabilities.delete`，未使用的空会话在 teardown 时尝试删除；
+warm 的 `session/new` 在用户发出 prompt 之前只是临时会话：`session/list` 会跳过这些 id。槽位退出、setup 失败，或这条连接改去续聊另一条会话时，若 Agent 声明 `sessionCapabilities.delete` 就 `session/delete`；删不掉的 id 记在本机，重启后仍然不出现在历史里。真正发出 `session/prompt` 后，这条会话才进入历史。前端若 `session/load` 到一份没有正文的旧会话，也会把它从列表里拿掉并记住。
 取消清理最多允许 1 秒，之后无论 RPC 是否响应均丢弃连接，由 SDK 执行进程清理：
 Unix 终止进程组，Windows 仅结束直接子进程。已有残留不会按进程名自动清扫，需确认路径与
 归属后清理。Windows 完整进程树回收仍为已知限制（#774）；SSH 远端宿主的进程需独立管理。

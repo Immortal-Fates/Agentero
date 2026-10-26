@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyCachedHistoryTitles,
+	forgetEmptyAcpSession,
 	getOverriddenHistoryTitle,
+	isEmptyAcpSession,
+	rememberEmptyAcpSession,
 	setCachedHistoryTitle,
 	setUserHistoryTitle,
 } from "@/lib/agent/history-title-cache";
@@ -44,5 +47,19 @@ describe("history title cache overrides", () => {
 		]);
 		expect(again[0].title).toBe("From cache");
 		expect(again[0].titleLocked).toBeUndefined();
+	});
+});
+
+describe("empty ACP sessions", () => {
+	beforeEach(() => {
+		vi.stubGlobal("localStorage", memoryStorage());
+	});
+
+	it("remembers a session with no transcript until it gains one", () => {
+		expect(isEmptyAcpSession("agent-1", "s1")).toBe(false);
+		rememberEmptyAcpSession("agent-1", "s1");
+		expect(isEmptyAcpSession("agent-1", "s1")).toBe(true);
+		forgetEmptyAcpSession("agent-1", "s1");
+		expect(isEmptyAcpSession("agent-1", "s1")).toBe(false);
 	});
 });
