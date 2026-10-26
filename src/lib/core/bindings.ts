@@ -324,6 +324,13 @@ export const commands = {
 	 *  papers.cool aggregates and also carry the PDF URL.
 	 */
 	paperCoolpapersImport: (args: CoolPapersImportArgs) => typedError<ApiResult<PaperCommitResult>, string>(__TAURI_INVOKE("paper_coolpapers_import", { args })),
+	catalogListProperties: (args: CatalogListPropertiesArgs) => __TAURI_INVOKE<ApiResult<CustomProperty_Serialize[]>>("catalog_list_properties", { args }),
+	catalogCreateProperty: (args: CatalogCreatePropertyArgs_Deserialize) => __TAURI_INVOKE<ApiResult<CustomProperty_Serialize>>("catalog_create_property", { args }),
+	catalogUpdateProperty: (args: CatalogUpdatePropertyArgs_Deserialize) => __TAURI_INVOKE<ApiResult<CustomProperty_Serialize>>("catalog_update_property", { args }),
+	catalogDeleteProperty: (args: CatalogDeletePropertyArgs) => __TAURI_INVOKE<ApiResult<null>>("catalog_delete_property", { args }),
+	catalogSetPaperProperty: (args: CatalogSetPaperPropertyArgs) => __TAURI_INVOKE<ApiResult<PaperRecord_Serialize>>("catalog_set_paper_property", { args }),
+	catalogCreateOptionAndSet: (args: CatalogCreateOptionAndSetArgs) => __TAURI_INVOKE<ApiResult<CatalogCreateOptionAndSetResult_Serialize>>("catalog_create_option_and_set", { args }),
+	catalogDeletePropertyOption: (args: CatalogDeletePropertyOptionArgs) => __TAURI_INVOKE<ApiResult<CustomProperty_Serialize>>("catalog_delete_property_option", { args }),
 	/**  Bundle local paper-open data for the renderer's focus path. */
 	paperOpenBundle: (args: PaperOpenBundleArgs) => typedError<ApiResult<PaperOpenBundle_Serialize>, string>(__TAURI_INVOKE("paper_open_bundle", { args })),
 	/**  Get one paper's metadata from catalog.sqlite. */
@@ -1963,6 +1970,51 @@ export type CatalogAcpStatus =
 /**  ACP initialize failed. */
 "failed";
 
+export type CatalogCreateOptionAndSetArgs = {
+	vaultPath: string,
+	paperPath: string,
+	propertyId: string,
+	optionName: string,
+	optionColor: string | null,
+};
+
+export type CatalogCreateOptionAndSetResult = CatalogCreateOptionAndSetResult_Serialize | CatalogCreateOptionAndSetResult_Deserialize;
+
+export type CatalogCreateOptionAndSetResult_Deserialize = {
+	property: CustomProperty_Deserialize,
+	paper: PaperRecord_Deserialize,
+};
+
+export type CatalogCreateOptionAndSetResult_Serialize = {
+	property: CustomProperty_Serialize,
+	paper: PaperRecord_Serialize,
+};
+
+export type CatalogCreatePropertyArgs = CatalogCreatePropertyArgs_Serialize | CatalogCreatePropertyArgs_Deserialize;
+
+export type CatalogCreatePropertyArgs_Deserialize = {
+	vaultPath: string,
+	name: string,
+	options?: PropertyOption_Deserialize[],
+};
+
+export type CatalogCreatePropertyArgs_Serialize = {
+	vaultPath: string,
+	name: string,
+	options: PropertyOption_Serialize[],
+};
+
+export type CatalogDeletePropertyArgs = {
+	vaultPath: string,
+	propertyId: string,
+};
+
+export type CatalogDeletePropertyOptionArgs = {
+	vaultPath: string,
+	propertyId: string,
+	optionId: string,
+};
+
 export type CatalogDoctorSection = CatalogDoctorSection_Serialize | CatalogDoctorSection_Deserialize;
 
 export type CatalogDoctorSection_Deserialize = {
@@ -2089,6 +2141,10 @@ export type CatalogEntry_Serialize = {
 	updateAvailable?: boolean | null,
 };
 
+export type CatalogListPropertiesArgs = {
+	vaultPath: string,
+};
+
 export type CatalogScanResponse = CatalogScanResponse_Serialize | CatalogScanResponse_Deserialize;
 
 export type CatalogScanResponse_Deserialize = {
@@ -2115,6 +2171,25 @@ export type CatalogScanResponse_Serialize = {
 	userAgent: string,
 	/**  See [`AgentRegistryState::user_agent_provider_ids`]. */
 	userAgentProviderIds: string,
+};
+
+export type CatalogSetPaperPropertyArgs = {
+	vaultPath: string,
+	paperPath: string,
+	propertyId: string,
+	optionId: string | null,
+};
+
+export type CatalogUpdatePropertyArgs = CatalogUpdatePropertyArgs_Serialize | CatalogUpdatePropertyArgs_Deserialize;
+
+export type CatalogUpdatePropertyArgs_Deserialize = {
+	vaultPath: string,
+	property: CustomProperty_Deserialize,
+};
+
+export type CatalogUpdatePropertyArgs_Serialize = {
+	vaultPath: string,
+	property: CustomProperty_Serialize,
 };
 
 export type ChatImportExtractArgs = {
@@ -2550,6 +2625,34 @@ export type CreateVaultResult = {
 	updated: string[],
 	/**  Relative path suggested for first open (e.g. `AGENTS.md`). */
 	openPath: string,
+};
+
+export type CustomProperty = CustomProperty_Serialize | CustomProperty_Deserialize;
+
+export type CustomProperty_Deserialize = {
+	id: string,
+	name: string,
+	type: string,
+	orderIndex: number,
+	options: PropertyOption_Deserialize[],
+} & {
+	createdAt: string,
+} | {
+	created_at: string,
+} & {
+	updatedAt: string,
+} | {
+	updated_at: string,
+};
+
+export type CustomProperty_Serialize = {
+	id: string,
+	name: string,
+	type: string,
+	orderIndex: number,
+	options: PropertyOption_Serialize[],
+	createdAt: string,
+	updatedAt: string,
 };
 
 /**
@@ -4144,6 +4247,8 @@ export type PaperRecord_Deserialize = {
 	code_repo: string | null,
 	/**  Manually maintained OpenReview link; never resolved from identifiers. */
 	openreview_url: string | null,
+	/**  Custom property values: property_id -> option_id (select). */
+	custom_props?: { [key in string]: string },
 	body_source: string | null,
 	body_quality: string | null,
 	bibtex_key: string | null,
@@ -4205,6 +4310,8 @@ export type PaperRecord_Serialize = {
 	code_repo?: string | null,
 	/**  Manually maintained OpenReview link; never resolved from identifiers. */
 	openreview_url?: string | null,
+	/**  Custom property values: property_id -> option_id (select). */
+	custom_props?: { [key in string]: string },
 	body_source?: string | null,
 	body_quality?: string | null,
 	bibtex_key?: string | null,
@@ -4458,6 +4565,20 @@ export type PromptImage = {
 	/**  Raw base64 (no data: URL prefix). */
 	data: string,
 	mimeType: string,
+};
+
+export type PropertyOption = PropertyOption_Serialize | PropertyOption_Deserialize;
+
+export type PropertyOption_Deserialize = {
+	id: string,
+	name: string,
+	color: string | null,
+};
+
+export type PropertyOption_Serialize = {
+	id: string,
+	name: string,
+	color?: string | null,
 };
 
 /**

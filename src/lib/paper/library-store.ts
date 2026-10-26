@@ -92,7 +92,9 @@ function samePapers(a: PaperLibraryRow[], b: PaperLibraryRow[]): boolean {
 			x.is_read !== y.is_read ||
 			x.has_pdf !== y.has_pdf ||
 			x.title !== y.title ||
-			tagsFingerprint(x.tags) !== tagsFingerprint(y.tags)
+			tagsFingerprint(x.tags) !== tagsFingerprint(y.tags) ||
+			JSON.stringify(x.custom_props ?? {}) !==
+				JSON.stringify(y.custom_props ?? {})
 		) {
 			return false;
 		}

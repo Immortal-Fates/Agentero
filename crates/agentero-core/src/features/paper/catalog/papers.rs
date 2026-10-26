@@ -22,7 +22,8 @@ const PAPER_COLUMNS: &str = "\
     added_at, updated_at, \
     creators_json, date, isbn, issn, pmid, publication, volume, issue, pages, \
     publisher, place, series, language, zotero_item_type, meta_source, extra, \
-    is_read, zotero_item_id, zotero_last_synced, code_repo, openreview_url";
+    is_read, zotero_item_id, zotero_last_synced, code_repo, openreview_url, \
+    custom_props_json";
 
 /// Prefix for Connector provenance tags (hidden from user-facing tag UI).
 pub const ZOTERO_INTERNAL_TAG_PREFIX: &str = "@zotero:";
@@ -304,6 +305,9 @@ pub struct PaperRecord {
     /// Manually maintained OpenReview link; never resolved from identifiers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub openreview_url: Option<String>,
+    /// Custom property values: property_id -> option_id (select).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub custom_props: std::collections::HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -372,6 +376,7 @@ impl PaperRecord {
             source_url: None,
             code_repo: None,
             openreview_url: None,
+            custom_props: std::collections::HashMap::new(),
             body_source: None,
             body_quality: None,
             bibtex_key: None,
@@ -1268,7 +1273,7 @@ fn mutate_paper(
             get_conn(&tx, &path)?.ok_or_else(|| AppError::message("paper not found in catalog"))?;
         patch(&mut row)?;
         row.updated_at = crate::time::now_rfc3339_millis();
-        upsert_conn(&tx, &row)?;
+        upsert_conn_impl(&tx, &row, false)?;
         let persisted =
             get_conn(&tx, &path)?.ok_or_else(|| AppError::message("paper not found in catalog"))?;
         tx.commit()?;
@@ -1516,6 +1521,14 @@ pub fn set_page_counts(vault_root: &Path, counts: &[(String, i64)]) -> Result<()
 /// Single funnel for catalog writes. `path` is normalized and required here:
 /// an empty one upserts a row whose sidecar would land on the vault root.
 fn upsert_conn(conn: &Connection, r: &PaperRecord) -> Result<PaperRecord, AppError> {
+    upsert_conn_impl(conn, r, true)
+}
+
+fn upsert_conn_impl(
+    conn: &Connection,
+    r: &PaperRecord,
+    inherit_custom_props_if_empty: bool,
+) -> Result<PaperRecord, AppError> {
     let mut r = r.clone();
     r.path = crate::fs::normalize_rel_separators(&r.path);
     if r.path.is_empty() {
@@ -1523,6 +1536,14 @@ fn upsert_conn(conn: &Connection, r: &PaperRecord) -> Result<PaperRecord, AppErr
             "paper record missing vault-relative path (id `{}`)",
             r.id
         )));
+    }
+    // Merge protection: preserve existing custom_props if new record has none.
+    if inherit_custom_props_if_empty && r.custom_props.is_empty() {
+        if let Ok(Some(existing)) = get_conn(conn, &r.path) {
+            if !existing.custom_props.is_empty() {
+                r.custom_props = existing.custom_props;
+            }
+        }
     }
     // Legacy sidecars may carry second-precision timestamps; normalize on the
     // write path so Secs/Millis never mix inside the string-ordered catalog.
@@ -1541,6 +1562,8 @@ fn upsert_conn(conn: &Connection, r: &PaperRecord) -> Result<PaperRecord, AppErr
         .map(serde_json::to_string)
         .transpose()
         .map_err(|e| AppError::message(e.to_string()))?;
+    let custom_props_json =
+        serde_json::to_string(&r.custom_props).map_err(|e| AppError::message(e.to_string()))?;
 
     conn.execute(
         &format!(
@@ -1552,7 +1575,7 @@ fn upsert_conn(conn: &Connection, r: &PaperRecord) -> Result<PaperRecord, AppErr
             ?20, ?21,
             ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
             ?31, ?32, ?33, ?34, ?35, ?36, ?37,
-            ?38, ?39, ?40, ?41, ?42
+            ?38, ?39, ?40, ?41, ?42, ?43
         )
         ON CONFLICT(path) DO UPDATE SET
             id = excluded.id,
@@ -1594,7 +1617,8 @@ fn upsert_conn(conn: &Connection, r: &PaperRecord) -> Result<PaperRecord, AppErr
             zotero_item_id = excluded.zotero_item_id,
             zotero_last_synced = excluded.zotero_last_synced,
             code_repo = excluded.code_repo,
-            openreview_url = excluded.openreview_url
+            openreview_url = excluded.openreview_url,
+            custom_props_json = excluded.custom_props_json
         "#,
         ),
         params![
@@ -1640,6 +1664,7 @@ fn upsert_conn(conn: &Connection, r: &PaperRecord) -> Result<PaperRecord, AppErr
             r.zotero_last_synced,
             r.code_repo,
             r.openreview_url,
+            custom_props_json,
         ],
     )
     .map_err(AppError::from)?;
@@ -1655,6 +1680,11 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PaperRecord> {
     let zotero_last_synced: Option<String> = row.get(39)?;
     let code_repo: Option<String> = row.get(40)?;
     let openreview_url: Option<String> = row.get(41)?;
+    let custom_props_json: Option<String> = row.get(42)?;
+    let custom_props = custom_props_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
     Ok(PaperRecord {
         path: row.get(0)?,
         id: row.get(1)?,
@@ -1700,6 +1730,7 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PaperRecord> {
         zotero_last_synced,
         code_repo,
         openreview_url,
+        custom_props,
     })
 }
 
@@ -1719,6 +1750,28 @@ fn get_conn(conn: &Connection, path: &str) -> Result<Option<PaperRecord>, AppErr
         .map_err(AppError::from)?;
 
     Ok(row)
+}
+
+pub fn mutate_paper_custom_props(
+    vault_root: &Path,
+    path: &str,
+    patch: impl FnOnce(&mut std::collections::HashMap<String, String>),
+) -> Result<PaperRecord, AppError> {
+    mutate_paper(vault_root, path, |row| {
+        patch(&mut row.custom_props);
+        Ok(())
+    })
+}
+
+pub fn direct_update_paper_custom_props(
+    vault_root: &Path,
+    path: &str,
+    props: &std::collections::HashMap<String, String>,
+) -> Result<PaperRecord, AppError> {
+    mutate_paper(vault_root, path, |row| {
+        row.custom_props = props.clone();
+        Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -2239,6 +2292,7 @@ mod tests {
             is_read: false,
             zotero_item_id: None,
             zotero_last_synced: None,
+            custom_props: Default::default(),
             added_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -2297,6 +2351,7 @@ mod tests {
             is_read: false,
             zotero_item_id: None,
             zotero_last_synced: None,
+            custom_props: Default::default(),
             added_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -2372,6 +2427,7 @@ mod tests {
             is_read: false,
             zotero_item_id: None,
             zotero_last_synced: None,
+            custom_props: Default::default(),
             added_at: "t".into(),
             updated_at: "t".into(),
         };

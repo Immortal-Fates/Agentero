@@ -43,6 +43,7 @@ export type {
 	AiResponseLanguage,
 	AppSettings,
 	AutoUpdateInternalLinks,
+	BuiltinLibraryColumnKey,
 	CommercialTranslateProviderId,
 	EmbeddingSettings,
 	EmbeddingSource,

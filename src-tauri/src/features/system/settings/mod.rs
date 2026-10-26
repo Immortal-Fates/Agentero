@@ -1267,7 +1267,8 @@ fn normalize(s: &mut AppSettings) {
         } else {
             col.key
         };
-        if !LIBRARY_COLUMN_KEYS.contains(&key.as_str()) {
+        let is_custom_prop = key.starts_with("prop:");
+        if !LIBRARY_COLUMN_KEYS.contains(&key.as_str()) && !is_custom_prop {
             continue;
         }
         if seen.iter().any(|k| k == &key) {
@@ -1938,17 +1939,23 @@ mod tests {
                     width_rem: None,
                     visible: false,
                 },
+                LibraryColumnPref {
+                    key: "prop:test_prop".into(),
+                    width_rem: Some(9.0),
+                    visible: true,
+                },
             ],
             ..AppSettings::default()
         };
         normalize(&mut s);
         let keys: Vec<&str> = s.library_columns.iter().map(|c| c.key.as_str()).collect();
-        // Unknown dropped; `year` renamed in place; missing columns appended.
+        // Unknown dropped; `year` renamed in place; custom prop kept; missing columns appended.
         assert_eq!(
             keys,
             vec![
                 "title",
                 "date",
+                "prop:test_prop",
                 "authors",
                 "publication",
                 "tags",

@@ -1,3 +1,4 @@
+import { loadCustomProperties } from "@/lib/paper/custom-properties-store";
 /**
  * App bootstrap effects: theme / locale / uiScale application, restored-vault
  * validation then `app:ready`, lifecycle handler registration + wire bridge
@@ -112,6 +113,7 @@ export function useAppBootstrap(): void {
 			setTree([]);
 			setTreeLoading(false);
 			void refreshLibrary();
+			void loadCustomProperties();
 			return;
 		}
 		return lifecycle.emitScoped("vault:opened", {

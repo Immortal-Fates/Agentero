@@ -200,7 +200,20 @@
 		"refreshMetadataNoTargets": "没有可刷新的论文（需要 DOI、arXiv 编号或标题）",
 		"refreshMetadataTaskTitle": "同步出版信息",
 		"refreshMetadataTaskDetail": "{{current}} / {{total}} · 已更新 {{updated}} · 失败 {{failed}} · 未找到 {{empty}}",
-		"refreshMetadataPartial": "已更新 {{updated}} 篇，失败 {{failed}} 篇，未找到 {{empty}} 篇"
+		"refreshMetadataPartial": "已更新 {{updated}} 篇，失败 {{failed}} 篇，未找到 {{empty}} 篇",
+		"customProperties": {
+			"addProperty": "添加属性",
+			"addPropertyDesc": "为文库中的论文创建新的单选 (Select) 自定义属性。",
+			"propertyNamePlaceholder": "属性名称（如：优先级、精读状态）",
+			"renameProperty": "重命名属性",
+			"deleteProperty": "删除属性",
+			"deletePropertyConfirm": "确定要删除属性“{{name}}”吗？所有论文中已赋值的内容都将被清除。",
+			"searchOrAddOption": "搜索或创建选项...",
+			"createOption": "创建",
+			"deleteOption": "删除选项",
+			"clearValue": "清除属性值",
+			"noOptions": "暂无选项"
+		}
 	},
 	"plaza": {
 		"plaza": "广场",

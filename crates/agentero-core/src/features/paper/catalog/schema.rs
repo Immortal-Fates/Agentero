@@ -13,6 +13,7 @@
 //!   `arxiv_rec_state` (kept for old DBs; no longer written)
 //! - v9: manually maintained `code_repo` link (no auto resolution yet)
 //! - v10: manually maintained `openreview_url` link
+//! - v11: `custom_properties` table + `papers.custom_props_json`
 
 use crate::error::AppError;
 use crate::sqlite::MigrationStep;
@@ -23,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Current catalog schema version written to `schema_meta`.
-pub const SCHEMA_VERSION: i32 = 10;
+pub const SCHEMA_VERSION: i32 = 11;
 
 const DDL_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -160,6 +161,20 @@ const MIGRATE_V9_TO_V10: &str = r#"
 ALTER TABLE papers ADD COLUMN openreview_url TEXT;
 "#;
 
+/// Schema v11: custom properties table and paper custom properties JSON column.
+const MIGRATE_V10_TO_V11: &str = r#"
+CREATE TABLE IF NOT EXISTS custom_properties (
+    id           TEXT PRIMARY KEY NOT NULL,
+    name         TEXT NOT NULL,
+    type         TEXT NOT NULL DEFAULT 'select',
+    options_json TEXT NOT NULL DEFAULT '[]',
+    order_index  INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+ALTER TABLE papers ADD COLUMN custom_props_json TEXT NOT NULL DEFAULT '{}';
+"#;
+
 /// Absolute path to `{vault}/.agentero/catalog.sqlite`.
 pub fn catalog_db_path(vault_root: &Path) -> std::path::PathBuf {
     vault_root.join(".agentero").join("catalog.sqlite")
@@ -270,7 +285,7 @@ pub fn with_catalog<T>(
 
 /// Migration ladder, applied by [`crate::sqlite::run_migrations`] (per-step
 /// version re-read, stamping, `newer than app` guard).
-const MIGRATION_STEPS: [MigrationStep; 10] = [
+const MIGRATION_STEPS: [MigrationStep; 11] = [
     MigrationStep::batch(1, DDL_V1),
     // SQLite ADD COLUMN is not fully batch-safe across existing cols; the
     // v2–v4 entries run one-by-one and ignore duplicate-column errors.
@@ -283,6 +298,7 @@ const MIGRATION_STEPS: [MigrationStep; 10] = [
     MigrationStep::script(8, MIGRATE_V7_TO_V8),
     MigrationStep::script_tolerant(9, MIGRATE_V8_TO_V9),
     MigrationStep::script_tolerant(10, MIGRATE_V9_TO_V10),
+    MigrationStep::script_tolerant(11, MIGRATE_V10_TO_V11),
 ];
 
 fn migrate(conn: &Connection) -> Result<(), AppError> {
@@ -445,6 +461,44 @@ mod tests {
         migrate(&conn).unwrap();
     }
 
+    #[test]
+    fn migrates_v10_to_v11_adds_custom_properties() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::sqlite::run_migrations(
+            &conn,
+            crate::sqlite::DbMsgs::CATALOG,
+            10,
+            &MIGRATION_STEPS[..10],
+            set_schema_version,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO papers (path, id, type, title, added_at, updated_at)
+             VALUES ('papers/x', 'x', 'pdf', 'Title', 't', 't')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION);
+        let custom_props: String = conn
+            .query_row(
+                "SELECT custom_props_json FROM papers WHERE path = 'papers/x'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(custom_props, "{}");
+        let has_table: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='custom_properties'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        assert!(has_table);
+    }
+
     /// v1 databases predate the whole migration ladder: build one by hand
     /// (v1 DDL + version stamp + legacy-shaped row) and walk it through every
     /// step — v2…v10 must all land.
@@ -491,26 +545,26 @@ mod tests {
             )
             .unwrap();
         assert_eq!(has_v2, 4);
-        // v3 read flag + v4 Zotero linkage + v9/v10 manually maintained links.
+        // v3 read flag + v4 Zotero linkage + v9/v10 links + v11 custom props.
         let has_later_columns: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('papers')
-                 WHERE name IN ('is_read', 'zotero_item_id', 'zotero_last_synced', 'code_repo', 'openreview_url')",
+                 WHERE name IN ('is_read', 'zotero_item_id', 'zotero_last_synced', 'code_repo', 'openreview_url', 'custom_props_json')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(has_later_columns, 5);
-        // v5 page-count cache + v6 recommendation caches + v8 discovery runs.
+        assert_eq!(has_later_columns, 6);
+        // v5 page-count cache + v6 recommendation caches + v8 discovery runs + v11 custom_properties.
         let tables: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
-                 ('pdf_page_counts', 'embed_cache', 'arxiv_rec_state', 'discovery_runs')",
+                 ('pdf_page_counts', 'embed_cache', 'arxiv_rec_state', 'discovery_runs', 'custom_properties')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 4);
+        assert_eq!(tables, 5);
 
         // v7 normalized the legacy timestamps in place; the row itself and its
         // legacy `type` spelling survive the data-only migration.

@@ -256,6 +256,7 @@ mod open_bundle_tests {
             is_read: false,
             zotero_item_id: None,
             zotero_last_synced: None,
+            custom_props: Default::default(),
             added_at: "t".into(),
             updated_at: "t".into(),
         }
@@ -528,6 +529,199 @@ pub async fn paper_repath(args: PaperRepathArgs) -> ApiResult<PaperRepathResult>
             &args.to_rel,
         ) {
             Ok(count) => ApiResult::ok(PaperRepathResult { count }),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+// Custom Select Properties Commands
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogListPropertiesArgs {
+    pub vault_path: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_list_properties(
+    args: CatalogListPropertiesArgs,
+) -> ApiResult<Vec<crate::features::paper::catalog::properties::CustomProperty>> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::list_properties(&vault) {
+            Ok(v) => ApiResult::ok(v),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogCreatePropertyArgs {
+    pub vault_path: String,
+    pub name: String,
+    #[serde(default)]
+    pub options: Vec<crate::features::paper::catalog::properties::PropertyOption>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_create_property(
+    args: CatalogCreatePropertyArgs,
+) -> ApiResult<crate::features::paper::catalog::properties::CustomProperty> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::create_property(
+            &vault,
+            &args.name,
+            args.options,
+        ) {
+            Ok(v) => ApiResult::ok(v),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogUpdatePropertyArgs {
+    pub vault_path: String,
+    pub property: crate::features::paper::catalog::properties::CustomProperty,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_update_property(
+    args: CatalogUpdatePropertyArgs,
+) -> ApiResult<crate::features::paper::catalog::properties::CustomProperty> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::update_property(&vault, &args.property) {
+            Ok(v) => ApiResult::ok(v),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogDeletePropertyArgs {
+    pub vault_path: String,
+    pub property_id: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_delete_property(args: CatalogDeletePropertyArgs) -> ApiResult<()> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::delete_property(
+            &vault,
+            &args.property_id,
+        ) {
+            Ok(()) => ApiResult::ok(()),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogSetPaperPropertyArgs {
+    pub vault_path: String,
+    pub paper_path: String,
+    pub property_id: String,
+    pub option_id: Option<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_set_paper_property(
+    args: CatalogSetPaperPropertyArgs,
+) -> ApiResult<PaperRecord> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::set_paper_property(
+            &vault,
+            &args.paper_path,
+            &args.property_id,
+            args.option_id.as_deref(),
+        ) {
+            Ok(v) => ApiResult::ok(v),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogCreateOptionAndSetArgs {
+    pub vault_path: String,
+    pub paper_path: String,
+    pub property_id: String,
+    pub option_name: String,
+    pub option_color: Option<String>,
+}
+
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogCreateOptionAndSetResult {
+    pub property: crate::features::paper::catalog::properties::CustomProperty,
+    pub paper: PaperRecord,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_create_option_and_set(
+    args: CatalogCreateOptionAndSetArgs,
+) -> ApiResult<CatalogCreateOptionAndSetResult> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::create_option_and_set(
+            &vault,
+            &args.paper_path,
+            &args.property_id,
+            &args.option_name,
+            args.option_color.as_deref(),
+        ) {
+            Ok((prop, paper)) => ApiResult::ok(CatalogCreateOptionAndSetResult {
+                property: prop,
+                paper,
+            }),
+            Err(e) => map_err(e),
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogDeletePropertyOptionArgs {
+    pub vault_path: String,
+    pub property_id: String,
+    pub option_id: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_delete_property_option(
+    args: CatalogDeletePropertyOptionArgs,
+) -> ApiResult<crate::features::paper::catalog::properties::CustomProperty> {
+    run_blocking(move || {
+        let vault = try_vault!(&args.vault_path);
+        match crate::features::paper::catalog::properties::delete_property_option(
+            &vault,
+            &args.property_id,
+            &args.option_id,
+        ) {
+            Ok(v) => ApiResult::ok(v),
             Err(e) => map_err(e),
         }
     })
