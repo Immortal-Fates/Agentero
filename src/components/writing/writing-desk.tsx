@@ -41,6 +41,11 @@ const PdfViewer = lazy(() =>
 		default: mod.PdfViewer,
 	})),
 );
+const TexLiveViewer = lazy(() =>
+	import("@/components/viewer/texlive/tex-live-viewer").then((mod) => ({
+		default: mod.TexLiveViewer,
+	})),
+);
 
 type PdfState = {
 	status: "loading" | "ready" | "missing";
@@ -60,6 +65,8 @@ export function WritingDesk() {
 	const discovering = useWritingStore((s) => s.discovering);
 	const historyActive = useWritingStore((s) => s.historyActive);
 	const syncActive = useWritingStore((s) => s.syncActive);
+	const [liveRoot, setLiveRoot] = useState<string | null>(null);
+	const livePreview = activeRoot != null && liveRoot === activeRoot;
 	const fallbackRoot =
 		activeRoot || discovering
 			? null
@@ -133,12 +140,19 @@ export function WritingDesk() {
 			>
 				<div className="flex h-full min-h-0 min-w-0 flex-col">
 					<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
-						<WritingPdfBar rootFile={compileRoot ?? activeRoot} />
+						<WritingPdfBar
+							rootFile={compileRoot ?? activeRoot}
+							livePreview={livePreview}
+							onLivePreviewChange={(live) =>
+								setLiveRoot(live ? activeRoot : null)
+							}
+						/>
 					</div>
 					<div className="min-h-0 flex-1">
 						<ProjectPdf
 							rootFile={compileRoot ?? activeRoot}
 							vaultPath={vaultPath}
+							livePreview={livePreview}
 						/>
 					</div>
 				</div>
@@ -205,9 +219,11 @@ function ProjectEditor({ path }: { path: string }) {
 function ProjectPdf({
 	rootFile,
 	vaultPath,
+	livePreview,
 }: {
 	rootFile: string;
 	vaultPath: string;
+	livePreview: boolean;
 }) {
 	const { t } = useTranslation("sidebar");
 	const buildToken = useStore(texBuildStore, (state) => {
@@ -224,6 +240,7 @@ function ProjectPdf({
 	});
 
 	useEffect(() => {
+		if (livePreview) return;
 		const revision = buildToken;
 		let cancelled = false;
 		setPdf((current) => ({
@@ -266,7 +283,21 @@ function ProjectPdf({
 		return () => {
 			cancelled = true;
 		};
-	}, [rootFile, buildToken]);
+	}, [rootFile, buildToken, livePreview]);
+
+	if (livePreview) {
+		return (
+			<Suspense
+				fallback={
+					<p className="text-muted-foreground px-3 py-2 text-sm">
+						{t("writing.previewLoading")}
+					</p>
+				}
+			>
+				<TexLiveViewer rootPath={rootFile} vaultPath={vaultPath} />
+			</Suspense>
+		);
+	}
 
 	if (pdf.status === "ready" && pdf.bytes && pdf.path) {
 		return (

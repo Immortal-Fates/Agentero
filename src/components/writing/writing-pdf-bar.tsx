@@ -3,6 +3,7 @@
  */
 
 import {
+	Check,
 	ChevronDown,
 	CloudUpload,
 	History,
@@ -18,23 +19,17 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { WritingProblems } from "@/components/writing/writing-problems";
+import { commands } from "@/lib/core/bindings";
+import { notifyError } from "@/lib/core/notify";
 import { normalizePath } from "@/lib/core/path";
 import { cancelTask } from "@/lib/core/tasks";
+import { isTauri } from "@/lib/core/tauri";
 import { cn } from "@/lib/core/utils";
 import { ensureTexBuildEvents, texBuildStore } from "@/lib/tex/build-state";
-import {
-	getTexProjectSettings,
-	setTexProjectSettings,
-	type TexAutoBuild,
-	texSettingsStore,
-} from "@/lib/tex/config";
 import { getVaultPath } from "@/lib/vault/store";
 import { compileTexProject } from "@/lib/workspace/actions";
 import {
@@ -59,7 +54,15 @@ import {
 	uploadWritingProject,
 } from "@/lib/writing/upload";
 
-export function WritingPdfBar({ rootFile }: { rootFile: string }) {
+export function WritingPdfBar({
+	rootFile,
+	livePreview,
+	onLivePreviewChange,
+}: {
+	rootFile: string;
+	livePreview: boolean;
+	onLivePreviewChange: (live: boolean) => void;
+}) {
 	const { t } = useTranslation(["sidebar", "latexBuild"]);
 	const key = normalizePath(rootFile);
 	const engines = useStore(texCompileStore, (state) => state.engines);
@@ -72,10 +75,6 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 		(state) => state.compilingPath,
 	);
 	const snapshot = useStore(texBuildStore, (state) => state.byRoot[key]);
-	const autoBuild = useStore(
-		texSettingsStore,
-		(state) => state.projects[key]?.autoBuild ?? "never",
-	);
 	const compiling = compilingPath != null || snapshot?.status === "running";
 	const ready = enginesLoading || engines.length > 0;
 	const vault = getVaultPath();
@@ -163,6 +162,24 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 		void runSync(link);
 	}
 
+	async function toggleLivePreview() {
+		if (livePreview) {
+			onLivePreviewChange(false);
+			return;
+		}
+		if (!isTauri()) return;
+		const status = await commands.rtexStatus();
+		if (!status.ok || !status.data?.available) {
+			notifyError(
+				status.error?.message ??
+					status.data?.error ??
+					t("fileTree.livePreviewUnavailable"),
+			);
+			return;
+		}
+		onLivePreviewChange(true);
+	}
+
 	return (
 		<div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden pr-2 pl-1">
 			<div className="inline-flex items-stretch">
@@ -194,7 +211,7 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 							<ChevronDown aria-hidden />
 						</Button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="start" className="min-w-56">
+					<DropdownMenuContent align="start">
 						<DropdownMenuItem
 							disabled={compiling}
 							onSelect={() => {
@@ -220,26 +237,13 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 							{t("fileTree.cleanAux")}
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
-						<DropdownMenuLabel>{t("latexBuild:autoBuild")}</DropdownMenuLabel>
-						<DropdownMenuRadioGroup
-							value={autoBuild}
-							onValueChange={(value) => {
-								setTexProjectSettings(rootFile, {
-									...getTexProjectSettings(rootFile),
-									autoBuild: value as TexAutoBuild,
-								});
-							}}
-						>
-							<DropdownMenuRadioItem value="never">
-								{t("latexBuild:manual")}
-							</DropdownMenuRadioItem>
-							<DropdownMenuRadioItem value="onSave">
-								{t("latexBuild:onSave")}
-							</DropdownMenuRadioItem>
-							<DropdownMenuRadioItem value="onFileChange">
-								{t("latexBuild:onFileChange")}
-							</DropdownMenuRadioItem>
-						</DropdownMenuRadioGroup>
+						<DropdownMenuItem onSelect={() => void toggleLivePreview()}>
+							<Check
+								className={cn("size-4", !livePreview && "invisible")}
+								aria-hidden
+							/>
+							{t("fileTree.liveCompile")}
+						</DropdownMenuItem>
 						{snapshot?.status === "running" && snapshot.jobId ? (
 							<DropdownMenuItem
 								onSelect={() => {
