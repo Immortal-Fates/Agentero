@@ -3,6 +3,8 @@
  * Build products stay on disk and out of the list; project config stays.
  */
 
+import { normalizePath } from "@/lib/core/path";
+
 const SKIP_DIRECTORIES = new Set(["build", "out", "aux", "node_modules"]);
 
 const SKIP_EXTENSIONS = new Set([
@@ -53,6 +55,18 @@ export function isWritingSourceName(
 	const dot = lower.lastIndexOf(".");
 	const ext = dot >= 0 ? lower.slice(dot + 1) : "";
 	return !SKIP_EXTENSIONS.has(ext);
+}
+
+/** Drop directories that are other writing projects, not chapters of this one. */
+export function withoutNestedProjects<T extends { kind: string; path: string }>(
+	nodes: readonly T[],
+	projectDirs: ReadonlySet<string>,
+): T[] {
+	if (projectDirs.size === 0) return [...nodes];
+	return nodes.filter(
+		(node) =>
+			node.kind !== "directory" || !projectDirs.has(normalizePath(node.path)),
+	);
 }
 
 export function compareWritingNodes(
