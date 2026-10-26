@@ -1,9 +1,8 @@
 /**
- * Writing canvas: a project list, or one project's source beside its PDF.
+ * Writing canvas: one project's source beside its PDF.
  * The reading dock stays mounted underneath and is not shown here.
  */
 
-import { Trash2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -13,7 +12,6 @@ import {
 	ResizablePanel,
 } from "@/components/ui/resizable";
 import { NewProjectForm } from "@/components/writing/new-project-form";
-import { WritingDeleteDialog } from "@/components/writing/writing-delete-dialog";
 import { WritingFileTabs } from "@/components/writing/writing-file-tabs";
 import { WritingHistory } from "@/components/writing/writing-history";
 import { WritingPdfBar } from "@/components/writing/writing-pdf-bar";
@@ -31,10 +29,6 @@ import { persistTextFile } from "@/lib/workspace/persistence";
 import { resolveTexPdfPath } from "@/lib/workspace/tex-compile";
 import { compileTexOnManualSave } from "@/lib/workspace/viewer-actions";
 import { writingFileReloadStore } from "@/lib/writing/history";
-import {
-	mergeManuscripts,
-	writingProjectTrashRel,
-} from "@/lib/writing/session";
 import { selectManuscript } from "@/lib/writing/store";
 
 const TextEditor = lazy(() =>
@@ -66,76 +60,33 @@ export function WritingDesk() {
 	const discovering = useWritingStore((s) => s.discovering);
 	const historyActive = useWritingStore((s) => s.historyActive);
 	const syncActive = useWritingStore((s) => s.syncActive);
-	const [pendingDelete, setPendingDelete] = useState<{
-		rootFile: string;
-		title: string;
-	} | null>(null);
-	const manuscripts = mergeManuscripts(discovered, recents, activeRoot);
+	const fallbackRoot =
+		activeRoot || discovering
+			? null
+			: (recents.find((path) =>
+					discovered.some(
+						(item) => normalizePath(item.rootFile) === normalizePath(path),
+					),
+				) ??
+				discovered[0]?.rootFile ??
+				null);
+
+	useEffect(() => {
+		if (!vaultPath || activeRoot || !fallbackRoot) return;
+		selectManuscript(fallbackRoot);
+	}, [vaultPath, activeRoot, fallbackRoot]);
 
 	if (!vaultPath) return null;
 	if (!activeRoot) {
+		if (fallbackRoot) return null;
 		return (
-			<div className="mx-auto flex h-full w-full max-w-xl flex-col gap-6 overflow-y-auto px-6 py-10">
-				<div>
-					<h1 className="text-lg font-medium">{t("writing.write")}</h1>
-				</div>
-				<NewProjectForm vaultPath={vaultPath} startOpen />
-				{discovering && manuscripts.length === 0 ? (
-					<p className="text-muted-foreground text-sm">
-						{t("writing.loading")}
-					</p>
-				) : null}
-				{manuscripts.length === 0 && !discovering ? (
-					<p className="text-muted-foreground text-sm">
-						{t("writing.emptyTitle")}
-					</p>
-				) : null}
-				<ul className="flex flex-col gap-1">
-					{manuscripts.map((item) => {
-						const title = item.title || t("writing.untitled");
-						const canDelete = writingProjectTrashRel(vaultPath, item.rootFile);
-						return (
-							<li
-								key={normalizePath(item.rootFile)}
-								className="flex items-center gap-1"
-							>
-								<button
-									type="button"
-									onClick={() => selectManuscript(item.rootFile)}
-									className="hover:bg-accent flex h-10 min-w-0 flex-1 items-center rounded-md px-3 text-left text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-								>
-									<span className="min-w-0 flex-1 truncate font-medium">
-										{title}
-									</span>
-									<span className="text-muted-foreground ml-3 shrink-0 text-xs">
-										{item.fileName}
-									</span>
-								</button>
-								{canDelete ? (
-									<button
-										type="button"
-										aria-label={t("writing.deleteProject")}
-										title={t("writing.deleteProject")}
-										onClick={() =>
-											setPendingDelete({
-												rootFile: item.rootFile,
-												title,
-											})
-										}
-										className="text-muted-foreground hover:bg-accent hover:text-destructive flex size-8 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-									>
-										<Trash2 className="size-3.5" aria-hidden />
-									</button>
-								) : null}
-							</li>
-						);
-					})}
-				</ul>
-				<WritingDeleteDialog
-					vaultPath={vaultPath}
-					target={pendingDelete}
-					onClose={() => setPendingDelete(null)}
-				/>
+			<div className="mx-auto flex h-full w-full max-w-sm flex-col justify-center gap-3 px-6">
+				<p className="text-muted-foreground text-sm">
+					{discovering ? t("writing.loading") : t("writing.emptyTitle")}
+				</p>
+				{discovering ? null : (
+					<NewProjectForm vaultPath={vaultPath} startOpen />
+				)}
 			</div>
 		);
 	}

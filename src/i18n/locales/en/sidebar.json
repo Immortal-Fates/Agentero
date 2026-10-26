@@ -500,7 +500,6 @@
 		"create": "Create",
 		"createFailed": "Could not create the project",
 		"untitled": "Untitled project",
-		"allProjects": "All projects",
 		"previewEmpty": "Compile to preview",
 		"previewLoading": "Reading PDF…",
 		"files": "Files",

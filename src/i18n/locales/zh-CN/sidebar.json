@@ -499,7 +499,6 @@
 		"create": "创建",
 		"createFailed": "项目创建失败",
 		"untitled": "未命名项目",
-		"allProjects": "全部项目",
 		"previewEmpty": "编译后在这里预览",
 		"previewLoading": "正在读取 PDF…",
 		"files": "文件",

@@ -127,22 +127,6 @@ export function selectManuscript(rootFile: string): void {
 	persist();
 }
 
-/** Leave the open project and return to the project list. Stays on writing. */
-export function closeManuscript(): void {
-	const state = writingStore.getState();
-	if (!state.activeRoot && !state.activeFile) return;
-	writingStore.setState({
-		activeRoot: null,
-		activeFile: null,
-		openFiles: [],
-		historyOpen: false,
-		historyActive: false,
-		syncOpen: false,
-		syncActive: false,
-	});
-	persist();
-}
-
 /**
  * Drop a deleted project from the session. The path is already gone.
  * `file` removes one manuscript that lived directly in `thesis/`.

@@ -15,15 +15,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ManuscriptFiles } from "@/components/writing/manuscript-files";
 import { NewProjectForm } from "@/components/writing/new-project-form";
+import { WritingDeleteDialog } from "@/components/writing/writing-delete-dialog";
 import { WritingOutline } from "@/components/writing/writing-outline";
 import { useVaultStore, useWritingStore } from "@/hooks/use-app-stores";
 import { useTexRoot } from "@/hooks/use-tex-root";
 import { normalizePath } from "@/lib/core/path";
 import { cn } from "@/lib/core/utils";
 import { discoverWritingProjects } from "@/lib/writing/discover";
-import { manuscriptDir, mergeManuscripts } from "@/lib/writing/session";
 import {
-	closeManuscript,
+	manuscriptDir,
+	mergeManuscripts,
+	writingProjectTrashRel,
+} from "@/lib/writing/session";
+import {
 	selectManuscript,
 	setDiscoveredManuscripts,
 	setWritingDiscovering,
@@ -45,6 +49,10 @@ export function WritingRail() {
 			normalizePath(item.rootFile) === normalizePath(activeRoot),
 	);
 	const [creating, setCreating] = useState(false);
+	const [pendingDelete, setPendingDelete] = useState<{
+		rootFile: string;
+		title: string;
+	} | null>(null);
 	const rootDir = active ? manuscriptDir(active.rootFile) : "";
 	const here = rootDir ? normalizePath(rootDir) : "";
 	const projectDirs = new Set<string>();
@@ -54,7 +62,11 @@ export function WritingRail() {
 	}
 	const label = active
 		? active.title || t("writing.untitled")
-		: t("writing.allProjects");
+		: t("writing.write");
+	const canDelete =
+		active != null &&
+		vaultPath != null &&
+		writingProjectTrashRel(vaultPath, active.rootFile) != null;
 
 	useEffect(() => {
 		if (!vaultPath) return;
@@ -91,14 +103,6 @@ export function WritingRail() {
 						/>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent>
-						<DropdownMenuItem
-							onSelect={() => {
-								setCreating(false);
-								closeManuscript();
-							}}
-						>
-							{t("writing.allProjects")}
-						</DropdownMenuItem>
 						<DropdownMenuItem onSelect={() => setCreating(true)}>
 							{t("writing.newProject")}
 						</DropdownMenuItem>
@@ -122,6 +126,22 @@ export function WritingRail() {
 								</DropdownMenuItem>
 							);
 						})}
+						{active && canDelete ? (
+							<>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem
+									onSelect={() =>
+										setPendingDelete({
+											rootFile: active.rootFile,
+											title: active.title || t("writing.untitled"),
+										})
+									}
+									className="text-destructive"
+								>
+									{t("writing.deleteProject")}
+								</DropdownMenuItem>
+							</>
+						) : null}
 					</DropdownMenuContent>
 				</DropdownMenu>
 				{creating ? (
@@ -149,6 +169,11 @@ export function WritingRail() {
 					<WritingOutline texPath={compileRoot ?? active.rootFile} />
 				</>
 			) : null}
+			<WritingDeleteDialog
+				vaultPath={vaultPath}
+				target={pendingDelete}
+				onClose={() => setPendingDelete(null)}
+			/>
 		</div>
 	);
 }
