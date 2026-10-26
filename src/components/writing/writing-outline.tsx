@@ -104,7 +104,7 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 			aria-label={t("latexPanel.structure")}
 			className="flex min-h-0 flex-1 flex-col border-t border-border/70"
 		>
-			<p className="text-muted-foreground shrink-0 px-3 pt-2.5 pb-1 text-[11px] font-medium tracking-wide">
+			<p className="text-muted-foreground shrink-0 px-3 pt-2.5 pb-1 text-[10px] font-medium tracking-wide">
 				{t("latexPanel.structure")}
 			</p>
 			<div className="agentero-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -123,6 +123,9 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 									: item.kind === "table"
 										? Table2
 										: null;
+							const indent = section
+								? 0.5 + depth * INDENT_STEP_REM
+								: 0.5 + (depth - 0.5) * INDENT_STEP_REM;
 							return (
 								<li key={item.id}>
 									<button
@@ -134,21 +137,23 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 											navigateTexSource(item.path ?? texPath, item.line);
 										}}
 										className={cn(
-											"flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs outline-none",
+											"flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left outline-none",
 											"transition-colors duration-[var(--motion-duration-micro)] motion-reduce:transition-none",
 											"hover:bg-sidebar-accent/60 active:bg-sidebar-accent/80",
 											"focus-visible:ring-1 focus-visible:ring-ring/60",
 											section
 												? depth === 0
-													? "font-medium text-foreground/90"
-													: "font-normal text-muted-foreground"
-												: "font-normal text-muted-foreground/60",
+													? "font-semibold text-[13px] text-foreground"
+													: depth === 1
+														? "font-medium text-muted-foreground text-xs"
+														: "font-normal text-[11px] text-muted-foreground/80"
+												: "font-normal text-[11px] text-muted-foreground/50",
 											section && depth === 0 && index > 0 && "mt-1.5",
 											current &&
 												"bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent",
 										)}
 										style={{
-											paddingLeft: `${0.5 + depth * INDENT_STEP_REM}rem`,
+											paddingLeft: `${indent}rem`,
 										}}
 									>
 										{item.kind === "label" ? (
