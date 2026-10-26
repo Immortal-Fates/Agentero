@@ -63,6 +63,12 @@ export function zoomPreviewTranslateForViewport(
 	};
 }
 
+/** Step the viewer zoom by 10 percentage points, staying inside the range. */
+export function stepPdfZoom(zoom: number, direction: -1 | 1): number {
+	const next = Math.round((zoom + direction * 0.1) * 100) / 100;
+	return Math.min(PDF_ZOOM_MAX, Math.max(PDF_ZOOM_MIN, next));
+}
+
 /** Keep one decimal place when needed without showing a trailing `.0`. */
 export function formatPdfZoomPercentage(zoom: number): string {
 	const percentage = Math.round(zoom * 1000) / 10;
