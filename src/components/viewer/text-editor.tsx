@@ -5,7 +5,6 @@ import {
 	type Extension,
 	type Text,
 } from "@codemirror/state";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { useTheme } from "next-themes";
@@ -21,6 +20,11 @@ import {
 	lintDiagnosticsWatcher,
 	TextEditorLintFooter,
 } from "@/components/viewer/text-editor-lint-footer";
+import {
+	editorChrome,
+	editorColorScheme,
+	editorHighlight,
+} from "@/components/viewer/text-editor-theme";
 import { TextEditorToolbar } from "@/components/viewer/text-editor-toolbar";
 import { useTextEditorSelection } from "@/components/viewer/use-text-editor-selection";
 import { basenameOf, dirnameOf, normalizePath } from "@/lib/core/path";
@@ -80,36 +84,6 @@ interface TextEditorProps {
 }
 
 const AUTOSAVE_DELAY_MS = 800;
-
-// Base chrome rides the app's shadcn design tokens so light/dark both blend
-// with the surrounding surface; syntax colors come from the default light
-// highlight style / oneDark (swapped via compartment). Placed after oneDark
-// so the transparent background wins over its solid panel color.
-const baseTheme = EditorView.theme({
-	"&": {
-		height: "100%",
-		backgroundColor: "transparent",
-		color: "var(--foreground)",
-	},
-	".cm-scroller": {
-		fontFamily: "var(--font-mono)",
-		lineHeight: "1.65",
-	},
-	".cm-gutters": {
-		backgroundColor: "transparent",
-		color: "var(--muted-foreground)",
-		borderRight: "1px solid var(--border)",
-	},
-	".cm-activeLine": {
-		backgroundColor: "color-mix(in oklab, var(--muted) 45%, transparent)",
-	},
-	".cm-activeLineGutter": {
-		backgroundColor: "color-mix(in oklab, var(--muted) 60%, transparent)",
-	},
-	".cm-content": { caretColor: "var(--foreground)" },
-	".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
-	"&.cm-focused": { outline: "none" },
-});
 
 /**
  * Plain-text / code editor (CodeMirror 6) for the `text` fallback mode.
@@ -333,11 +307,14 @@ export function TextEditor({
 			selection.selectionListener,
 			lintDiagnosticsWatcher(handleDiagnostics),
 			languageCompartment.current.of(language),
-			themeCompartment.current.of(themeRef.current === "dark" ? oneDark : []),
+			editorChrome,
+			editorHighlight,
+			themeCompartment.current.of(
+				editorColorScheme(themeRef.current === "dark"),
+			),
 			fontSizeCompartment.current.of(
 				EditorView.theme({ "&": { fontSize: `${fontSizeRef.current}px` } }),
 			),
-			baseTheme,
 			EditorView.domEventHandlers({
 				focus(_event, view) {
 					markTexEditorActive(pathRef.current, view);
@@ -504,11 +481,13 @@ export function TextEditor({
 		});
 	}, [path]);
 
-	// Follow theme switches without rebuilding the editor.
+	// Follow light/dark without rebuilding the editor. Token colors use
+	// light-dark() against this color-scheme, and surface colors are CSS
+	// variables, so a palette change does not need another reconfigure.
 	useEffect(() => {
 		viewRef.current?.dispatch({
 			effects: themeCompartment.current.reconfigure(
-				resolvedTheme === "dark" ? oneDark : [],
+				editorColorScheme(resolvedTheme === "dark"),
 			),
 		});
 	}, [resolvedTheme]);
