@@ -8,6 +8,7 @@ import {
 	CloudUpload,
 	History,
 	Loader2,
+	MonitorPlay,
 	Play,
 	Square,
 } from "lucide-react";
@@ -237,12 +238,18 @@ export function WritingPdfBar({
 							{t("fileTree.cleanAux")}
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem onSelect={() => void toggleLivePreview()}>
+						<DropdownMenuItem
+							onSelect={() => void toggleLivePreview()}
+							className="justify-between"
+						>
+							<span className="flex items-center gap-1.5">
+								<MonitorPlay className="size-4" aria-hidden />
+								{t("fileTree.liveCompile")}
+							</span>
 							<Check
 								className={cn("size-4", !livePreview && "invisible")}
 								aria-hidden
 							/>
-							{t("fileTree.liveCompile")}
 						</DropdownMenuItem>
 						{snapshot?.status === "running" && snapshot.jobId ? (
 							<DropdownMenuItem
