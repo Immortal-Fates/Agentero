@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { Fragment, memo } from "react";
-import { COLUMN_META } from "@/components/library/library-columns";
+import { getColumnMeta } from "@/components/library/library-columns";
 import {
 	type CellCtx,
 	isMissingLocalPdf,
@@ -142,9 +142,10 @@ export const LibraryPaperRow = memo(function LibraryPaperRow({
 				>
 					{visibleColumns.map((col) => (
 						<Fragment key={col.key}>
-							{COLUMN_META[col.key].render(p, cellCtx)}
+							{getColumnMeta(col.key).render(p, cellCtx)}
 						</Fragment>
 					))}
+					<td className="w-9 min-w-9 p-0" />
 				</tr>
 			</ContextMenuTrigger>
 			<ContextMenuContent className="w-44">

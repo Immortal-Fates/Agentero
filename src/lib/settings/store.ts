@@ -574,7 +574,8 @@ function normalizeLibraryColumns(raw: unknown): LibraryColumnPref[] {
 			const rawKey = (item as { key?: unknown }).key;
 			if (typeof rawKey !== "string") continue;
 			const key = rawKey === "year" ? "date" : rawKey;
-			if (!known.has(key)) continue;
+			const isCustomProp = key.startsWith("prop:");
+			if (!known.has(key) && !isCustomProp) continue;
 			const k = key as LibraryColumnKey;
 			if (seen.has(k)) continue;
 			seen.add(k);

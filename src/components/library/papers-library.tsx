@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { useCellCopy } from "@/components/library/hooks/use-cell-copy";
 import { useLibraryHeatmap } from "@/components/library/hooks/use-library-heatmap";
 import { resolveColumnWidths } from "@/components/library/library-column-widths";
-import { COLUMN_META } from "@/components/library/library-columns";
+import { getColumnMeta } from "@/components/library/library-columns";
 import { LibraryPaperRow } from "@/components/library/library-paper-row";
 import { LibraryPdfDropSurface } from "@/components/library/library-pdf-drop-surface";
 import {
@@ -33,6 +33,7 @@ import { useDebouncedCallback } from "@/hooks/use-debounce";
 import { cn } from "@/lib/core/utils";
 import type { PaperLibraryRow, PaperMetadata } from "@/lib/paper";
 import { filterPapersByScope } from "@/lib/paper/api";
+import { loadCustomProperties } from "@/lib/paper/custom-properties-store";
 import {
 	refreshPaperMetadata,
 	syncLibraryPublication,
@@ -131,6 +132,10 @@ export function PapersLibrary({
 	// Preview hovered rows in the left Paper Info panel; clear once the table
 	// loses focus or unmounts so a stale preview never lingers.
 	useEffect(() => {
+		if (active) void loadCustomProperties();
+	}, [active]);
+
+	useEffect(() => {
 		if (!active) setHoveredPaperPath(null);
 	}, [active]);
 	useEffect(() => () => setHoveredPaperPath(null), []);
@@ -187,7 +192,7 @@ export function PapersLibrary({
 			resolveColumnWidths(
 				visibleColumns,
 				viewportRem,
-				(col) => COLUMN_META[col.key].widthWeight,
+				(col) => getColumnMeta(col.key).widthWeight,
 			),
 		[resizing, visibleColumns, viewportRem],
 	);
@@ -426,7 +431,7 @@ export function PapersLibrary({
 					<table
 						className="table-fixed border-collapse text-left text-sm"
 						style={{
-							width: `${columnWidths.reduce((sum, width) => sum + width, 0)}rem`,
+							width: `${columnWidths.reduce((sum, width) => sum + width, 0) + 2.25}rem`,
 						}}
 					>
 						<colgroup>
@@ -438,6 +443,7 @@ export function PapersLibrary({
 									}}
 								/>
 							))}
+							<col style={{ width: "2.25rem" }} />
 						</colgroup>
 						<LibraryTableHeader
 							t={t}
@@ -471,7 +477,7 @@ export function PapersLibrary({
 							{paddingTop > 0 ? (
 								<tr aria-hidden>
 									<td
-										colSpan={visibleColumns.length}
+										colSpan={visibleColumns.length + 1}
 										style={{ height: paddingTop }}
 									/>
 								</tr>
@@ -505,7 +511,7 @@ export function PapersLibrary({
 							{paddingBottom > 0 ? (
 								<tr aria-hidden>
 									<td
-										colSpan={visibleColumns.length}
+										colSpan={visibleColumns.length + 1}
 										style={{ height: paddingBottom }}
 									/>
 								</tr>

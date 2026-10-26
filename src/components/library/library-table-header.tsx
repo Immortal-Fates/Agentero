@@ -10,10 +10,22 @@
  * scrolling the virtualized body does not re-render the header unless
  * compact/props change.
  */
-import { ListFilter, RefreshCw, Search, X } from "lucide-react";
+import {
+	ListFilter,
+	MoreHorizontal,
+	Plus,
+	RefreshCw,
+	Search,
+	X,
+} from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import {
+	CreatePropertyDialog,
+	DeletePropertyDialog,
+	RenamePropertyDialog,
+} from "@/components/library/custom-property-dialogs";
 import { LibraryColumnResizeHandle } from "@/components/library/library-column-resize-handle";
-import { COLUMN_META, SortIcon } from "@/components/library/library-columns";
+import { getColumnMeta, SortIcon } from "@/components/library/library-columns";
 import type {
 	CellT,
 	SortDir,
@@ -41,6 +53,10 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/core/utils";
+import {
+	type CustomProperty,
+	useCustomProperties,
+} from "@/lib/paper/custom-properties-store";
 import type { PaperTag } from "@/lib/paper/tags";
 import type { LibraryColumnPref } from "@/lib/settings";
 
@@ -107,6 +123,13 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 	const [dragKey, setDragKey] = useState<SortKey | null>(null);
 	const [dragOverKey, setDragOverKey] = useState<SortKey | null>(null);
 	const [tagFilterOpen, setTagFilterOpen] = useState(false);
+	// Custom Property Dialog states
+	const customProps = useCustomProperties();
+	const [createPropOpen, setCreatePropOpen] = useState(false);
+	const [renamePropTarget, setRenamePropTarget] =
+		useState<CustomProperty | null>(null);
+	const [deletePropTarget, setDeletePropTarget] =
+		useState<CustomProperty | null>(null);
 
 	useEffect(() => {
 		if (compact) setTagFilterOpen(false);
@@ -127,7 +150,7 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 				>
 					<tr className="text-muted-foreground text-xs tracking-wide">
 						{visibleColumns.map((col) => {
-							const meta = COLUMN_META[col.key];
+							const meta = getColumnMeta(col.key);
 							const active = sortKey === col.key;
 							const isDragOver = dragOverKey === col.key && dragKey !== col.key;
 							const isTitle = col.key === "title";
@@ -195,10 +218,16 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 											)}
 											onClick={() => onSort(col.key)}
 											aria-label={t("papersLibrary.sortBy", {
-												column: t(meta.labelKey),
+												column: col.key.startsWith("prop:")
+													? meta.labelKey
+													: t(meta.labelKey),
 											})}
 										>
-											<span className="truncate">{t(meta.labelKey)}</span>
+											<span className="truncate">
+												{col.key.startsWith("prop:")
+													? meta.labelKey
+													: t(meta.labelKey)}
+											</span>
 											<span
 												className={cn(
 													"inline-flex transition-opacity ease-out",
@@ -375,11 +404,69 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 												</PopoverContent>
 											</Popover>
 										) : null}
+										{col.key.startsWith("prop:")
+											? (() => {
+													const propId = col.key.slice(5);
+													const prop = customProps.find((p) => p.id === propId);
+													if (!prop) return null;
+													return (
+														<Popover>
+															<PopoverTrigger asChild>
+																<button
+																	type="button"
+																	data-library-header-action
+																	className={cn(
+																		"flex size-5 shrink-0 items-center justify-center rounded p-0.5 text-muted-foreground",
+																		"hover:bg-muted/60 hover:text-foreground",
+																		"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+																		"transition-opacity ease-out",
+																		chromeFadeClass,
+																	)}
+																	onClick={(e) => e.stopPropagation()}
+																	onMouseDown={(e) => e.stopPropagation()}
+																>
+																	<MoreHorizontal
+																		className="size-3.5"
+																		aria-hidden
+																	/>
+																</button>
+															</PopoverTrigger>
+															<PopoverContent
+																align="start"
+																className="w-40 p-1 text-xs"
+																onClick={(e) => e.stopPropagation()}
+															>
+																<button
+																	type="button"
+																	className="flex w-full items-center gap-1.5 px-2 py-1 text-xs hover:bg-muted rounded text-left"
+																	onClick={() => setRenamePropTarget(prop)}
+																>
+																	{t(
+																		"papersLibrary.customProperties.renameProperty",
+																	)}
+																</button>
+																<div className="my-0.5 border-t" />
+																<button
+																	type="button"
+																	className="flex w-full items-center gap-1.5 px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded text-left"
+																	onClick={() => setDeletePropTarget(prop)}
+																>
+																	{t(
+																		"papersLibrary.customProperties.deleteProperty",
+																	)}
+																</button>
+															</PopoverContent>
+														</Popover>
+													);
+												})()
+											: null}
 									</div>
 									{canCustomizeColumns ? (
 										<LibraryColumnResizeHandle
 											label={t("papersLibrary.resizeColumn", {
-												column: t(meta.labelKey),
+												column: col.key.startsWith("prop:")
+													? meta.labelKey
+													: t(meta.labelKey),
 											})}
 											onResize={(width, commit) =>
 												onColumnResize(col.key, width, commit)
@@ -389,6 +476,30 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 								</th>
 							);
 						})}
+						<th className="w-9 min-w-9 p-0 text-center">
+							<div className="flex h-9 items-center justify-center">
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<button
+											type="button"
+											onClick={() => setCreatePropOpen(true)}
+											className={cn(
+												"flex size-6 items-center justify-center rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors",
+												chromeFadeClass,
+											)}
+											aria-label={t(
+												"papersLibrary.customProperties.addProperty",
+											)}
+										>
+											<Plus className="size-3.5" />
+										</button>
+									</TooltipTrigger>
+									<TooltipContent side="bottom">
+										{t("papersLibrary.customProperties.addProperty")}
+									</TooltipContent>
+								</Tooltip>
+							</div>
+						</th>
 					</tr>
 				</thead>
 			</ContextMenuTrigger>
@@ -404,9 +515,16 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 						onSelect={(e) => e.preventDefault()}
 						onCheckedChange={() => onToggleColumn(col.key)}
 					>
-						{t(COLUMN_META[col.key].labelKey)}
+						{col.key.startsWith("prop:")
+							? getColumnMeta(col.key).labelKey
+							: t(getColumnMeta(col.key).labelKey)}
 					</ContextMenuCheckboxItem>
 				))}
+				<ContextMenuSeparator />
+				<ContextMenuItem onSelect={() => setCreatePropOpen(true)}>
+					<Plus className="size-3.5 mr-1.5" />
+					{t("papersLibrary.customProperties.addProperty")}
+				</ContextMenuItem>
 				<ContextMenuSeparator />
 				<ContextMenuItem
 					disabled={!canCustomizeColumns}
@@ -415,6 +533,20 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 					{t("papersLibrary.resetColumns")}
 				</ContextMenuItem>
 			</ContextMenuContent>
+			<CreatePropertyDialog
+				open={createPropOpen}
+				onOpenChange={setCreatePropOpen}
+			/>
+			<RenamePropertyDialog
+				property={renamePropTarget}
+				open={Boolean(renamePropTarget)}
+				onOpenChange={(open) => !open && setRenamePropTarget(null)}
+			/>
+			<DeletePropertyDialog
+				property={deletePropTarget}
+				open={Boolean(deletePropTarget)}
+				onOpenChange={(open) => !open && setDeletePropTarget(null)}
+			/>
 		</ContextMenu>
 	);
 });

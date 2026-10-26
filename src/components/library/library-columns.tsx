@@ -9,6 +9,7 @@ import { LibraryPaperTag } from "@/components/library/library-paper-tag";
 import {
 	addedDate,
 	authorsCopyText,
+	type BuiltinLibraryColumnKey,
 	type CellCtx,
 	type ColumnDef,
 	identifierValue,
@@ -325,6 +326,47 @@ export const COLUMN_META = {
 			);
 		},
 	},
-} as const satisfies Record<SortKey, ColumnDef>;
+} as const satisfies Record<BuiltinLibraryColumnKey, ColumnDef>;
 
 export { SortIcon };
+
+import { SelectCell } from "@/components/library/select-cell";
+import { customPropertiesStore } from "@/lib/paper/custom-properties-store";
+
+export function getColumnMeta(key: SortKey): ColumnDef {
+	if (Object.hasOwn(COLUMN_META, key)) {
+		return COLUMN_META[key as BuiltinLibraryColumnKey];
+	}
+	if (key.startsWith("prop:")) {
+		const propId = key.slice(5);
+		const prop = customPropertiesStore
+			.getState()
+			.properties.find((p) => p.id === propId);
+		return {
+			labelKey: prop?.name ?? propId,
+			widthWeight: 14,
+			headerClassName: "min-w-[120px]",
+			render: (p) => (
+				<td className="min-w-0 max-w-0 overflow-hidden px-3 py-2.5">
+					{prop ? (
+						<SelectCell
+							paperPath={p.path ?? ""}
+							property={prop}
+							selectedOptionId={p.custom_props?.[prop.id]}
+						/>
+					) : (
+						"—"
+					)}
+				</td>
+			),
+		};
+	}
+	return {
+		labelKey: key,
+		widthWeight: 10,
+		headerClassName: "min-w-[100px]",
+		render: () => (
+			<td className="px-3 py-2.5 text-xs text-muted-foreground">—</td>
+		),
+	};
+}

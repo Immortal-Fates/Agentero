@@ -251,6 +251,7 @@ mod tests {
             is_read: false,
             zotero_item_id: None,
             zotero_last_synced: None,
+            custom_props: Default::default(),
             added_at: "t".into(),
             updated_at: "t".into(),
         };
