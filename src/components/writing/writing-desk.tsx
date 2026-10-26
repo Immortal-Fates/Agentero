@@ -22,8 +22,10 @@ import { useTexRoot } from "@/hooks/use-tex-root";
 import { errorText } from "@/lib/core/error";
 import { notifyError } from "@/lib/core/notify";
 import { normalizePath } from "@/lib/core/path";
+import { cn } from "@/lib/core/utils";
 import { localFileToArrayBuffer } from "@/lib/paper/media";
 import { texBuildStore } from "@/lib/tex/build-state";
+import { useTexLiveStatusStore } from "@/lib/tex-live/status";
 import { readVaultFile } from "@/lib/vault";
 import { persistTextFile } from "@/lib/workspace/persistence";
 import { resolveTexPdfPath } from "@/lib/workspace/tex-compile";
@@ -287,15 +289,18 @@ function ProjectPdf({
 
 	if (livePreview) {
 		return (
-			<Suspense
-				fallback={
-					<p className="text-muted-foreground px-3 py-2 text-sm">
-						{t("writing.previewLoading")}
-					</p>
-				}
-			>
-				<TexLiveViewer rootPath={rootFile} vaultPath={vaultPath} />
-			</Suspense>
+			<div className="relative h-full min-h-0">
+				<Suspense
+					fallback={
+						<p className="text-muted-foreground px-3 py-2 text-sm">
+							{t("writing.previewLoading")}
+						</p>
+					}
+				>
+					<TexLiveViewer rootPath={rootFile} vaultPath={vaultPath} />
+				</Suspense>
+				<LivePreviewBadge rootPath={rootFile} />
+			</div>
 		);
 	}
 
@@ -331,6 +336,32 @@ function ProjectPdf({
 			{pdf.status === "loading"
 				? t("writing.previewLoading")
 				: t("writing.previewEmpty")}
+		</div>
+	);
+}
+
+function LivePreviewBadge({ rootPath }: { rootPath: string }) {
+	const { t } = useTranslation("sidebar");
+	const status = useTexLiveStatusStore(
+		(state) => state.byRoot[rootPath]?.status ?? "starting",
+	);
+	return (
+		<div
+			role="status"
+			className="pointer-events-none absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border/70 bg-background/85 px-2 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur"
+		>
+			<span
+				className={cn(
+					"size-1.5 rounded-full",
+					status === "live"
+						? "bg-emerald-500"
+						: status === "failed"
+							? "bg-red-500"
+							: "bg-amber-500",
+				)}
+				aria-hidden
+			/>
+			{t("fileTree.liveCompile")}
 		</div>
 	);
 }
