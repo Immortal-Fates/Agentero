@@ -3,19 +3,16 @@ import { getPlatformOS, isMobileApp } from "@/lib/core/tauri";
 const SCROLLING_CLASS = "scrolling";
 const HIDE_DELAY_MS = 800;
 const TIMEOUT_KEY = Symbol("agentero-scrollbar-timeout");
+const AUTO_HIDE_TARGETS =
+	".agentero-scroll, .agentero-scroll-both, .cm-scroller";
 
 function handleScroll(event: Event) {
 	const target = event.target;
 	if (!(target instanceof Element)) return;
 
-	const classes = target.classList;
-	if (
-		!classes.contains("agentero-scroll") &&
-		!classes.contains("agentero-scroll-both")
-	) {
-		return;
-	}
+	if (!target.matches(AUTO_HIDE_TARGETS)) return;
 
+	const classes = target.classList;
 	classes.add(SCROLLING_CLASS);
 	const previous = (target as HTMLElement & { [TIMEOUT_KEY]?: number })[
 		TIMEOUT_KEY
