@@ -14,8 +14,10 @@ use serde::Serialize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(not(windows))]
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
+#[cfg(not(windows))]
 use tokio::io::BufReader;
 
 use crate::core::error::ApiResult;
@@ -400,6 +402,7 @@ fn line_milestone(line: &str) -> Option<(f32, String)> {
 const ERROR_TAIL_LINES: usize = 24;
 
 /// Pump a child pipe into the shared line stream until it ends.
+#[cfg(not(windows))]
 async fn forward_lines<S>(stream: S, tx: tokio::sync::mpsc::UnboundedSender<String>)
 where
     S: tokio::io::AsyncRead + Unpin,
