@@ -8,12 +8,15 @@ import {
 	isValidVaultEntryName,
 	joinVaultPath,
 	vaultPathExists,
+	writeVaultBytes,
 	writeVaultFile,
 } from "@/lib/vault";
 import { refreshTree } from "@/lib/vault/store";
 import {
 	type WritingTemplateId,
+	writingTemplateAssets,
 	writingTemplateFiles,
+	writingTemplateRoot,
 } from "@/lib/writing/templates";
 
 export type CreateWritingProjectResult =
@@ -28,7 +31,7 @@ export async function createWritingProject(
 	const trimmed = name.trim();
 	if (!isValidVaultEntryName(trimmed)) return { ok: false, reason: "invalid" };
 	const dir = joinVaultPath(joinVaultPath(vaultPath, "thesis"), trimmed);
-	const rootFile = joinVaultPath(dir, "main.tex");
+	const rootFile = joinVaultPath(dir, writingTemplateRoot(template));
 	if ((await vaultPathExists(dir)) || (await vaultPathExists(rootFile))) {
 		return { ok: false, reason: "exists" };
 	}
@@ -36,6 +39,14 @@ export async function createWritingProject(
 	try {
 		for (const file of starter) {
 			await writeVaultFile(joinVaultPath(dir, file.name), file.contents);
+		}
+		for (const asset of writingTemplateAssets(template)) {
+			const response = await fetch(asset.url);
+			if (!response.ok) throw new Error(asset.name);
+			await writeVaultBytes(
+				joinVaultPath(dir, asset.name),
+				new Uint8Array(await response.arrayBuffer()),
+			);
 		}
 		await refreshTree(vaultPath);
 	} catch (error) {

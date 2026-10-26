@@ -2,7 +2,7 @@
  * Name, template, and create one writing project on the project home.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,13 +29,16 @@ import {
 export function NewProjectForm({
 	vaultPath,
 	startOpen = false,
+	onCreated,
 }: {
 	vaultPath: string;
 	startOpen?: boolean;
+	onCreated?: () => void;
 }) {
 	const { t } = useTranslation("sidebar");
 	const [open, setOpen] = useState(startOpen);
 	const [name, setName] = useState("");
+	const templateId = useId();
 	const [template, setTemplate] = useState<WritingTemplateId>("blank");
 	const [busy, setBusy] = useState(false);
 
@@ -56,6 +59,7 @@ export function NewProjectForm({
 			selectManuscript(result.rootFile);
 			setName("");
 			if (!startOpen) setOpen(false);
+			onCreated?.();
 		} finally {
 			setBusy(false);
 		}
@@ -81,27 +85,29 @@ export function NewProjectForm({
 				void submit();
 			}}
 		>
-			<Select
-				value={template}
-				disabled={busy}
-				onValueChange={(value) => {
-					if (isWritingTemplateId(value)) setTemplate(value);
-				}}
-			>
-				<SelectTrigger
-					className="h-8 w-full text-sm"
-					aria-label={t("writing.template")}
+			<div className="flex flex-col gap-1">
+				<label htmlFor={templateId} className="text-muted-foreground text-xs">
+					{t("writing.template")}
+				</label>
+				<Select
+					value={template}
+					disabled={busy}
+					onValueChange={(value) => {
+						if (isWritingTemplateId(value)) setTemplate(value);
+					}}
 				>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					{WRITING_TEMPLATE_IDS.map((id) => (
-						<SelectItem key={id} value={id}>
-							{t(`writing.templates.${id}`)}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+					<SelectTrigger id={templateId} className="h-8 w-full text-sm">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{WRITING_TEMPLATE_IDS.map((id) => (
+							<SelectItem key={id} value={id}>
+								{t(`writing.templates.${id}`)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
 			<div className="flex items-center gap-1.5">
 				<Input
 					value={name}

@@ -1,24 +1,8 @@
 /**
  * Starter files for a writing project.
- * Conference styles are the official kits, copied unchanged from
- * vendor/. The main file only fills in the project title.
+ * Conference kits are the official packages, copied unchanged.
+ * The blank project is the only file this app writes itself.
  */
-
-import aclSty from "./vendor/acl/acl.sty?raw";
-import aclBst from "./vendor/acl/acl_natbib.bst?raw";
-import cvprSty from "./vendor/cvpr/cvpr.sty?raw";
-import cvprBst from "./vendor/cvpr/ieeenat_fullname.bst?raw";
-import iclrFancy from "./vendor/iclr/fancyhdr.sty?raw";
-import iclrBst from "./vendor/iclr/iclr2026_conference.bst?raw";
-import iclrSty from "./vendor/iclr/iclr2026_conference.sty?raw";
-import iclrNatbib from "./vendor/iclr/natbib.sty?raw";
-import icmlAlgorithm from "./vendor/icml/algorithm.sty?raw";
-import icmlAlgorithmic from "./vendor/icml/algorithmic.sty?raw";
-import icmlFancy from "./vendor/icml/fancyhdr.sty?raw";
-import icmlBst from "./vendor/icml/icml2026.bst?raw";
-import icmlSty from "./vendor/icml/icml2026.sty?raw";
-import neuripsChecklist from "./vendor/neurips/checklist.tex?raw";
-import neuripsSty from "./vendor/neurips/neurips_2026.sty?raw";
 
 export const WRITING_TEMPLATE_IDS = [
 	"blank",
@@ -27,16 +11,41 @@ export const WRITING_TEMPLATE_IDS = [
 	"iclr",
 	"neurips",
 	"acl",
+	"eccv",
 ] as const;
 
 export type WritingTemplateId = (typeof WRITING_TEMPLATE_IDS)[number];
 
 export type WritingTemplateFile = {
+	/** Path relative to the new project directory. May contain folders. */
 	name: string;
 	contents: string;
 };
 
-const BIBLIOGRAPHY = "% References.\n";
+export type WritingTemplateAsset = {
+	name: string;
+	url: string;
+};
+
+const ROOTS: Record<Exclude<WritingTemplateId, "blank">, string> = {
+	cvpr: "main.tex",
+	icml: "example_paper.tex",
+	iclr: "iclr2027_conference.tex",
+	neurips: "neurips_2026.tex",
+	acl: "acl_latex.tex",
+	eccv: "main.tex",
+};
+
+const textFiles = import.meta.glob(
+	"./vendor/*/**/*.{tex,sty,bst,bib,cls,clo,eps}",
+	{ query: "?raw", import: "default", eager: true },
+) as Record<string, string>;
+
+const binaryFiles = import.meta.glob("./vendor/*/**/*.pdf", {
+	query: "?url",
+	import: "default",
+	eager: true,
+}) as Record<string, string>;
 
 export function isWritingTemplateId(value: string): value is WritingTemplateId {
 	return (WRITING_TEMPLATE_IDS as readonly string[]).includes(value);
@@ -46,17 +55,6 @@ function latexText(name: string): string {
 	return name
 		.replace(/\\/g, "\\textbackslash{}")
 		.replace(/([&%$#_{}])/g, "\\$1");
-}
-
-function files(
-	main: string,
-	extras: WritingTemplateFile[],
-): WritingTemplateFile[] {
-	return [
-		{ name: "main.tex", contents: main },
-		{ name: "main.bib", contents: BIBLIOGRAPHY },
-		...extras,
-	];
 }
 
 function blankMain(title: string): string {
@@ -72,181 +70,51 @@ function blankMain(title: string): string {
 	].join("\n");
 }
 
-function cvprMain(title: string): string {
-	return [
-		"\\documentclass[10pt,twocolumn,letterpaper]{article}",
-		"\\usepackage[review]{cvpr}",
-		"\\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}",
-		"\\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}",
-		"\\def\\paperID{*****}",
-		"\\def\\confName{CVPR}",
-		"\\def\\confYear{2026}",
-		`\\title{${title}}`,
-		"\\author{Anonymous}",
-		"\\begin{document}",
-		"\\maketitle",
-		"\\begin{abstract}",
-		"\\end{abstract}",
-		"\\section{Introduction}",
-		"",
-		"{",
-		"\\small",
-		"\\bibliographystyle{ieeenat_fullname}",
-		"\\bibliography{main}",
-		"}",
-		"\\end{document}",
-		"",
-	].join("\n");
+function kitFiles(
+	id: Exclude<WritingTemplateId, "blank">,
+	table: Record<string, string>,
+): { name: string; value: string }[] {
+	const prefix = `./vendor/${id}/`;
+	return Object.entries(table)
+		.map(([path, value]) => ({
+			path: path.replaceAll("\\", "/"),
+			value,
+		}))
+		.filter((item) => item.path.startsWith(prefix))
+		.map((item) => ({
+			name: item.path.slice(prefix.length),
+			value: item.value,
+		}))
+		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function icmlMain(title: string): string {
-	return [
-		"\\documentclass{article}",
-		"\\usepackage{microtype}",
-		"\\usepackage{graphicx}",
-		"\\usepackage{booktabs}",
-		"\\usepackage{hyperref}",
-		"\\usepackage{icml2026}",
-		"\\usepackage{amsmath}",
-		"\\usepackage{amssymb}",
-		`\\icmltitlerunning{${title}}`,
-		"\\begin{document}",
-		"\\twocolumn[",
-		`\\icmltitle{${title}}`,
-		"",
-		"\\begin{icmlauthorlist}",
-		"\\icmlauthor{Anonymous}{anon}",
-		"\\end{icmlauthorlist}",
-		"",
-		"\\icmlaffiliation{anon}{Anonymous Institution}",
-		"\\icmlcorrespondingauthor{Anonymous}{anon@example.com}",
-		"\\icmlkeywords{Machine Learning}",
-		"",
-		"\\vskip 0.3in",
-		"]",
-		"",
-		"\\printAffiliationsAndNotice{}",
-		"",
-		"\\begin{abstract}",
-		"\\end{abstract}",
-		"",
-		"\\section{Introduction}",
-		"",
-		"\\bibliographystyle{icml2026}",
-		"\\bibliography{main}",
-		"\\end{document}",
-		"",
-	].join("\n");
+/** Main file written for this template. Conference kits keep the official name. */
+export function writingTemplateRoot(id: WritingTemplateId): string {
+	if (id === "blank") return "main.tex";
+	return ROOTS[id];
 }
 
-function iclrMain(title: string): string {
-	return [
-		"\\documentclass{article}",
-		"\\usepackage{iclr2026_conference,times}",
-		"\\usepackage{hyperref}",
-		"\\usepackage{url}",
-		`\\title{${title}}`,
-		"\\author{Anonymous}",
-		"\\begin{document}",
-		"\\maketitle",
-		"\\begin{abstract}",
-		"\\end{abstract}",
-		"\\section{Introduction}",
-		"\\bibliographystyle{iclr2026_conference}",
-		"\\bibliography{main}",
-		"\\end{document}",
-		"",
-	].join("\n");
-}
-
-function neuripsMain(title: string): string {
-	return [
-		"\\documentclass{article}",
-		"\\usepackage{neurips_2026}",
-		"\\usepackage[utf8]{inputenc}",
-		"\\usepackage[T1]{fontenc}",
-		"\\usepackage{hyperref}",
-		"\\usepackage{url}",
-		`\\title{${title}}`,
-		"\\author{Anonymous}",
-		"\\begin{document}",
-		"\\maketitle",
-		"\\begin{abstract}",
-		"\\end{abstract}",
-		"\\section{Introduction}",
-		"",
-		"{",
-		"\\small",
-		"\\bibliographystyle{plainnat}",
-		"\\bibliography{main}",
-		"}",
-		"",
-		"\\input{checklist.tex}",
-		"\\end{document}",
-		"",
-	].join("\n");
-}
-
-function aclMain(title: string): string {
-	return [
-		"\\documentclass[11pt]{article}",
-		"\\usepackage[review]{acl}",
-		"\\usepackage{times}",
-		"\\usepackage{latexsym}",
-		"\\usepackage[T1]{fontenc}",
-		"\\usepackage[utf8]{inputenc}",
-		"\\usepackage{graphicx}",
-		`\\title{${title}}`,
-		"\\author{Anonymous}",
-		"\\begin{document}",
-		"\\maketitle",
-		"\\begin{abstract}",
-		"\\end{abstract}",
-		"\\section{Introduction}",
-		"\\bibliography{main}",
-		"\\end{document}",
-		"",
-	].join("\n");
-}
-
-/** Files to write into thesis/<name>/. main.tex is always first. */
+/** Text files to write. Conference kits are not rewritten. */
 export function writingTemplateFiles(
 	id: WritingTemplateId,
 	title: string,
 ): WritingTemplateFile[] {
-	const safe = latexText(title);
-	switch (id) {
-		case "blank":
-			return [{ name: "main.tex", contents: blankMain(safe) }];
-		case "cvpr":
-			return files(cvprMain(safe), [
-				{ name: "cvpr.sty", contents: cvprSty },
-				{ name: "ieeenat_fullname.bst", contents: cvprBst },
-			]);
-		case "icml":
-			return files(icmlMain(safe), [
-				{ name: "icml2026.sty", contents: icmlSty },
-				{ name: "icml2026.bst", contents: icmlBst },
-				{ name: "fancyhdr.sty", contents: icmlFancy },
-				{ name: "algorithm.sty", contents: icmlAlgorithm },
-				{ name: "algorithmic.sty", contents: icmlAlgorithmic },
-			]);
-		case "iclr":
-			return files(iclrMain(safe), [
-				{ name: "iclr2026_conference.sty", contents: iclrSty },
-				{ name: "iclr2026_conference.bst", contents: iclrBst },
-				{ name: "fancyhdr.sty", contents: iclrFancy },
-				{ name: "natbib.sty", contents: iclrNatbib },
-			]);
-		case "neurips":
-			return files(neuripsMain(safe), [
-				{ name: "neurips_2026.sty", contents: neuripsSty },
-				{ name: "checklist.tex", contents: neuripsChecklist },
-			]);
-		case "acl":
-			return files(aclMain(safe), [
-				{ name: "acl.sty", contents: aclSty },
-				{ name: "acl_natbib.bst", contents: aclBst },
-			]);
+	if (id === "blank") {
+		return [{ name: "main.tex", contents: blankMain(latexText(title)) }];
 	}
+	return kitFiles(id, textFiles).map((file) => ({
+		name: file.name,
+		contents: file.value,
+	}));
+}
+
+/** Figures the official example includes. Fetched when the project is created. */
+export function writingTemplateAssets(
+	id: WritingTemplateId,
+): WritingTemplateAsset[] {
+	if (id === "blank") return [];
+	return kitFiles(id, binaryFiles).map((file) => ({
+		name: file.name,
+		url: file.value,
+	}));
 }
