@@ -6,6 +6,8 @@
 
 ## 结论与产品决策
 
+2026-10-26 下载源码复核：以下路线仍是**待原型验证的建议**，不代表已实现兼容。完整两路线对比、源码版本与修正依据见文末「源码调研与选型复核」。优先 macOS M0 的前提是接受分平台交付；若首发必须 Windows/macOS 同步、独立品牌或与 Zotero 并行运行，应优先验证 Office.js 自有 Add-in。
+
 Issue 所说的“Zotero Word 插件”有两层含义，必须分开处理：
 
 | 目标 | 结论 |
@@ -16,15 +18,15 @@ Issue 所说的“Zotero Word 插件”有两层含义，必须分开处理：
 
 当用户已安装官方 `Zotero.dotm` 时，首版优先保持其现有 Ribbon 和按钮不变，由 Agentero 接收同一协议并显示自己的引用选择界面。该模式应显式显示为“使用官方 Zotero Word 插件（Agentero provider）”，不得暗示 Agentero 是 Zotero 或修改 Zotero Desktop；Zotero 商标使用需在发布前走法律审核。
 
-**互斥规则**：同一用户会话中只能有一个 provider。启用 Agentero provider 前必须退出 Zotero Desktop；停用后才可恢复 Zotero Desktop。Windows 的插件通过窗口查找第一个匹配目标，macOS 使用固定本机端口/pipe，双进程并行会造成请求随机路由或端口冲突，不能靠提示“同时使用”解决。
+**互斥规则**：同一用户会话中只能有一个 provider。启用 Agentero provider 前必须退出 Zotero Desktop；停用后才可恢复 Zotero Desktop。Windows 的插件通过窗口查找第一个匹配目标，macOS 默认使用 `23119`（可通过 `ZoteroPort.txt` 覆盖）/pipe，双进程并行会造成请求随机路由或端口冲突，不能靠提示“同时使用”解决。
 
 实际工作量是中高风险的桌面集成功能，而非 Connector 加一个普通端点。推荐的 go/no-go 顺序是：**M0 macOS 官方插件握手与空文档操作 → M1 macOS 可用闭环 → M2 Windows → 评估是否仍需要自有 Office Add-in**。
 
 ## 协议事实与 Connector 边界
 
-当前 `features/connector/` 在 `127.0.0.1:23119` 实现的是浏览器 Zotero Connector 保存协议：网页元数据/PDF 进入 Vault。它不管理 Word 的光标、field code、文档偏好或 CSL 排版。
+当前 `src-tauri/src/integration/connector/` 在 `127.0.0.1:23119` 实现的是浏览器 Zotero Connector 保存协议：网页元数据/PDF 进入 Vault。它不管理 Word 的光标、field code、文档偏好或 CSL 排版。
 
-官方 Windows `Zotero.dotm` VBA 宏会查找 `ZoteroMessageWindow`（Zotero 6）或 `Mozilla_zotero_*_RemoteWindow`（Zotero 7），以 `WM_COPYDATA` 发送 `-ZoteroIntegrationAgent WinWord`、命令、文档路径和 template version；Zotero 再用 C++ OLE Automation bridge 操作 Word。官方 macOS 宏则优先请求 `GET http://127.0.0.1:23119/integration/macWordCommand?agent=...&command=...&document=...&templateVersion=...`，失败后才读取 `ZoteroPort.txt` 或写入 `.zoteroIntegrationPipe`，再由 ObjC/AppleScript bridge 操作 Word。
+官方 Windows `Zotero.dotm` VBA 宏会查找 `ZoteroMessageWindow`（Zotero 6）或 `Mozilla_zotero_*_RemoteWindow`（Zotero 7），以 `WM_COPYDATA` 发送 `-ZoteroIntegrationAgent WinWord`、命令、文档路径和 template version；Zotero 再用 C++ OLE Automation bridge 操作 Word。官方 macOS 宏则优先请求 `GET http://127.0.0.1:23119/integration/macWordCommand?agent=...&command=...&document=...&templateVersion=...`，发请求前先读取 `ZoteroPort.txt` 覆盖默认端口，HTTP 调用失败后再尝试 `.zoteroIntegrationPipe`，再由 ObjC/AppleScript bridge 操作 Word。
 
 因此 **macOS 可以复用同一个 loopback listener 与端口，但不能复用现有 Connector 业务路由**：新增的是 `/integration/macWordCommand` 和一套 Word integration engine。Windows 则需要一个独立的 native message receiver。两端最终都要实现文字处理器回调（如 `Document_getFields`、`Document_insertField`、`Document_setDocumentData`）、引文选择、CSL 排版和 field code；仅返回 HTTP `200` 没有任何用户价值。
 
@@ -50,7 +52,7 @@ Issue 所说的“Zotero Word 插件”有两层含义，必须分开处理：
 
 ## 领域模型与持久化
 
-Catalog 是“可搜索的当前来源”，不是稿件可重复排版的唯一事实来源。为了让未修改的官方插件能够识别文档，provider 不能另造 `agentero.citation/1` field schema；必须生成并读取 Zotero 已使用的 document data 与 `ADDIN ZOTERO_ITEM` / CSL citation payload。每个 citation 仍须嵌入完整可用的 CSL item data，避免文档只引用一个会失效的 Vault 路径。
+Catalog 是“可搜索的当前来源”，不是稿件可重复排版的唯一事实来源。官方模板主要转发命令，不负责解释 citation payload；复用 Ribbon 本身不强制采用 Zotero field schema。本设计为承接已有文档、复用兼容 fixtures，选择生成并读取 Zotero 已使用的 document data 与 `ADDIN ZOTERO_ITEM` / CSL citation payload；这是文档兼容目标带来的约束。每个 citation 仍须嵌入完整可用的 CSL item data，避免文档只引用一个会失效的 Vault 路径。
 
 ```text
 Agentero Catalog (当前 Vault，只读)
@@ -133,13 +135,13 @@ M0 先验证 Word 的 HTTP 请求确实到达、`addEditCitation` 能打开 Agen
 
 ### 3. Windows ingress（M2）
 
-新增一个隐藏的 Win32 message window，优先注册 `ZoteroMessageWindow` 以兼容官方宏的稳定 Zotero 6 分支；接收并严格解析 `WM_COPYDATA` 的 UTF-8 命令行 payload。不要尝试伪造 Zotero 7 的 Mozilla window tree，除非 M2 fixture 证明旧窗口 class 已不被当前 `Zotero.dotm` 接受。收到 `WinWord` 命令后走同一 provider，再由 Windows OLE Automation driver 操作活动 Word。
+新增一个隐藏的 Win32 message window，优先注册 `ZoteroMessageWindow` 以兼容官方宏的稳定 Zotero 6 分支；接收并严格解析 `WM_COPYDATA`：旧窗口分支为 UTF-8（`dwData=1`），Zotero 7 分支为 UTF-16（`dwData=2`）；按实际接入分支验证长度、编码和参数边界。不要尝试伪造 Zotero 7 的 Mozilla window tree，除非 M2 fixture 证明旧窗口 class 已不被当前 `Zotero.dotm` 接受。收到 `WinWord` 命令后走同一 provider，再由 Windows OLE Automation driver 操作活动 Word。
 
 由于官方宏会寻找第一个匹配窗口，此模式必须在 Host 启动时探测 Zotero Desktop，并在其运行时拒绝启用。Windows 安装器还要处理 x64/ARM64 Word、Office bitness、OLE/COM 权限、UAC、崩溃后的 message window 回收及 Word modal dialog。该平台没有“在 Rust axum 里补一个 endpoint”的捷径。
 
 ### 4. Catalog 到 CSL 的映射
 
-现有 `features/zotero/io.rs` 已能把 Catalog 行转成 Zotero API JSON 并经 Translator 导出。Word 引用不能把每次击键交给远端 Translator，也不能依赖网络；应新增纯 Rust 的 `features/citation/` 映射层：
+现有 `crates/agentero-core/src/features/paper/import/sources/zotero/io.rs` 已能把 Catalog 行转成 Zotero API JSON 并经 Translator 导出。Word 引用不能把每次击键交给远端 Translator，也不能依赖网络；应新增纯 Rust 的 `features/citation/` 映射层：
 
 - `PaperRecord -> CslItem`：优先保留 title、author/editor、issued、container-title、volume、issue、page、DOI、URL、publisher、edition、type；类型映射与现有 Zotero import map 对齐。
 - 生成稳定候选 ID：`doi:<normalized>` → `arxiv:<id>` → `bib:<bibtexKey>` → 本地 UUID。ID 不能仅使用可变的 Vault 相对路径。
@@ -252,3 +254,77 @@ M0 的成功标准是：用户不修改官方插件，在 Zotero Desktop 退出�
 ---
 
 *修订：2026-08-05 — 重评官方插件兼容：macOS `:23119` HTTP provider 优先，Windows `WM_COPYDATA` + OLE 后置；新增投入、许可证、安全和 Go/No-Go 门槛。*
+
+## 源码调研与选型复核（2026-10-26）
+
+### 下载结果与验证边界
+
+源码与仓库自带的插件二进制下载到仓库外的 `/Users/qychen/01-Develop/word-integration-research-20261026/`，避免把第三方代码和二进制带入 Agentero 的 MIT 仓库。本机 `manifest.json` 记录每个仓库的完整 commit、插件文件大小与 SHA-256。以下是浅克隆，未递归初始化 Zotero 主仓库的子模块；两个 Word integration 仓库已单独下载。仓库 HEAD 资产不等于已核对的官方稳定版安装包，正式原型必须再固定实际发行版本。
+
+| 仓库 | 固定 commit | 已下载内容 |
+| --- | --- | --- |
+| [macOS integration](https://github.com/zotero/zotero-word-for-mac-integration/tree/300886d1984de7a0006d7a48310baa0c8c99bea0) | `300886d1984de7a0006d7a48310baa0c8c99bea0` | VBA、ObjC、JS wrapper；`install/Zotero.dotm`、`Zotero.scpt`、`libZoteroWordIntegration.dylib` |
+| [Windows integration](https://github.com/zotero/zotero-word-for-windows-integration/tree/398b0c81666ce7710626a9dca0c6dbd7782b6a74) | `398b0c81666ce7710626a9dca0c6dbd7782b6a74` | VBA、原生 bridge、JS wrapper；`install/Zotero.dotm`、x86/x64/ARM64 DLL |
+| [Zotero Desktop](https://github.com/zotero/zotero/tree/db41b99fddcc52d38897c59c161b6adaca036afb) | `db41b99fddcc52d38897c59c161b6adaca036afb` | integration engine、HTTP handler、引用/样式逻辑与集成测试源码 |
+
+已完成静态源码审阅、下载文件哈希记录、两个 `.dotm` 的 ZIP 完整性检查；未安装模板、执行宏、编译 bridge，也未在真实 Word 文档上验证插入或刷新。本文的可行性判断是源码层面的判断，不能当作运行通过的证明。
+
+### 源码揭示的实际工作边界
+
+1. **宏是入口，桌面端才是主体。** Mac 的 [Zotero.bas](https://github.com/zotero/zotero-word-for-mac-integration/blob/300886d1984de7a0006d7a48310baa0c8c99bea0/build/template/Zotero.dotm/word/vbaProject.bin/Zotero.bas#L60) 调用 `macWordCommand`；[server_integration.js](https://github.com/zotero/zotero/blob/db41b99fddcc52d38897c59c161b6adaca036afb/chrome/content/zotero/xpcom/server/server_integration.js#L26) 先回 `200`，再异步进入 `Zotero.Integration.execCommand`。宏使用约两秒请求超时，不能等用户选完文献才响应。
+2. **Mac 的 `document` 参数是 Word 应用路径。** `wordAppPath` 来自 `path to current application`，不是 `.docx` 路径；活动文档由 Word driver 获取。agent 包括 `MacWord16` / `MacWord2016`，模板版本为 `2`。应用路径有空格与非 ASCII 编码兼容细节，需要 fixture。Windows 才发送活动文档路径/名称，模板版本为 `1`。
+3. **Windows 不走相同 HTTP 入口。** [Windows VBA](https://github.com/zotero/zotero-word-for-windows-integration/blob/398b0c81666ce7710626a9dca0c6dbd7782b6a74/build/template/Zotero.dotm/word/vbaProject.bin/Zotero.bas#L147) 查找窗口并发 `WM_COPYDATA`。接收窗口只是第一步，还要 COM/OLE 文档驱动。DLL 在桌面端进程加载，不是把 DLL 放进 Word 就能接到 Agentero。
+4. **原生 bridge 有可借鉴的接口，但不能直接当 Tauri 插件。** [Mac C 接口](https://github.com/zotero/zotero-word-for-mac-integration/blob/300886d1984de7a0006d7a48310baa0c8c99bea0/build/src/zoteroMacWordIntegration.h#L275) 暴露 `getDocument`、`getDocumentData`、`insertField`、`getFields`、`setCode` 等。若复用库，需要 FFI、内存所有权、线程、错误与签名处理；若独立实现，则需要重做 Word 自动化细节。
+5. **业务逻辑并不在 `.dotm`。** [integration.js](https://github.com/zotero/zotero/blob/db41b99fddcc52d38897c59c161b6adaca036afb/chrome/content/zotero/xpcom/integration.js) 的 Session 负责扫描字段、维护引文顺序、恢复 processor 状态、更新正文和 bibliography，并依赖 Zotero 的 Items、Styles、Cite 等服务。不能把此文件复制到 React 就运行。
+6. **已有 Agentero 能力只是基础。** 当前 Connector 是导入 API；Catalog 导出虽支持 `csljson`，但依赖 Translator HTTP `/export`，不等于本地 CSL processor。仍需本地元数据映射、文档状态管理、引文消歧和排序、bibliography、错误恢复。
+
+### 两条路线对比
+
+这里的“自研”优先指 Office.js task-pane Add-in；另写 VBA/COM 插件会保留两套平台 driver 的负担，且 COM/VSTO 不能作为 Mac 统一方案。
+
+| 维度 | A：未修改 Zotero Word 插件 + Agentero provider | B：Agentero Office.js Add-in |
+| --- | --- | --- |
+| 用户看到什么 | 原 Zotero Ribbon；点击后打开 Agentero 引文窗口 | Agentero Ribbon/任务窗格，直接搜索本地库 |
+| 真正省下什么 | 工具栏、宏入口、既有用户操作习惯；若许可方案允许，可能复用原生 bridge | 不用跟随 Zotero 私有命令入口；一套 TS 文档 adapter 可覆盖受支持的 Mac/Windows API |
+| 两者都必须做 | CSL 映射/排版、引文状态、稳定 ID、文档快照、bibliography、编辑/刷新/异常恢复 | 同左；自研插件也不能只插入格式化字符串 |
+| 跨平台代价 | Mac HTTP + AppleEvents；Windows 窗口消息 + COM/OLE，两套集成 | Office.js 统一入口，但逐个 API 检查 requirement set 和实际 Office build |
+| 离线与本地优先 | 原生模型较自然；样式与 processor 需本地打包 | 本地库可保留在 Agentero；任务窗格资源、Office.js 加载、HTTPS/证书与离线冷启动仍需验证 |
+| Zotero 同时运行 | 首版定义为单 provider，避免窗口/端口/文档所有权冲突 | 独立端口与 schema 可让两个应用并行；同一引文区域仍只能由一个 provider 管理 |
+| Zotero 文档兼容 | 有原生 field 路线可研究，但不自动获得可逆、无损兼容 | 默认自有 schema；可另做 Zotero 字段读取与副本迁移 |
+| 分发 | 已安装官方插件者成本小；新用户仍需插件安装来源、宏信任与 Mac helper，单独 `.dotm` 未必足够 | 需 manifest、HTTPS Web 资源和正式分发渠道；sideload 只作开发测试 |
+| 产品体验 | 保留 Zotero 名称/错误提示；未改宏时品牌控制有限 | 搜索、论文预览、页码、Agent 辅助、配对等可统一到 Agentero |
+| 长期风险 | Zotero 内部协议 + 两端 Word 自动化行为 + 可选上游代码复用许可证 | Microsoft API 能力差异 + WebView/网络策略 + 发布渠道 |
+| 最适合 | Mac 先行、桌面离线优先、已有 Zotero Word 用户 | 两平台同发、独立品牌、未来 Word Web，以及需要与 Zotero 共存 |
+
+Office.js 可以访问 Word 文档对象，支持内容控件和字段；不能沿用“Office.js 完全不能写字段”的旧判断。但 `ADDIN` 字段的写入、结果更新、脚注遍历等必须按所用 API 和平台实测，不能从“支持 WordApi”推出所有功能均可用。[Word Add-ins 概览](https://learn.microsoft.com/en-us/office/dev/add-ins/word/word-add-ins-programming-overview)、[fields 指南](https://learn.microsoft.com/en-us/office/dev/add-ins/word/fields-guidance)、[requirement sets](https://learn.microsoft.com/en-us/javascript/api/requirement-sets/word/word-api-requirement-sets)。
+
+### 路线 B 的具体实现方案
+
+- **前端**：独立 `word-addin` 构建入口，TypeScript + React + Office.js。复用纯 UI 与论文类型，不把依赖 Tauri IPC 的组件直接搬进 Office WebView。首版提供搜索、多篇引文、locator、插入/编辑、刷新、bibliography、样式选择。
+- **本地数据桥**：Agentero 提供独立的 loopback API，例如配对、搜索与读取 CSL snapshot；不复用 Zotero 的固定端口来承担新协议。一次性配对后发短期 token，限制 Origin/Host、Vault 与权限；Word 侧不能任意读取磁盘。开发原型先验证 HTTPS 信任、CORS 和 Windows/Mac WebView 到本机的访问，不把开发证书安装流程当成正式发行方案。[同源限制](https://learn.microsoft.com/en-us/office/dev/add-ins/develop/addressing-same-origin-policy-limitations)。
+- **文档 adapter**：先验证带稳定 tag 的 rich-text content control + 文档内版本化元数据（候选为 custom XML）；保存 `citationID`、完整 CSL items、locator、style/locale。长 JSON 不直接塞进短 tag。复制粘贴后的重复 ID、正文/脚注遍历、撤销与修订模式都要明确处理。若最终需要 Zotero field codec，单列兼容 adapter，不把两种格式混写。
+- **排版**：两路线共享 citation 数据契约与测试向量，使用成熟 CSL processor。Office.js 可直接运行 JS processor；Tauri 路线需明确独立 JS runtime 或原生 processor，不依赖一个可能被关闭的 UI 窗口维护唯一会话。`citeproc-js` 可优先评估，但其许可是 CPAL/AGPL 双许可，不能误认为 MIT。[上游 LICENSE](https://github.com/Juris-M/citeproc-js/blob/master/LICENSE)。
+- **刷新事务**：读取所有引文 → 按文档顺序重建 processor → 计算整篇引文/参考文献 → 检查文档版本与原字段是否仍一致 → 批量写回；不要只更新当前 `[3]`，否则数字编号、同作者同年消歧会错。保存快照与可恢复的更新计划；Office.js `context.sync()` 不等于数据库原子事务。
+- **发布**：开发侧载验证，正式评估 Marketplace 或 Microsoft 365 管理员部署；商店审核和学校/机构策略属于交付成本。跨平台 SDK 支持不代表本地 Vault 自动可用于 Word Web；Web 到本机访问与移动设备必须另验。[官方发布说明](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish)。
+
+### 许可证对选型的影响
+
+Agentero 当前为 MIT。两个 integration 仓库的 `COPYING` 均标注 AGPLv3；直接复制/修改/链接其实现与仅独立实现调用协议，是不同的分发方案。不能因为已经开源，或另开 sidecar 进程，就假定解决了所有许可义务。源码研究不等于决定将源码合入产品；正式复用需核对具体文件、组合方式、相应源码提供义务及商标，不能把上游实现重新标成 MIT。[Mac COPYING](https://github.com/zotero/zotero-word-for-mac-integration/blob/300886d1984de7a0006d7a48310baa0c8c99bea0/COPYING)、[Windows COPYING](https://github.com/zotero/zotero-word-for-windows-integration/blob/398b0c81666ce7710626a9dca0c6dbd7782b6a74/COPYING)。这是工程依赖筛选，具体分发方案的法律结论尚未确定。
+
+### 选型与投入门槛
+
+**本轮推荐 A 的 macOS 限时验证，暂不承诺 A 的全平台产品化。** 理由是用户明确偏好复用官方插件、Agentero 是本地优先桌面端、已有 loopback 基础，且 Mac 的命令入口已经能由源码证实。该判断不建立在“复用宏即可获得完整 Zotero 功能”的假设上。
+
+| 阶段 | 建议预算（工程估算，非实测工期） | 必须交付的证据 |
+| --- | --- | --- |
+| A macOS spike | 5–10 工程日，属于原 M0 的技术验证部分 | 未修改官方模板 → Agentero 收命令 → 引用选择 → 在临时 Word 文档写入/读取字段 → 保存重开；记录权限、Undo 和端口冲突行为 |
+| A macOS M1 | spike 通过后约 8–12 人周 | 文内引文、多文献、三个样式、bibliography、刷新、快照恢复、安装与错误处理 |
+| A Windows 增量 | 约 10–16 人周 | 同一引文核心 + Windows receiver/COM driver + Office 架构/版本验证 |
+| B 双平台 spike | 5–10 工程日 | 两端本机桥连接；content control/元数据保存重开；引用重排；脚注与 Undo 能力核实 |
+| B 受限双平台 MVP | spike 通过后约 10–16 人周 | 当前 Microsoft 365 桌面版、限定样式与文档范围；完整 Zotero 对等、全部旧 Word、Web/移动与商店审核不包含在内 |
+
+这些范围不完全等价：A 沿原生字段路线，B 是明确收窄的现代 Office MVP。不要把估算理解为 B 已证明比 A 快。旧稿 M0 的 2–3 人周还包含 fixtures 整理与许可方案梳理；新增 5–10 日仅是技术 spike 的止损预算。
+
+**A 转 B 的门槛**：需要改动官方模板才能可靠工作；原生 driver 的实现/许可代价抵消复用价值；业务要求两个系统同发或 Zotero 并行；无法可靠处理保存重开、取消、Undo、脚注。仅“HTTP 返回 200”不算通过。若主要目标从离线桌面变为 Word Web，则重新评估数据桥，不能直接承诺 B 已覆盖。
+
+待办沿用本文 M0–M3，不新增另一份 Roadmap：先固定正式 Zotero/Word 版本和许可路线，完成 Mac spike；通过后再估算 M1，失败则启动 B spike。**本次只完成调研与选型，没有完成 Issue #167，也不关闭该 issue。**
