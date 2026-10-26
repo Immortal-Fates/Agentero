@@ -135,23 +135,30 @@ pub struct SyncTexSource {
 
 fn parse_forward(text: &str) -> Vec<SyncTexLocation> {
     let mut locations = Vec::new();
-    let mut current = None;
+    let mut current: Option<(SyncTexLocation, Option<f64>, Option<f64>)> = None;
     for line in text.lines() {
         let Some((key, value)) = line.split_once(':') else {
             continue;
         };
         if key == "Page" {
-            if let Some(location) = current.take() {
+            if let Some((mut location, h, v)) = current.take() {
+                finish_forward(&mut location, h, v);
                 locations.push(location);
             }
-            current = value.trim().parse().ok().map(|page| SyncTexLocation {
-                page,
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
+            current = value.trim().parse().ok().map(|page| {
+                (
+                    SyncTexLocation {
+                        page,
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                    },
+                    None,
+                    None,
+                )
             });
-        } else if let Some(location) = current.as_mut() {
+        } else if let Some((location, h, v)) = current.as_mut() {
             let Ok(value) = value.trim().parse::<f64>() else {
                 continue;
             };
@@ -161,16 +168,30 @@ fn parse_forward(text: &str) -> Vec<SyncTexLocation> {
             match key {
                 "x" => location.x = value,
                 "y" => location.y = value,
+                "h" => *h = Some(value),
+                "v" => *v = Some(value),
                 "W" => location.width = value.abs(),
                 "H" => location.height = value.abs(),
                 _ => {}
             }
         }
     }
-    if let Some(location) = current {
+    if let Some((mut location, h, v)) = current {
+        finish_forward(&mut location, h, v);
         locations.push(location);
     }
     locations.into_iter().filter(|v| v.page > 0).collect()
+}
+
+/// `view` reports the word's point in x/y but the line box in h/v/W/H:
+/// h is the left edge and v the bottom, so the drawn rect starts at v - H.
+fn finish_forward(location: &mut SyncTexLocation, h: Option<f64>, v: Option<f64>) {
+    if let Some(h) = h {
+        location.x = h;
+    }
+    if let Some(v) = v {
+        location.y = v - location.height;
+    }
 }
 
 #[tauri::command]
@@ -297,6 +318,18 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert_eq!(values[0].x, 72.5);
         assert_eq!(values[1].page, 2);
+    }
+
+    #[test]
+    fn forward_sync_draws_the_line_box_not_the_baseline_point() {
+        let values = parse_forward(
+            "SyncTeX result begin\nPage:1\nx:95.6\ny:107.3\nh:72.0\nv:109.4\nW:468.0\nH:9.7\nSyncTeX result end",
+        );
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].x, 72.0);
+        assert!((values[0].y - 99.7).abs() < 1e-6);
+        assert_eq!(values[0].width, 468.0);
+        assert_eq!(values[0].height, 9.7);
     }
 
     #[test]
