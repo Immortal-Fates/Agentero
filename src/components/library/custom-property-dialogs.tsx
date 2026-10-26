@@ -20,9 +20,11 @@ import {
 export function CreatePropertyDialog({
 	open,
 	onOpenChange,
+	vaultPath,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	vaultPath?: string | null;
 }) {
 	const { t } = useTranslation("sidebar");
 	const [name, setName] = useState("");
@@ -33,7 +35,7 @@ export function CreatePropertyDialog({
 		if (!trimmed) return;
 		setSubmitting(true);
 		try {
-			await createCustomProperty(trimmed);
+			await createCustomProperty(trimmed, [], vaultPath);
 			setName("");
 			onOpenChange(false);
 		} finally {

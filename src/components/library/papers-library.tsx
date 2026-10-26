@@ -132,8 +132,8 @@ export function PapersLibrary({
 	// Preview hovered rows in the left Paper Info panel; clear once the table
 	// loses focus or unmounts so a stale preview never lingers.
 	useEffect(() => {
-		if (active) void loadCustomProperties();
-	}, [active]);
+		if (active && vaultPath) void loadCustomProperties(vaultPath);
+	}, [active, vaultPath]);
 
 	useEffect(() => {
 		if (!active) setHoveredPaperPath(null);
@@ -468,6 +468,7 @@ export function PapersLibrary({
 							onResetColumns={resetColumns}
 							onColumnReorder={handleColumnReorder}
 							onColumnResize={resizeColumn}
+							vaultPath={vaultPath}
 						/>
 						{/* key={reorderKey} remounts the tbody to replay the fade animation. */}
 						<tbody

@@ -608,6 +608,14 @@ function normalizeLibraryColumns(raw: unknown): LibraryColumnPref[] {
 			const pref = saved.find((c) => c.key === fallback.key);
 			out.push(pref ?? { ...fallback });
 		}
+		for (const pref of saved) {
+			if (
+				pref.key.startsWith("prop:") &&
+				!out.some((c) => c.key === pref.key)
+			) {
+				out.push(pref);
+			}
+		}
 	} else {
 		out.push(...saved);
 		for (const fallback of DEFAULT_LIBRARY_COLUMNS) {

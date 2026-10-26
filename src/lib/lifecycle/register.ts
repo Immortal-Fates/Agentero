@@ -71,7 +71,7 @@ export function registerLifecycleHandlers(): () => void {
 		lifecycle.on("vault:opened", async ({ vaultId }) => {
 			void refreshTree(vaultId);
 			void refreshLibrary();
-			void loadCustomProperties();
+			void loadCustomProperties(vaultId);
 			seedVaultSkills(vaultId);
 			if (isTauri() && !isRemoteVaultHandle(vaultId)) {
 				// Establish the Host scope before later handlers activate plugins.

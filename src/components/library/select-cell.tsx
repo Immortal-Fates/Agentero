@@ -17,6 +17,7 @@ import {
 	createOptionAndSetCustomProperty,
 	deleteCustomPropertyOption,
 	setPaperCustomProperty,
+	useCustomProperties,
 } from "@/lib/paper/custom-properties-store";
 import {
 	TAG_COLOR_IDS,
@@ -34,11 +35,14 @@ type SelectCellProps = {
 
 export function SelectCell({
 	paperPath,
-	property,
+	property: initialProperty,
 	selectedOptionId,
 	className,
 }: SelectCellProps) {
 	const { t } = useTranslation("sidebar");
+	const allProps = useCustomProperties();
+	const property =
+		allProps.find((p) => p.id === initialProperty.id) ?? initialProperty;
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	const [selectedColor, setSelectedColor] = useState<string | null>(null);

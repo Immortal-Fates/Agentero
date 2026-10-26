@@ -8,8 +8,7 @@ import {
 import { callApi } from "@/lib/core/ipc";
 import { notifyError } from "@/lib/core/notify";
 import { isTauri } from "@/lib/core/tauri";
-import { patchSettings } from "@/lib/settings/react-store";
-import { loadSettings } from "@/lib/settings/store";
+import { patchSettings, settingsStore } from "@/lib/settings/react-store";
 import { getVaultPath } from "@/lib/vault/store";
 import { setLibraryPapers } from "./library-store";
 
@@ -39,8 +38,10 @@ function errorText(e: unknown): string {
 	return String(e ?? "Unknown error");
 }
 
-export async function loadCustomProperties(): Promise<void> {
-	const vaultPath = getVaultPath();
+export async function loadCustomProperties(
+	pathOverride?: string | null,
+): Promise<void> {
+	const vaultPath = pathOverride ?? getVaultPath();
 	if (!vaultPath || !isTauri()) {
 		customPropertiesStore.setState({ properties: [], loading: false });
 		return;
@@ -51,8 +52,7 @@ export async function loadCustomProperties(): Promise<void> {
 			commands.catalogListProperties({ vaultPath }),
 		);
 		customPropertiesStore.setState({ properties: data, loading: false });
-		const settings = loadSettings();
-		const current = settings.libraryColumns;
+		const current = settingsStore.getState().libraryColumns;
 		const missing = data
 			.filter((p) => !current.some((c) => c.key === `prop:${p.id}`))
 			.map((p) => ({
@@ -74,8 +74,9 @@ export async function loadCustomProperties(): Promise<void> {
 export async function createCustomProperty(
 	name: string,
 	options: PropertyOption[] = [],
+	vaultPathOverride?: string | null,
 ): Promise<CustomProperty | null> {
-	const vaultPath = getVaultPath();
+	const vaultPath = vaultPathOverride ?? getVaultPath();
 	if (!vaultPath || !isTauri()) return null;
 	try {
 		const prop = await callApi(() =>
@@ -94,8 +95,7 @@ export async function createCustomProperty(
 		}));
 		// Add to visible columns by default
 		const key = `prop:${prop.id}` as const;
-		const settings = loadSettings();
-		const current = settings.libraryColumns;
+		const current = settingsStore.getState().libraryColumns;
 		if (!current.some((c) => c.key === key)) {
 			patchSettings({
 				libraryColumns: [...current, { key, visible: true, widthRem: 9 }],
@@ -151,8 +151,7 @@ export async function deleteCustomProperty(
 		}));
 		// Remove from libraryColumns in settings
 		const key = `prop:${propertyId}` as const;
-		const settings = loadSettings();
-		const current = settings.libraryColumns;
+		const current = settingsStore.getState().libraryColumns;
 		if (current.some((c) => c.key === key)) {
 			patchSettings({
 				libraryColumns: current.filter((c) => c.key !== key),

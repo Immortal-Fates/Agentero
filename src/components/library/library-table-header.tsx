@@ -93,6 +93,7 @@ type LibraryTableHeaderProps = {
 	onResetColumns: () => void;
 	onColumnReorder: (fromKey: SortKey, toKey: SortKey) => void;
 	onColumnResize: (key: SortKey, width: number | null, commit: boolean) => void;
+	vaultPath?: string | null;
 };
 
 export const LibraryTableHeader = memo(function LibraryTableHeader({
@@ -118,6 +119,7 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 	onResetColumns,
 	onColumnReorder,
 	onColumnResize,
+	vaultPath,
 }: LibraryTableHeaderProps) {
 	// --- Column customization (order + visibility) ---
 	const [dragKey, setDragKey] = useState<SortKey | null>(null);
@@ -536,6 +538,7 @@ export const LibraryTableHeader = memo(function LibraryTableHeader({
 			<CreatePropertyDialog
 				open={createPropOpen}
 				onOpenChange={setCreatePropOpen}
+				vaultPath={vaultPath}
 			/>
 			<RenamePropertyDialog
 				property={renamePropTarget}
