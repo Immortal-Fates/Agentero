@@ -1336,3 +1336,7 @@ fn rtex_event_mirror_matches_emit_shape() {
         );
     }
 }
+
+#[derive(specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "word:changed")]
+pub struct WordChangedEvent(pub ());

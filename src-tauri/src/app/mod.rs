@@ -164,6 +164,7 @@ pub fn run() {
             .manage(FsWatchController::new())
             .manage(crate::features::paper::ingest::IngestQueue::default())
             .manage(Arc::new(ConnectorController::new()))
+            .manage(crate::integration::word::WordController::default())
             .manage(Arc::new(McpController::new()))
             .manage(Arc::new(McpTunnelController::new()))
             .manage(remote_registry.clone())

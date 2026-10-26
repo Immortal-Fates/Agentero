@@ -15,6 +15,7 @@ import {
 } from "@/components/settings/settings-layout";
 import { StatusDot } from "@/components/settings/status-dot";
 import type { SettingsHostContext } from "@/components/settings/types";
+import { WordSettings } from "@/components/settings/word-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -559,6 +560,7 @@ export function GeneralPane({
 				{t("general.sections.integrations")}
 			</SettingsSectionLabel>
 			<ConnectorSettingsBlock settings={settings} patch={patch} />
+			<WordSettings />
 			<McpSettingsBlock
 				settings={settings}
 				patch={patch}

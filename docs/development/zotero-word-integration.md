@@ -328,3 +328,31 @@ Agentero 当前为 MIT。两个 integration 仓库的 `COPYING` 均标注 AGPLv3
 **A 转 B 的门槛**：需要改动官方模板才能可靠工作；原生 driver 的实现/许可代价抵消复用价值；业务要求两个系统同发或 Zotero 并行；无法可靠处理保存重开、取消、Undo、脚注。仅“HTTP 返回 200”不算通过。若主要目标从离线桌面变为 Word Web，则重新评估数据桥，不能直接承诺 B 已覆盖。
 
 待办沿用本文 M0–M3，不新增另一份 Roadmap：先固定正式 Zotero/Word 版本和许可路线，完成 Mac spike；通过后再估算 M1，失败则启动 B spike。**本次只完成调研与选型，没有完成 Issue #167，也不关闭该 issue。**
+
+
+## 2026-10-26 macOS 原型实施与实测
+
+实现说明见 [后端 Word 集成](../backend/word.md)。本次完成的是正文引用原型，不等同于上面的全部 M1 功能；未完成 Issue #167，Windows 尚未实现。用户要求先提交并清理测试产物，Windows 留待后续继续。
+
+### 实测环境与结果
+
+- Microsoft Word for Mac 16.114（16.114.26101123）；未修改的官方 Zotero Mac 模板和辅助脚本，来源 commit `300886d1984de7a0006d7a48310baa0c8c99bea0`。
+- 以桌面 UI 自动化操作真实 Word 和 Agentero 调试应用，使用独立 5 篇论文的 demo Vault 和新建 DOCX，不修改正式文献库。
+- 官方 Add/Edit Citation → Agentero 选择 Attention / BERT → Word 插入 IEEE `[1]` / `[2]`：通过；第二次插入同时刷新第一条，未重复追加。
+- 官方 Add/Edit Bibliography → 生成两篇论文的参考文献：通过。
+- 保存、关闭、重新打开 DOCX → 官方 Refresh → IEEE 切换 APA：通过；两条文内引文更新为作者—年份，参考文献按作者重排。
+- 读取保存的 DOCX XML，确认两个 citation 字段与一个 bibliography 字段各有 `begin / separate / end`，结果文字位于真实字段内。
+- 重启 Agentero 后从已保存字段恢复 IEEE 样式：通过。原型开关按设计需重新开启。
+- Rust 单测覆盖三样式快照恢复、重复引用去重/编号、损坏或外部字段拒绝；TypeScript 类型检查通过。
+
+### 实测发现与修复
+
+Word 直接新建空 ADDIN 字段不会建立结果分隔区，直接写 result range 会把文字追加在字段外。驱动现先建立具有结果区的字段，再改写引用代码与结果，并立即读回验证。无结果的已有引用会拒绝更新。文档级样式直接存于每条引文快照，避免额外文档属性依赖；空文档在第一次插入时选择样式。
+
+### 尚未验收
+
+签名发布包安装与首次 Automation 授权、多窗口/长文档、撤销与中途失败恢复、复制粘贴重复 citation ID、脚注/修订、富文本排版、Unlink、Zotero Desktop 双向兼容、Windows。当前多字段更新不是原子事务，不能声明完整生产可用。
+
+### 测试产物清理
+
+按用户要求，提交后删除临时 `.app`、测试 DOCX、demo Vault 和本次大型编译产物。源码调研目录中的下载材料也不进入仓库；上游版本与来源保留在本设计记录中。原型所用许可证副本与独立声明文件按用户要求移除，正式分发前补齐依赖所需声明。
