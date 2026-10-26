@@ -11,8 +11,15 @@ import type {
 	PdfLayoutRegion,
 } from "@/lib/pdf/layout/types";
 import {
+	characterCoverage,
+	fallbackCharacterGroups,
+	nonPaintingCharacters,
+	rotatedCharacterIndexes,
+} from "./coverage";
+import {
 	type Box,
 	type Character,
+	type CharacterDisposition,
 	type CharacterStyle,
 	type Formula,
 	formulaToken,
@@ -352,7 +359,15 @@ export async function extractReflowDocument(
 				byIndex.set(n, run);
 		const characters: Character[] = [];
 		for (const index of indices) {
-			const g = glyphs[index],
+			const g = glyphs[index] as
+					| (PdfGlyphObject & {
+							clipBoxes?: number[][];
+							renderMode?: number;
+							textMatrix?: number[];
+							textAngle?: number;
+							textObjectId?: number;
+					  })
+					| undefined,
 				value = text[index] ?? "";
 			if (!value || /[\r\n]/.test(value)) continue;
 			if (g)
@@ -361,7 +376,17 @@ export async function extractReflowDocument(
 					text: value,
 					box: glyphBox(g),
 					visualBox: glyphBox(g, true),
-					style: styleOf(byIndex.get(index)),
+					style: (() => {
+						const style = styleOf(byIndex.get(index));
+						const m = g.textMatrix;
+						const scale = m ? Math.hypot(m[0], m[1]) : 1;
+						return { ...style, size: style.size * (scale > 0 ? scale : 1) };
+					})(),
+					clipBoxes: g.clipBoxes,
+					renderMode: g.renderMode,
+					textAngle: g.textAngle,
+					textMatrix: g.textMatrix,
+					textObjectId: g.textObjectId,
 				});
 			else if (value === " " && characters.length) {
 				const previous = characters[characters.length - 1];
@@ -379,6 +404,30 @@ export async function extractReflowDocument(
 				});
 			}
 		}
+		const raster = await engine
+			.renderPageRaw(doc, page, { scaleFactor: 2 })
+			.toPromise();
+		const hidden = nonPaintingCharacters(
+			characters,
+			raster,
+			page.size.width,
+			page.size.height,
+		);
+
+		// Clip paths are local to their containing Form. Until that hierarchy is
+		// reconstructed, keep transformed clipped text rather than repaint it
+		// without its inherited clip.
+		const clipped = new Set(
+			characters
+				.filter(
+					(c) =>
+						c.clipBoxes?.length &&
+						c.textMatrix &&
+						Math.abs(Math.hypot(c.textMatrix[0], c.textMatrix[1]) - 1) > 0.01,
+				)
+				.map((c) => c.index),
+		);
+
 		const pageRegions = regions.filter(
 			(r) => r.pageIndex === page.index && r.score >= LAYOUT_SIDEBAR_MIN_SCORE,
 		);
@@ -386,6 +435,7 @@ export async function extractReflowDocument(
 			.filter((r) => r.kind === "formula")
 			.map((r) => r.rect);
 		const claimed = new Set<number>();
+		const conflictingHeadingObjects = new Set<number>();
 		const paragraphs = selected
 			.map((item) => {
 				const box = {
@@ -394,9 +444,37 @@ export async function extractReflowDocument(
 					w: item.bbox.w * page.size.width,
 					h: item.bbox.h * page.size.height,
 				};
-				const chars = characters.filter(
-					(c) => !claimed.has(c.index) && centerInside(c.visualBox, box),
+				let chars = characters.filter(
+					(c) =>
+						!hidden.has(c.index) &&
+						!clipped.has(c.index) &&
+						!claimed.has(c.index) &&
+						centerInside(c.visualBox, box),
 				);
+				if (item.kind === "header") {
+					const transformKey = (c: Character) =>
+						c.textMatrix
+							?.slice(0, 4)
+							.map((n) => n.toFixed(2))
+							.join(",") ?? "identity";
+					const weights = new Map<string, number>();
+					for (const c of chars)
+						if (c.text.trim())
+							weights.set(
+								transformKey(c),
+								(weights.get(transformKey(c)) ?? 0) + 1,
+							);
+					const dominant = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0];
+					if (weights.size > 1) {
+						for (const c of chars)
+							if (transformKey(c) !== dominant && c.textObjectId !== undefined)
+								conflictingHeadingObjects.add(c.textObjectId);
+						chars = chars.filter(
+							(c) => !c.text.trim() || transformKey(c) === dominant,
+						);
+					}
+				}
+
 				if (
 					chars.length &&
 					characters.some(
@@ -422,9 +500,47 @@ export async function extractReflowDocument(
 				);
 			})
 			.filter((p) => p.characters.length > 0);
+		// Account only for characters retained in the IR (tiny embedded glyphs
+		// may have been filtered while constructing a detected paragraph).
+		claimed.clear();
+		for (const p of paragraphs)
+			for (const c of p.characters) claimed.add(c.index);
+		const preserved = new Map<number, CharacterDisposition>();
+		const rotated = rotatedCharacterIndexes(characters);
+		for (const c of characters) {
+			if (
+				c.textObjectId !== undefined &&
+				conflictingHeadingObjects.has(c.textObjectId)
+			)
+				preserved.set(c.index, "excluded");
+			else if (clipped.has(c.index)) preserved.set(c.index, "clipped");
+			else if (hidden.has(c.index)) preserved.set(c.index, "nonpainting");
+			else if (rotated.has(c.index)) preserved.set(c.index, "rotated");
+			else if (
+				pageRegions.some(
+					(r) =>
+						(r.kind === "formula" ||
+							r.kind === "algorithm" ||
+							r.label === "aside_text") &&
+						centerInside(c.visualBox, r.rect),
+				)
+			)
+				preserved.set(
+					c.index,
+					pageRegions.some(
+						(r) => r.kind === "formula" && centerInside(c.visualBox, r.rect),
+					)
+						? "formula"
+						: "excluded",
+				);
+		}
 		for (const table of pageRegions.filter((r) => r.kind === "table")) {
 			const remaining = characters.filter(
-				(c) => !claimed.has(c.index) && centerInside(c.visualBox, table.rect),
+				(c) =>
+					!hidden.has(c.index) &&
+					!clipped.has(c.index) &&
+					!claimed.has(c.index) &&
+					centerInside(c.visualBox, table.rect),
 			);
 			// A layout model can label a diagram containing vertical word labels as
 			// a table. Detect vertical advance from adjacent source glyphs before
@@ -486,16 +602,66 @@ export async function extractReflowDocument(
 					if (!/\p{L}/u.test(p.protectedText.replace(/⟪(?:F|\/?S)\d+⟫/gu, "")))
 						continue;
 					p.fixedBox = true;
+					p.origin = "table";
+					// The next cell's source start bounds free horizontal space;
+					// text removal still uses the original tight source box.
+					const next = cells[cells.indexOf(cell) + 1]?.find((c) =>
+						c.text.trim(),
+					);
+					const right = next ? next.box.x - 1 : table.rect.x + table.rect.w;
+					p.layoutBox = { ...box, w: Math.max(box.w, right - box.x) };
 					paragraphs.push(p);
 					for (const c of cell) claimed.add(c.index);
 				}
 			}
 		}
+		for (const c of characters) {
+			if (
+				!preserved.has(c.index) &&
+				pageRegions.some(
+					(r) => r.kind === "table" && centerInside(c.visualBox, r.rect),
+				)
+			)
+				preserved.set(c.index, "table");
+		}
+		const unclaimed = characters.filter(
+			(c) => !claimed.has(c.index) && !preserved.has(c.index),
+		);
+		for (const group of fallbackCharacterGroups(unclaimed)) {
+			const box = unionBoxes(group.map((c) => c.box));
+			if (!(box.w > 0 && box.h > 0)) continue;
+			const p = paragraphFromCharacters(
+				`${page.index}:fallback:${group[0].index}`,
+				page.index,
+				box,
+				group,
+				[],
+				false,
+			);
+			if (!/\p{L}{2}/u.test(p.protectedText.replace(/⟪(?:F|\/?S)\d+⟫/gu, "")))
+				continue;
+			p.fixedBox = true;
+			p.origin = "fallback";
+			paragraphs.push(p);
+		}
+		for (const p of paragraphs)
+			if (p.layoutBox) {
+				const b = p.layoutBox;
+				for (const q of paragraphs)
+					if (
+						q.id !== p.id &&
+						q.box.x >= p.box.x + p.box.w - 0.1 &&
+						q.box.y < b.y + b.h &&
+						q.box.y + q.box.h > b.y
+					)
+						b.w = Math.max(p.box.w, Math.min(b.w, q.box.x - b.x - 1));
+			}
 		pages.push({
 			index: page.index,
 			width: page.size.width,
 			height: page.size.height,
 			paragraphs,
+			coverage: characterCoverage(characters, paragraphs, preserved),
 			obstacles: pageRegions
 				.filter((r) => !selected.some((i) => i.id === r.id))
 				.map((r) => r.rect),

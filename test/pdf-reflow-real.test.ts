@@ -90,6 +90,41 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 				listTranslatableLayoutRegions(regions),
 			);
 			const ir = await extractReflowDocument(engine, doc, items, regions);
+			if (mode === "full") {
+				for (const page of ir.pages) {
+					expect(page.coverage?.length).toBeGreaterThan(0);
+					const ids = page.paragraphs.flatMap((p) =>
+						p.characters.map((c) => c.index),
+					);
+					expect(new Set(ids).size).toBe(ids.length);
+					expect(
+						page.paragraphs
+							.flatMap((p) => p.characters)
+							.every((c) => !c.text.trim() || c.textMatrix?.length === 6),
+					).toBe(true);
+				}
+				if (name === "attention") {
+					expect(
+						ir.pages
+							.find((p) => p.index === 12)
+							?.paragraphs.map((p) => p.source.replace(/\s/g, "")),
+					).toContain("AttentionVisualizations");
+					expect(
+						ir.pages
+							.flatMap((p) => p.paragraphs)
+							.some((p) => p.source.includes("Input Input Layer5")),
+					).toBe(false);
+				}
+				if (name === "resnet")
+					expect(
+						ir.pages
+							.find((p) => p.index === 1)
+							?.paragraphs.some(
+								(p) => p.origin === "fallback" && p.source === "weight layer",
+							),
+					).toBe(true);
+			}
+
 			writeFileSync(
 				join(root, `${tag}-reflow-ir.json`),
 				JSON.stringify(ir, null, 2),

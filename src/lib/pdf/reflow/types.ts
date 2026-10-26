@@ -7,7 +7,27 @@ export type CharacterStyle = {
 	italic: boolean;
 	color: { r: number; g: number; b: number };
 };
+export type CharacterDisposition =
+	| "translated"
+	| "formula"
+	| "table"
+	| "excluded"
+	| "rotated"
+	| "unresolved"
+	| "nonpainting"
+	| "clipped";
+export type CharacterCoverage = {
+	index: number;
+	text: string;
+	disposition: CharacterDisposition;
+	paragraphId?: string;
+};
 export type Character = {
+	clipBoxes?: number[][];
+	renderMode?: number;
+	textAngle?: number;
+	textMatrix?: number[];
+	textObjectId?: number;
 	index: number;
 	text: string;
 	box: Box;
@@ -35,6 +55,9 @@ export type Paragraph = {
 	heading: boolean;
 	/** Table cells cannot borrow neighboring cell space. */
 	fixedBox?: boolean;
+	/** Available placement space, distinct from the source text removal bounds. */
+	layoutBox?: Box;
+	origin?: "detected" | "table" | "fallback";
 };
 export type ReflowPage = {
 	index: number;
@@ -42,6 +65,7 @@ export type ReflowPage = {
 	height: number;
 	paragraphs: Paragraph[];
 	obstacles: Box[];
+	coverage?: CharacterCoverage[];
 };
 export type ReflowDocument = { version: 1; pages: ReflowPage[] };
 export type FontKey =

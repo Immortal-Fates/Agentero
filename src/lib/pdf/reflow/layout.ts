@@ -289,7 +289,7 @@ export function layoutParagraph(
 	];
 	let fallback: ParagraphLayout | undefined;
 	for (const keepWords of [true, false]) {
-		let box = { ...p.box };
+		let box = { ...(p.layoutBox ?? p.box) };
 		for (
 			let n = Math.round(initialScale * 100);
 			n >= 10;
@@ -308,7 +308,7 @@ export function layoutParagraph(
 	if (!fallback) throw new Error(`Cannot typeset ${p.id}`);
 	return fallback;
 }
-/** Full-document pass, then a character-weighted common body scale pass. */
+/** Full-document pass, then a translated-unit-weighted common scale pass. */
 export function layoutReflowDocument(
 	ir: ReflowDocument,
 	translations: ReadonlyMap<string, string>,
@@ -340,29 +340,30 @@ export function layoutReflowDocument(
 	const weights = new Map<number, number>();
 	for (const page of ir.pages)
 		for (const p of page.paragraphs) {
-			if (p.heading || p.characters.length < 100) continue;
-			const scale = result
+			const placed = result
 				.find((r) => r.index === page.index)
-				?.paragraphs.find((r) => r.id === p.id)?.scale;
-			if (scale)
-				weights.set(scale, (weights.get(scale) ?? 0) + p.characters.length);
+				?.paragraphs.find((r) => r.id === p.id);
+			if (placed) {
+				const weight = placed.units.reduce(
+					(sum, u) =>
+						sum +
+						(u.formula
+							? u.formula.characterIndexes.length
+							: Array.from(u.text).length),
+					0,
+				);
+				weights.set(placed.scale, (weights.get(placed.scale) ?? 0) + weight);
+			}
 		}
 	const common =
-		[...weights].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? 1;
+		[...weights].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? 1;
 	for (const page of result) {
 		const source = ir.pages.find((p) => p.index === page.index);
 		if (!source) continue;
 		page.paragraphs = page.paragraphs.map((layout) => {
 			const p = source.paragraphs.find((p) => p.id === layout.id),
 				text = translations.get(layout.id);
-			if (
-				!p ||
-				!text ||
-				p.heading ||
-				p.characters.length < 100 ||
-				layout.scale <= common
-			)
-				return layout;
+			if (!p || !text || layout.scale <= common) return layout;
 			const candidate = layoutParagraph(
 				p,
 				text,
