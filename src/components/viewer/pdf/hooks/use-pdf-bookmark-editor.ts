@@ -4,24 +4,30 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { commands } from "@/lib/core/bindings";
+import { errorText } from "@/lib/core/error";
 import { callApi } from "@/lib/core/ipc";
+import { logger } from "@/lib/core/logger";
 import { notifyError } from "@/lib/core/notify";
 import { isMobileApp } from "@/lib/core/tauri";
+import { findLocalPdfPath } from "@/lib/paper/media";
+import { noteBookmarkWrite } from "@/lib/pdf/bookmark-echo";
 import {
 	type EditableBookmark,
 	editableBookmarks,
 } from "@/lib/pdf/bookmark-edit";
-import { setTabs } from "@/lib/workspace/store";
-import { refreshPdfTab } from "@/lib/workspace/tabs";
 
 type Draft = {
 	nodes: EditableBookmark[];
+	/** Bytes the next save must hash. After a successful write these are the file just written. */
 	bytes: ArrayBuffer;
+	/** Viewer buffer this draft was opened against. A new buffer means the file was reloaded. */
+	source: ArrayBuffer;
 	saving: boolean;
 	failed?: boolean;
 };
 // Keep unsaved drafts across the viewer LRU, external reloads and closing /
-// reopening a tab. A successful automatic write discards them.
+// reopening a tab. A successful write keeps the draft so the outline stays
+// put, but swaps in the written bytes for the next hash.
 const drafts = createStore<Record<string, Draft>>(() => ({}));
 function discard(path: string) {
 	drafts.setState((state) => {
@@ -115,12 +121,26 @@ export function usePdfBookmarkEditor({
 	}, [outline, markers, bytes]);
 	const canEdit = available && (Boolean(draft) || markers?.bytes === bytes);
 	const nodes = draft?.nodes ?? initialNodes;
+	useEffect(() => {
+		if (!path || !bytes) return;
+		const current = drafts.getState()[path];
+		// A failed edit still belongs to the user. A saved outline should follow
+		// a real reload of the file instead of shadowing it.
+		if (
+			current &&
+			!current.failed &&
+			!current.saving &&
+			current.source !== bytes
+		)
+			discard(path);
+	}, [path, bytes]);
 	const begin = useCallback(() => {
 		if (!path || !bytes || !canEdit || drafts.getState()[path]) return;
 		drafts.setState({
 			[path]: {
 				nodes: initialNodes,
 				bytes: bytes.slice(0),
+				source: bytes,
 				saving: false,
 			},
 		});
@@ -131,26 +151,38 @@ export function usePdfBookmarkEditor({
 		if (!current || current.saving) return;
 		drafts.setState({ [path]: { ...current, saving: true, failed: false } });
 		try {
+			// A paper tab is keyed by the paper directory. The bytes belong to
+			// the PDF inside it; writing the directory is rejected as invalid.
+			const filePath = /\.pdf$/i.test(path)
+				? path
+				: await findLocalPdfPath(path);
+			if (!filePath) throw new Error("invalid");
 			const hash = Array.from(
 				new Uint8Array(await crypto.subtle.digest("SHA-256", current.bytes)),
 				(byte) => byte.toString(16).padStart(2, "0"),
 			).join("");
 			const saved = await buildPdf(current.bytes, current.nodes);
-			await callApi(() => commands.pdfSaveBookmarks(path, hash, base64(saved)));
-			discard(path);
-			setTabs((tabs) =>
-				refreshPdfTab(
-					tabs,
-					path,
-					saved.buffer.slice(
+			noteBookmarkWrite(filePath);
+			await callApi(() =>
+				commands.pdfSaveBookmarks(filePath, hash, base64(saved)),
+			);
+			// Keep the open document mounted. Swapping pdfBytes mints a new
+			// EmbedPDF id and reloads the page, which flashes the viewer.
+			drafts.setState({
+				[path]: {
+					nodes: current.nodes,
+					bytes: saved.buffer.slice(
 						saved.byteOffset,
 						saved.byteOffset + saved.byteLength,
 					) as ArrayBuffer,
-				),
-			);
+					source: current.source,
+					saving: false,
+				},
+			});
 		} catch (error) {
 			drafts.setState({ [path]: { ...current, saving: false, failed: true } });
-			const code = error instanceof Error ? error.message : "failed";
+			const code = errorText(error);
+			logger.warn("pdf: bookmark save failed", { path, error: code });
 			const key =
 				code === "conflict"
 					? "conflict"

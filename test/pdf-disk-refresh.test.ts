@@ -26,6 +26,10 @@ vi.mock("@/lib/core/notify", () => ({
 }));
 
 // Import after the mocks: applyDiskChange reads through the mocked barrels.
+import {
+	clearBookmarkWrites,
+	noteBookmarkWrite,
+} from "@/lib/pdf/bookmark-echo";
 import { applyDiskChange } from "@/lib/workspace/actions";
 
 const PDF_PATH = "/Users/philfan/l/paper/plans/a.pdf";
@@ -77,6 +81,7 @@ describe("applyDiskChange pdf panes", () => {
 	beforeEach(() => {
 		readVaultFileMock.mockReset();
 		localFileToArrayBufferMock.mockReset();
+		clearBookmarkWrites();
 	});
 
 	/** Observed DiskChangeSink double: applies transforms to a local tab list. */
@@ -118,6 +123,18 @@ describe("applyDiskChange pdf panes", () => {
 		expect(sink.updateTabs).toHaveBeenCalledTimes(1);
 		expect(sink.getTabs()[0]?.pdfBytes).toBe(bytes);
 		expect(readVaultFileMock).not.toHaveBeenCalled();
+	});
+
+	it("does not reload a pdf pane for this editor's own bookmark write", async () => {
+		const sink = makeSink([makePdfTab(PDF_PATH)]);
+		const previous = sink.getTabs()[0]?.pdfBytes;
+		noteBookmarkWrite(PDF_PATH);
+
+		await applyDiskChange(PDF_PATH, sink);
+
+		expect(localFileToArrayBufferMock).not.toHaveBeenCalled();
+		expect(sink.updateTabs).not.toHaveBeenCalled();
+		expect(sink.getTabs()[0]?.pdfBytes).toBe(previous);
 	});
 
 	it("does nothing when the byte read fails", async () => {
