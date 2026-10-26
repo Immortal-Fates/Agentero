@@ -41,6 +41,7 @@ import {
 	broadcastOnboardingRequest,
 	broadcastTourRequest,
 } from "@/lib/onboarding/api";
+import { pluginsSurfaceEnabled } from "@/lib/plugins/visibility";
 import type { AppSettings } from "@/lib/settings";
 import { closeSettingsWindow } from "@/lib/shell/settings-window";
 import {
@@ -76,7 +77,10 @@ const PANE_LOADERS = {
  * cached, so the matching `lazy()` below resolves without a second request.
  */
 export function preloadSettingsPane(section: string): Promise<unknown> {
-	const load = PANE_LOADERS[section as SettingsSection] ?? PANE_LOADERS.general;
+	const requested =
+		!pluginsSurfaceEnabled && section === "plugins" ? "general" : section;
+	const load =
+		PANE_LOADERS[requested as SettingsSection] ?? PANE_LOADERS.general;
 	return load();
 }
 
@@ -194,19 +198,29 @@ export function SettingsContent({
 	const { t } = useTranslation(["settings", "common"]);
 	const fallbackTitleId = useId();
 	const headingId = titleId ?? fallbackTitleId;
+	const navItems = useMemo(
+		() => NAV.filter((item) => pluginsSurfaceEnabled || item.id !== "plugins"),
+		[],
+	);
+	const activeSection =
+		pluginsSurfaceEnabled || section !== "plugins" ? section : "general";
+
+	useEffect(() => {
+		if (activeSection !== section) onSectionChange(activeSection);
+	}, [activeSection, onSectionChange, section]);
 
 	// Keep visited panes mounted (hidden when inactive) so switching sections
 	// doesn't unmount/remount them — avoids re-running their load effects
 	// (agent list, connector status, cache stats, dynamic imports) and makes
 	// section switches instant instead of re-fetching on every visit.
 	const [visitedSections, setVisitedSections] = useState<SettingsSection[]>([
-		section,
+		activeSection,
 	]);
 	useEffect(() => {
 		setVisitedSections((prev) =>
-			prev.includes(section) ? prev : [...prev, section],
+			prev.includes(activeSection) ? prev : [...prev, activeSection],
 		);
-	}, [section]);
+	}, [activeSection]);
 
 	// Warm every pane chunk in the background shortly after the window opens.
 	// Only the initial section is preloaded at boot; without this, the FIRST
@@ -216,7 +230,9 @@ export function SettingsContent({
 	// contends with the main window.
 	useEffect(() => {
 		let cancelled = false;
-		const sections = Object.keys(PANE_LOADERS) as SettingsSection[];
+		const sections = (Object.keys(PANE_LOADERS) as SettingsSection[]).filter(
+			(id) => pluginsSurfaceEnabled || id !== "plugins",
+		);
 		let i = 0;
 		let timer: ReturnType<typeof setTimeout> | null = null;
 		const warmNext = () => {
@@ -245,12 +261,12 @@ export function SettingsContent({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: section intentionally triggers a scroll-to-top on switch
 	useEffect(() => {
 		contentScrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() });
-	}, [section]);
+	}, [activeSection]);
 
 	// Slide the sidebar highlight to the active item (motion-17).
 	const measureNavIndicator = useCallback(() => {
 		const list = navListRef.current;
-		const btn = navItemRefs.current[section];
+		const btn = navItemRefs.current[activeSection];
 		if (!list || !btn) return;
 		const listRect = list.getBoundingClientRect();
 		const btnRect = btn.getBoundingClientRect();
@@ -258,7 +274,7 @@ export function SettingsContent({
 			top: btnRect.top - listRect.top + list.scrollTop,
 			height: btnRect.height,
 		});
-	}, [section]);
+	}, [activeSection]);
 
 	useEffect(() => {
 		measureNavIndicator();
@@ -320,7 +336,7 @@ export function SettingsContent({
 			event: ReactKeyboardEvent<HTMLButtonElement>,
 			current: SettingsSection,
 		) => {
-			const ids = NAV.map((item) => item.id);
+			const ids = navItems.map((item) => item.id);
 			const index = ids.indexOf(current);
 			if (index < 0) return;
 			let next = index;
@@ -341,7 +357,7 @@ export function SettingsContent({
 			selectSection(id);
 			navItemRefs.current[id]?.focus();
 		},
-		[selectSection],
+		[navItems, selectSection],
 	);
 
 	return (
@@ -387,9 +403,9 @@ export function SettingsContent({
 							}}
 						/>
 					) : null}
-					{NAV.map((item) => {
+					{navItems.map((item) => {
 						const Icon = item.icon;
-						const active = section === item.id;
+						const active = activeSection === item.id;
 						return (
 							<Fragment key={item.id}>
 								{item.dividerBefore ? (
@@ -477,8 +493,8 @@ export function SettingsContent({
 					{visitedSections.includes("general") && (
 						<div
 							data-settings-pane
-							data-active={section === "general" ? "true" : "false"}
-							hidden={section !== "general"}
+							data-active={activeSection === "general" ? "true" : "false"}
+							hidden={activeSection !== "general"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<GeneralPane
@@ -504,8 +520,8 @@ export function SettingsContent({
 					{visitedSections.includes("appearance") && (
 						<div
 							data-settings-pane
-							data-active={section === "appearance" ? "true" : "false"}
-							hidden={section !== "appearance"}
+							data-active={activeSection === "appearance" ? "true" : "false"}
+							hidden={activeSection !== "appearance"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<AppearancePane
@@ -529,8 +545,8 @@ export function SettingsContent({
 					{visitedSections.includes("agent") && (
 						<div
 							data-settings-pane
-							data-active={section === "agent" ? "true" : "false"}
-							hidden={section !== "agent"}
+							data-active={activeSection === "agent" ? "true" : "false"}
+							hidden={activeSection !== "agent"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								{hostContext.kind === "remote" ? (
@@ -552,8 +568,8 @@ export function SettingsContent({
 					{visitedSections.includes("translate") && (
 						<div
 							data-settings-pane
-							data-active={section === "translate" ? "true" : "false"}
-							hidden={section !== "translate"}
+							data-active={activeSection === "translate" ? "true" : "false"}
+							hidden={activeSection !== "translate"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<TranslatePane
@@ -567,8 +583,8 @@ export function SettingsContent({
 					{visitedSections.includes("layout") && (
 						<div
 							data-settings-pane
-							data-active={section === "layout" ? "true" : "false"}
-							hidden={section !== "layout"}
+							data-active={activeSection === "layout" ? "true" : "false"}
+							hidden={activeSection !== "layout"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<LayoutPane
@@ -583,8 +599,8 @@ export function SettingsContent({
 					{visitedSections.includes("doctor") && (
 						<div
 							data-settings-pane
-							data-active={section === "doctor" ? "true" : "false"}
-							hidden={section !== "doctor"}
+							data-active={activeSection === "doctor" ? "true" : "false"}
+							hidden={activeSection !== "doctor"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<DoctorPane vaultPath={vaultPath} hostContext={hostContext} />
@@ -594,8 +610,8 @@ export function SettingsContent({
 					{visitedSections.includes("keyboard") && (
 						<div
 							data-settings-pane
-							data-active={section === "keyboard" ? "true" : "false"}
-							hidden={section !== "keyboard"}
+							data-active={activeSection === "keyboard" ? "true" : "false"}
+							hidden={activeSection !== "keyboard"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<KeyboardPane />
@@ -605,8 +621,8 @@ export function SettingsContent({
 					{visitedSections.includes("remote-access") && (
 						<div
 							data-settings-pane
-							data-active={section === "remote-access" ? "true" : "false"}
-							hidden={section !== "remote-access"}
+							data-active={activeSection === "remote-access" ? "true" : "false"}
+							hidden={activeSection !== "remote-access"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<RemoteAccessPane vaultPath={vaultPath} />
@@ -616,19 +632,19 @@ export function SettingsContent({
 					{visitedSections.includes("sync") && (
 						<div
 							data-settings-pane
-							data-active={section === "sync" ? "true" : "false"}
-							hidden={section !== "sync"}
+							data-active={activeSection === "sync" ? "true" : "false"}
+							hidden={activeSection !== "sync"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<SyncPane vaultPath={vaultPath} />
 							</Suspense>
 						</div>
 					)}
-					{visitedSections.includes("plugins") && (
+					{pluginsSurfaceEnabled && visitedSections.includes("plugins") && (
 						<div
 							data-settings-pane
-							data-active={section === "plugins" ? "true" : "false"}
-							hidden={section !== "plugins"}
+							data-active={activeSection === "plugins" ? "true" : "false"}
+							hidden={activeSection !== "plugins"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<PluginsPane vaultPath={vaultPath} />
@@ -638,8 +654,8 @@ export function SettingsContent({
 					{visitedSections.includes("experimental") && (
 						<div
 							data-settings-pane
-							data-active={section === "experimental" ? "true" : "false"}
-							hidden={section !== "experimental"}
+							data-active={activeSection === "experimental" ? "true" : "false"}
+							hidden={activeSection !== "experimental"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<ExperimentalPane settings={settings} patch={patch} />
@@ -649,8 +665,8 @@ export function SettingsContent({
 					{visitedSections.includes("about") && (
 						<div
 							data-settings-pane
-							data-active={section === "about" ? "true" : "false"}
-							hidden={section !== "about"}
+							data-active={activeSection === "about" ? "true" : "false"}
+							hidden={activeSection !== "about"}
 						>
 							<Suspense fallback={<PaneFallback />}>
 								<AboutPane />
