@@ -3,9 +3,9 @@
 //! Setup (spawn → initialize → session/new → preferences → settle) runs inside
 //! the connect future; the resulting connection + fresh session are published
 //! to the [`AgentWarmPool`] and kept alive by a keepalive loop until
-//! evicted, closed (EOF) or idle past [`POOL_IDLE_TTL`]. A slot that never
-//! served a turn has its empty session `session/delete`d at teardown so warm
-//! starts do not pile up empty threads in agent history.
+//! evicted, closed (EOF) or idle past [`POOL_IDLE_TTL`]. A warm session is
+//! hidden from history until a user prompt is delivered on that id. Teardown
+//! and abandoned setup call `session/delete` when the agent supports it.
 
 use crate::features::agent::acp::client::{
     acp_terminals, agent_spawn_cwd, client_initialize_request, timed_acp_initialize,
@@ -159,6 +159,7 @@ pub async fn warm_agent(
         registry: registry.clone(),
         task_id: task.id,
         cancellation: cancellation.clone(),
+        created: Mutex::new(None),
     };
 
     let task_cancellation = cancellation.clone();
@@ -262,6 +263,47 @@ struct WarmSetupCtx {
     usage_out: Arc<Mutex<Option<(u64, u64)>>>,
     terminals: Arc<tokio::sync::Mutex<crate::features::agent::acp::terminal::AcpTerminalManager>>,
     registry: crate::features::agent::session::handlers::TurnRegistry,
+    /// Set once `session/new` returns, so a failed setup can still discard it.
+    created: Mutex<Option<(agent_client_protocol::schema::v1::SessionId, bool)>>,
+}
+
+/// Remove a warm session the user never prompted.
+///
+/// Agents that advertise `sessionCapabilities.delete` get `session/delete`.
+/// The id stays in the unprompted set when delete is unsupported, fails, or
+/// times out, so `session/list` keeps hiding it.
+pub(crate) async fn discard_unprompted_session(
+    connection: &ConnectionTo<Agent>,
+    session_id: &agent_client_protocol::schema::v1::SessionId,
+    supports_delete: bool,
+    pool: &AgentWarmPool,
+) {
+    let id = session_id.to_string();
+    if !supports_delete {
+        log::debug!(
+            target: "agentero::agent",
+            "warm left unprompted session {id} (no sessionCapabilities.delete)"
+        );
+        return;
+    }
+    let delete = timed_acp_request(
+        "delete_session",
+        connection
+            .send_request(DeleteSessionRequest::new(session_id.clone()))
+            .block_task(),
+    );
+    match tokio::time::timeout(Duration::from_millis(800), delete).await {
+        Ok(Ok(_)) => {
+            pool.forget_unprompted(&id);
+            log::debug!(target: "agentero::agent", "warm deleted unprompted session {id}");
+        }
+        Ok(Err(e)) => {
+            log::debug!(target: "agentero::agent", "warm session/delete failed for {id}: {e}");
+        }
+        Err(_) => {
+            log::debug!(target: "agentero::agent", "warm session/delete timed out for {id}");
+        }
+    }
 }
 
 /// Teardown state returned by setup and consumed by the keepalive loop.
@@ -287,6 +329,14 @@ impl WarmSetupCtx {
                 Ok(())
             }
             Err(error) => {
+                if let Some((id, supports_delete)) = self
+                    .created
+                    .lock()
+                    .ok()
+                    .and_then(|mut created| created.take())
+                {
+                    discard_unprompted_session(&connection, &id, supports_delete, &self.pool).await;
+                }
                 let _ = setup_tx.send(Err(error.to_string()));
                 Err(error)
             }
@@ -307,6 +357,7 @@ impl WarmSetupCtx {
         let session_caps = &init.agent_capabilities.session_capabilities;
         let can_resume = session_caps.resume.is_some();
         let can_load = init.agent_capabilities.load_session;
+        let supports_delete = session_caps.delete.is_some();
 
         // Send session/new untyped so the raw response survives: the schema drops
         // hermes-agent's pre-stabilization top-level `models` field on deserialize,
@@ -329,6 +380,10 @@ impl WarmSetupCtx {
             )?;
 
         let acp_session_id = new_session.session_id;
+        self.pool.track_unprompted(&acp_session_id.to_string());
+        if let Ok(mut created) = self.created.lock() {
+            *created = Some((acp_session_id.clone(), supports_delete));
+        }
         let config_options = apply_model_and_collaboration_prefs(
             connection,
             &self.session_id,
@@ -375,6 +430,7 @@ impl WarmSetupCtx {
             end: end_tx,
             activity: activity_tx,
             used: used.clone(),
+            supports_delete,
             models: self.models_out.lock().ok().and_then(|g| g.clone()),
             usage: self.usage_out.lock().ok().and_then(|g| *g),
         });
@@ -389,15 +445,14 @@ impl WarmSetupCtx {
             end_rx,
             activity_rx,
             used,
-            supports_delete: session_caps.delete.is_some(),
+            supports_delete,
             acp_session_id,
             agent_id: self.agent_id.clone(),
         })
     }
 
     /// Hold the connection open until evicted, closed (EOF) or idle past the
-    /// TTL, then delete the empty session when the slot never served a turn
-    /// (agents without `sessionCapabilities.delete` keep today's debug log).
+    /// TTL, then discard the session when it never received a user prompt.
     async fn keepalive(&self, connection: &ConnectionTo<Agent>, mut slot: KeepaliveCtx) {
         let mut idle_deadline = tokio::time::Instant::now() + POOL_IDLE_TTL;
         let reason = loop {
@@ -426,36 +481,13 @@ impl WarmSetupCtx {
         );
 
         if !slot.used.load(Ordering::SeqCst) {
-            if slot.supports_delete {
-                match timed_acp_request(
-                    "delete_session",
-                    connection
-                        .send_request(DeleteSessionRequest::new(slot.acp_session_id.clone()))
-                        .block_task(),
-                )
-                .await
-                {
-                    Ok(_) => log::debug!(
-                        target: "agentero::agent",
-                        "agent={} warm deleted unused session {}",
-                        slot.agent_id,
-                        slot.acp_session_id
-                    ),
-                    Err(e) => log::debug!(
-                        target: "agentero::agent",
-                        "agent={} warm session/delete failed for {}: {e}",
-                        slot.agent_id,
-                        slot.acp_session_id
-                    ),
-                }
-            } else {
-                log::debug!(
-                    target: "agentero::agent",
-                    "agent={} warm left unused session {} (no sessionCapabilities.delete)",
-                    slot.agent_id,
-                    slot.acp_session_id
-                );
-            }
+            discard_unprompted_session(
+                connection,
+                &slot.acp_session_id,
+                slot.supports_delete,
+                &self.pool,
+            )
+            .await;
         }
     }
 }

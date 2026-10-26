@@ -13,7 +13,8 @@ use crate::features::agent::models::{
 };
 #[cfg(not(target_os = "ios"))]
 use crate::features::agent::{
-    service as agent_service, AgentRegistry, AgentRunController, PermissionGate, RemoteAgentHosts,
+    service as agent_service, AgentRegistry, AgentRunController, AgentWarmPool, PermissionGate,
+    RemoteAgentHosts,
 };
 use crate::features::markdown::search::{self, VaultSearchArgs};
 use crate::features::paper::catalog::papers;
@@ -991,6 +992,7 @@ async fn dispatch_agent_rpc(
                 app.state::<AgentRegistry>().inner(),
                 remote_hosts.inner().as_ref(),
                 app.state::<crate::features::agent::AgentWarmGate>().inner(),
+                app.state::<Arc<AgentWarmPool>>().inner(),
                 optional_string(&params, "agentId"),
                 vault_path,
                 optional_string(&params, "cursor"),

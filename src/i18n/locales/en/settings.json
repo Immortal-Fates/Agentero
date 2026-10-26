@@ -986,5 +986,55 @@
 			"vault:write": "Write Vault text and move papers"
 		},
 		"cancel": "Cancel"
+	},
+	"word": {
+		"damagedField": "This citation has an empty or damaged field result. Restore the document or reinsert the citation in a copy.",
+		"label": "Zotero Word plugin (macOS prototype)",
+		"hint": "Enable Connector first and quit Zotero. Uses the official Word plugin for this session. Body citations only; no tracked changes or footnotes.",
+		"search": "Search papers",
+		"pages": "Pages (for selected references)",
+		"style": "Citation style",
+		"styles": {
+			"apa": "APA 7",
+			"ieee": "IEEE",
+			"chicago": "Chicago author-date"
+		},
+		"cancel": "Cancel",
+		"apply": "Apply",
+		"working": "Updating Word…",
+		"noResults": "No papers found",
+		"actions": {
+			"addEditCitation": "Add / edit citation",
+			"addEditBibliography": "Add / update bibliography",
+			"setDocPrefs": "Document preferences",
+			"refresh": "Refresh citations"
+		},
+		"noDocument": "Open a document in Word first.",
+		"readOnly": "The Word document is read-only.",
+		"trackChanges": "Turn off Track Changes before using this prototype.",
+		"notesUnsupported": "This prototype supports body citations only, without footnotes or endnotes.",
+		"documentChanged": "The document changed. Run the Word command again.",
+		"selectionChanged": "The cursor moved. Run the Word command again.",
+		"insertFailed": "Word could not insert the citation field.",
+		"invalidPath": "Invalid Word driver path.",
+		"driverFailed": "Word automation failed.",
+		"timeout": "Word did not respond in time. Check the document before retrying.",
+		"platformUnsupported": "This prototype currently supports macOS only.",
+		"foreignFields": "This document contains Zotero or unsupported citation fields. Use a new document for this prototype.",
+		"unknownStyle": "Unsupported citation style.",
+		"connectorRequired": "Enable Zotero Connector before enabling the Word integration.",
+		"localVaultRequired": "Open a local Vault first.",
+		"zoteroRunning": "Quit Zotero Desktop before enabling the Word integration.",
+		"busy": "A Word operation is already in progress.",
+		"expired": "The Word request expired. Run the command again.",
+		"disabled": "The Word integration is disabled.",
+		"commandUnsupported": "This Word command is not supported by the prototype.",
+		"collapseSelection": "Place the cursor at an insertion point without selecting text.",
+		"cursorInCitation": "Move the cursor outside the citation before inserting a bibliography.",
+		"vaultChanged": "The active Vault changed. Run the Word command again.",
+		"invalidSelection": "Select between 1 and 50 valid references.",
+		"noCitations": "Insert a citation before adding a bibliography.",
+		"permission": "Allow Agentero to control Microsoft Word in macOS System Settings → Privacy & Security → Automation.",
+		"failed": "Word integration failed: {{detail}}"
 	}
 }

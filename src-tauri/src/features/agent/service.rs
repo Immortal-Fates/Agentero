@@ -278,6 +278,7 @@ pub async fn list_sessions(
     registry: &AgentRegistry,
     remote_hosts: &dyn RemoteAgentHosts,
     warm_gate: &AgentWarmGate,
+    pool: &AgentWarmPool,
     agent_id: Option<String>,
     vault_path: Option<String>,
     cursor: Option<String>,
@@ -313,7 +314,13 @@ pub async fn list_sessions(
         }
     };
     match list_acp_sessions(&desc, cwd, cursor, remote_target.as_deref()).await {
-        Ok(result) => {
+        Ok(mut result) => {
+            let hidden = pool.unprompted_ids();
+            if !hidden.is_empty() {
+                result
+                    .sessions
+                    .retain(|session| !hidden.contains(&session.session_id));
+            }
             warm_gate.clear(&desc.id);
             op.finish_ok_extra(format!(
                 "agent_id={} supported={} sessions={} truncated={}",

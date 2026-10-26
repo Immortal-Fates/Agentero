@@ -37,8 +37,11 @@ import {
 } from "@/lib/agent/chat-state";
 import {
 	applyCachedHistoryTitles,
+	forgetEmptyAcpSession,
 	getCachedHistoryTitle,
 	getOverriddenHistoryTitle,
+	isEmptyAcpSession,
+	rememberEmptyAcpSession,
 	setCachedHistoryTitle,
 	setUserHistoryTitle,
 } from "@/lib/agent/history-title-cache";
@@ -161,16 +164,23 @@ export async function hydrateSessionTitles(
 			});
 			if (generation !== historyGenRef.current) return;
 
-			const title = titleFromLoadedHistory(history);
-			const hasContent = history.lines.length > 0;
-			if (!title && !hasContent) {
-				// Drop ACP sessions that have neither a title nor any replayable
-				// content so the history drawer doesn't list empty rows.
+			if (history.lines.length === 0) {
+				// A title with no transcript is still an empty warm session.
+				// Remember it so the next list does not bring the row back.
+				rememberEmptyAcpSession(selectedAgentId, providerSessionId);
 				setSessionHistory((prev) =>
-					prev.filter((s) => !(s.id === item.id && s.agentId === item.agentId)),
+					prev.filter(
+						(s) =>
+							!(
+								s.id === item.id &&
+								s.agentId === item.agentId &&
+								s.lines.length === 0
+							),
+					),
 				);
 				return;
 			}
+			const title = titleFromLoadedHistory(history);
 			if (!title) return;
 
 			setCachedHistoryTitle(selectedAgentId, providerSessionId, title);
@@ -262,7 +272,18 @@ export function mergeImportedSessions(
 
 	const hydrationCandidates: AgentSessionRecord[] = [];
 
-	const imported = chatSessions.map((session) => {
+	const listed = chatSessions.filter((session) => {
+		const current =
+			existingById.get(session.sessionId) ??
+			existingByProvider.get(session.sessionId);
+		if (current && current.lines.length > 0) {
+			forgetEmptyAcpSession(selectedAgentId, session.sessionId);
+			return true;
+		}
+		return !isEmptyAcpSession(selectedAgentId, session.sessionId);
+	});
+
+	const imported = listed.map((session) => {
 		const current =
 			existingById.get(session.sessionId) ??
 			existingByProvider.get(session.sessionId);
@@ -333,7 +354,7 @@ export function mergeImportedSessions(
 		return record;
 	});
 
-	const importedIds = new Set(chatSessions.map((session) => session.sessionId));
+	const importedIds = new Set(listed.map((session) => session.sessionId));
 	const localOnly = prev.filter(
 		(item) =>
 			item.agentId === selectedAgentId &&

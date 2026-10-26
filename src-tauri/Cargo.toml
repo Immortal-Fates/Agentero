@@ -120,6 +120,8 @@ tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"], o
 specta = { version = "2.0.0-rc.22", features = ["derive", "chrono"] }
 specta-typescript = { version = "0.0.12", optional = true }
 fontdb = "0.23"
+# Local CSL formatting for the Word integration; permissively licensed engine.
+hayagriva = { version = "0.10.1", default-features = false, features = ["archive", "csl-json"] }
 
 # Updates and process relaunch are desktop-only. Mobile distribution is owned by
 # its app stores, not the in-app updater.

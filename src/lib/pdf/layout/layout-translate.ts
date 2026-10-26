@@ -15,6 +15,7 @@ import {
 import { parseBbox } from "@/lib/pdf/layout/layout-index";
 import {
 	draftChainSentences,
+	joinTranslatedDisplays,
 	type LayoutSentenceDraft,
 	paintSentenceTranslations,
 } from "@/lib/pdf/layout/layout-sentences";
@@ -24,6 +25,7 @@ import {
 	normalizeLayoutSourceText,
 } from "@/lib/pdf/layout/layout-translate-source";
 import { bboxCoveredBy } from "@/lib/pdf/layout/merge-captions";
+import { splitTranslationChunks } from "@/lib/pdf/layout/translation-chunks";
 import type {
 	LayoutTranslateItem,
 	LayoutTranslateRegion,
@@ -51,9 +53,6 @@ import type {
 	TranslateSettings,
 } from "@/lib/translate/types";
 import { joinVaultPath, readVaultFile, writeVaultFile } from "@/lib/vault";
-
-/** Soft cap per block to keep free-MT requests reasonable. */
-export const LAYOUT_TRANSLATE_MAX_CHARS = 2500;
 
 /** Parallel free/commercial MT workers (order of *start* follows reading order). */
 export const LAYOUT_TRANSLATE_CONCURRENCY = 2;
@@ -213,18 +212,15 @@ export function listTranslatableLayoutRegions(
 		if (!full) continue;
 		if (isAlgorithmTitleText(full)) continue;
 		if (isReferenceSectionTitle(full)) continue;
-		const source =
-			full.length > LAYOUT_TRANSLATE_MAX_CHARS
-				? `${full.slice(0, LAYOUT_TRANSLATE_MAX_CHARS)}…`
-				: full;
 		out.push({
 			id: r.id,
 			pageIndex: r.pageIndex,
 			bbox: r.bbox,
 			kind: r.kind,
 			readingOrder: r.readingOrder,
-			source,
+			source: full,
 			raw,
+			...(r.sourceStyle ? { sourceStyle: r.sourceStyle } : {}),
 		});
 	}
 	out.sort(
@@ -714,8 +710,8 @@ function batchPayloadLength(batch: readonly TranslateUnit[]): number {
 
 /**
  * Group units (already in reading order) into batches whose combined payload
- * stays under {@link LAYOUT_TRANSLATE_BATCH_CHARS}. A single unit always fits,
- * so nothing is dropped. Batches may span adjacent pages; results are mapped
+ * stays under {@link LAYOUT_TRANSLATE_BATCH_CHARS}. Oversized units are kept
+ * alone and split by the transport. Batches may span adjacent pages; results are mapped
  * back per unit, so positions are unaffected.
  */
 export function buildTranslateBatches<T extends TranslateUnit>(
@@ -767,7 +763,8 @@ export function parseNumberedTranslation(
 		});
 		m = re.exec(trimmed);
 	}
-	if (markers.length < expected) return null;
+	if (markers.length !== expected || trimmed.slice(0, markers[0]?.start).trim())
+		return null;
 	const chosen = markers.slice(0, expected);
 	for (let i = 0; i < expected; i++) {
 		if (chosen[i]?.n !== i + 1) return null;
@@ -825,6 +822,7 @@ export async function runLayoutRegionTranslate(options: {
 	};
 	type SentenceUnit = {
 		source: string;
+		tokens: MaskedToken[];
 		job: ChainJob;
 		draftIndex: number;
 	};
@@ -848,7 +846,13 @@ export async function runLayoutRegionTranslate(options: {
 			slots: drafts.map(() => ({ state: "pending", text: "" })),
 		};
 		drafts.forEach((draft, draftIndex) => {
-			units.push({ source: draft.source, job, draftIndex });
+			const masked = maskInlineTokens(draft.source);
+			units.push({
+				source: masked.text,
+				tokens: masked.tokens,
+				job,
+				draftIndex,
+			});
 		});
 	}
 	const batches = buildTranslateBatches(units);
@@ -860,31 +864,46 @@ export async function runLayoutRegionTranslate(options: {
 		text: string,
 		pageIndex: number | undefined,
 	): Promise<string> => {
-		const translated = await runTranslate(
-			{
-				text,
-				context: {
-					page: pageIndex != null ? pageIndex + 1 : undefined,
-					surface: "pdf-layout-bulk",
+		const parts: string[] = [];
+		for (const chunk of splitTranslationChunks(
+			text,
+			LAYOUT_TRANSLATE_BATCH_CHARS,
+		)) {
+			if (signal?.aborted) return "";
+			const translated = await runTranslate(
+				{
+					text: chunk,
+					context: {
+						page: pageIndex != null ? pageIndex + 1 : undefined,
+						surface: "pdf-layout-bulk",
+					},
 				},
-			},
-			agentOpts,
-		);
-		return translated.trim();
+				agentOpts,
+			);
+			if (!translated.trim()) throw new Error("Empty translation result");
+			parts.push(translated.trim());
+		}
+		return joinTranslatedDisplays(parts, targetLang);
 	};
 
 	const pageOf = (unit: SentenceUnit) => unit.job.chain.members[0]?.pageIndex;
 
-	/** Restore masked tokens; retry that sentence unmasked when one is missing. */
+	/** Retry with protection intact; never publish a corrupted formula/link. */
 	const finalizeSentence = async (
 		unit: SentenceUnit,
 		segment: string,
 		tokens: readonly MaskedToken[],
 	): Promise<string> => {
-		if (tokens.length === 0) return segment.trim();
 		const restored = restoreInlineTokens(segment.trim(), tokens);
-		if (restored.missing === 0) return restored.text;
-		return await translateText(unit.source, pageOf(unit));
+		if (restored.missing === 0 && !restored.invalid) return restored.text;
+		if (signal?.aborted) return "";
+		const retry = restoreInlineTokens(
+			await translateText(unit.source, pageOf(unit)),
+			tokens,
+		);
+		if (retry.missing || retry.invalid)
+			throw new Error(i18n.t("viewer:pdf.layoutTranslate.invalidTokens"));
+		return retry.text;
 	};
 
 	const failUnit = (unit: SentenceUnit, error?: unknown) => {
@@ -927,17 +946,16 @@ export async function runLayoutRegionTranslate(options: {
 				return;
 			}
 			member.sentences = undefined;
-			member.translated = paint?.translated || undefined;
+			member.translated = undefined;
 			member.status = "error";
 			member.error = member.error || "Sentence translation failed";
 		});
 	};
 
 	const translateSentence = async (unit: SentenceUnit) => {
-		const masked = maskInlineTokens(unit.source);
-		const raw = await translateText(masked.text, pageOf(unit));
+		const raw = await translateText(unit.source, pageOf(unit));
 		if (signal?.aborted) return;
-		const text = await finalizeSentence(unit, raw, masked.tokens);
+		const text = await finalizeSentence(unit, raw, unit.tokens);
 		if (signal?.aborted) return;
 		if (text) succeedUnit(unit, text);
 		else failUnit(unit);
@@ -945,8 +963,7 @@ export async function runLayoutRegionTranslate(options: {
 
 	const translateSentenceBatch = async (batch: readonly SentenceUnit[]) => {
 		const maskedUnits = batch.map((unit) => {
-			const masked = maskInlineTokens(unit.source);
-			return { unit, source: masked.text, tokens: masked.tokens };
+			return { unit, source: unit.source, tokens: unit.tokens };
 		});
 		const result = await translateText(
 			buildNumberedPayload(maskedUnits),

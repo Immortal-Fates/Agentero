@@ -13,7 +13,9 @@ import { readJsonStorage, writeJsonStorage } from "@/lib/core/storage";
 
 const STORAGE_KEY = "agentero.agent-history-titles.v1";
 const OVERRIDE_KEY = "agentero.agent-history-title-overrides.v1";
+const EMPTY_KEY = "agentero.agent-empty-sessions.v1";
 const MAX_ENTRIES = 400;
+const MAX_EMPTY = 2000;
 
 type CacheMap = Record<string, string>;
 
@@ -139,6 +141,65 @@ export function setUserHistoryTitle(
 	overrides[cacheKey(agent, providerId)] = cleaned;
 	if (providerId !== id) overrides[cacheKey(agent, id)] = cleaned;
 	writeOverrides(overrides);
+}
+
+function readEmptySessions(): CacheMap {
+	const parsed = readJsonStorage<unknown>(EMPTY_KEY, null);
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return {};
+	}
+	const out: CacheMap = {};
+	for (const [key, value] of Object.entries(parsed)) {
+		if (value === true) out[key] = "1";
+	}
+	return out;
+}
+
+function writeEmptySessions(map: CacheMap): void {
+	const entries = Object.entries(map);
+	const trimmed =
+		entries.length > MAX_EMPTY
+			? Object.fromEntries(entries.slice(entries.length - MAX_EMPTY))
+			: map;
+	const stored: Record<string, true> = {};
+	for (const key of Object.keys(trimmed)) stored[key] = true;
+	writeJsonStorage(EMPTY_KEY, stored);
+}
+
+/** ACP sessions whose transcript had no lines the last time we loaded them. */
+export function isEmptyAcpSession(agentId: string, sessionId: string): boolean {
+	const id = sessionId.trim();
+	const agent = agentId.trim();
+	if (!id || !agent) return false;
+	return readEmptySessions()[cacheKey(agent, id)] === "1";
+}
+
+export function rememberEmptyAcpSession(
+	agentId: string,
+	sessionId: string,
+): void {
+	const id = sessionId.trim();
+	const agent = agentId.trim();
+	if (!id || !agent) return;
+	const map = readEmptySessions();
+	const key = cacheKey(agent, id);
+	if (map[key] === "1") return;
+	map[key] = "1";
+	writeEmptySessions(map);
+}
+
+export function forgetEmptyAcpSession(
+	agentId: string,
+	sessionId: string,
+): void {
+	const id = sessionId.trim();
+	const agent = agentId.trim();
+	if (!id || !agent) return;
+	const map = readEmptySessions();
+	const key = cacheKey(agent, id);
+	if (map[key] !== "1") return;
+	delete map[key];
+	writeEmptySessions(map);
 }
 
 /** Apply cached titles onto sessions that still lack a human label. */

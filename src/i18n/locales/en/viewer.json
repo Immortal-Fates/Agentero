@@ -54,6 +54,7 @@
 			"needLayout": "Run layout analysis first (Figures panel).",
 			"noText": "No extractable text regions to translate.",
 			"failed": "Full-text translate failed",
+			"invalidTokens": "The translation changed protected formulas or links. The original text has been kept.",
 			"openSettings": "Open translation settings",
 			"waiting": "Waiting for layout analysis…",
 			"cancelQueue": "Cancel queue",

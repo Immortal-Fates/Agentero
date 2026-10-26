@@ -7,6 +7,8 @@
 -->
 <plist version="1.0">
 <dict>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 	<!-- WKWebView / JS engine under Hardened Runtime -->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>

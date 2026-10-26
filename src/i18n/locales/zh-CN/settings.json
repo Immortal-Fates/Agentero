@@ -986,5 +986,55 @@
 			"vault:write": "写入 Vault 文本及移动论文"
 		},
 		"cancel": "取消"
+	},
+	"word": {
+		"damagedField": "引文字段结果为空或已损坏。请恢复文档，或在副本中重新插入引文。",
+		"label": "Zotero Word 插件（macOS 原型）",
+		"hint": "请先开启 Connector 并退出 Zotero。本次会话使用官方 Word 插件，仅支持正文引文，不支持修订模式和脚注。",
+		"search": "搜索论文",
+		"pages": "页码（应用于所选文献）",
+		"style": "引用样式",
+		"styles": {
+			"apa": "APA 7",
+			"ieee": "IEEE",
+			"chicago": "Chicago 作者—年份"
+		},
+		"cancel": "取消",
+		"apply": "应用",
+		"working": "正在更新 Word…",
+		"noResults": "未找到论文",
+		"actions": {
+			"addEditCitation": "添加 / 编辑引文",
+			"addEditBibliography": "添加 / 更新参考文献",
+			"setDocPrefs": "文档偏好设置",
+			"refresh": "刷新引文"
+		},
+		"noDocument": "请先在 Word 中打开文档。",
+		"readOnly": "Word 文档为只读。",
+		"trackChanges": "使用此原型前请关闭修订模式。",
+		"notesUnsupported": "此原型仅支持正文引文，暂不处理含脚注或尾注的文档。",
+		"documentChanged": "文档已变更，请重新执行 Word 命令。",
+		"selectionChanged": "光标已移动，请重新执行 Word 命令。",
+		"insertFailed": "Word 无法插入引文字段。",
+		"invalidPath": "Word 驱动路径无效。",
+		"driverFailed": "Word 自动化失败。",
+		"timeout": "Word 响应超时，请检查文档后重试。",
+		"platformUnsupported": "此原型目前仅支持 macOS。",
+		"foreignFields": "文档包含 Zotero 或不支持的引文字段，请使用新文档测试此原型。",
+		"unknownStyle": "不支持此引用样式。",
+		"connectorRequired": "请先开启 Zotero Connector，再开启 Word 集成。",
+		"localVaultRequired": "请先打开本地 Vault。",
+		"zoteroRunning": "开启 Word 集成前请退出 Zotero 桌面端。",
+		"busy": "已有 Word 操作正在进行。",
+		"expired": "Word 请求已过期，请重新执行命令。",
+		"disabled": "Word 集成尚未开启。",
+		"commandUnsupported": "此原型暂不支持该 Word 命令。",
+		"collapseSelection": "请将光标放在插入位置，不要选中文本。",
+		"cursorInCitation": "插入参考文献前请将光标移到引文之外。",
+		"vaultChanged": "当前 Vault 已切换，请重新执行 Word 命令。",
+		"invalidSelection": "请选择 1–50 篇有效文献。",
+		"noCitations": "请先插入引文，再添加参考文献。",
+		"permission": "请在 macOS 系统设置 → 隐私与安全性 → 自动化中，允许 Agentero 控制 Microsoft Word。",
+		"failed": "Word 集成失败：{{detail}}"
 	}
 }

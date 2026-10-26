@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LayoutTranslateItem } from "@/lib/pdf/layout/layout-translate";
 import { runLayoutRegionTranslate } from "@/lib/pdf/layout/layout-translate";
+import { runLayoutRegionTranslate as runPublicLayoutTranslate } from "@/lib/pdf/layout/layout-translate-reliable";
 
 const runTranslate = vi.fn<(...args: unknown[]) => Promise<string>>();
 
@@ -43,6 +44,25 @@ function item(
 describe("runLayoutRegionTranslate paragraph chains", () => {
 	beforeEach(() => {
 		runTranslate.mockReset();
+	});
+
+	it("preserves raw quotes and source styles through the public long-block path", async () => {
+		const raw = `A repre- sentation ${"with detail ".repeat(600)}ends here.`;
+		const source = raw.replace("repre- sentation", "representation");
+		runTranslate.mockImplementation(async (task) =>
+			(task as { text: string }).text.trim(),
+		);
+		const sourceStyle = { fontSize: 0.0125, bold: false, italic: false };
+		const out = await runPublicLayoutTranslate({
+			items: [{ ...item("long", source, 0), raw, sourceStyle }],
+			onUpdate: () => {},
+		});
+		expect(out).toHaveLength(1);
+		expect(out[0]?.id).toBe("long");
+		expect(out[0]?.kind).toBe("text");
+		expect(out[0]?.sourceStyle).toEqual(sourceStyle);
+		expect(out[0]?.sentences?.[0]?.quote).toBe(raw);
+		expect(out[0]?.translated).toContain("ends here.");
 	});
 
 	it("sends a cross-page paragraph as one request and splits the result back", async () => {
@@ -100,19 +120,52 @@ describe("runLayoutRegionTranslate paragraph chains", () => {
 		]);
 	});
 
-	it("retries unmasked when the engine drops a placeholder", async () => {
+	it("retries with protection intact when the engine drops a placeholder", async () => {
 		runTranslate
 			.mockResolvedValueOnce("参见 网址 获取细节。")
-			.mockResolvedValueOnce("参见 https://example.com/x 获取细节。");
+			.mockResolvedValueOnce("参见 ⟦0⟧ 获取细节。");
 		const items = [item("a", "See https://example.com/x for details.", 0)];
 
 		const out = await runLayoutRegionTranslate({ items, onUpdate: () => {} });
 
 		expect(runTranslate).toHaveBeenCalledTimes(2);
+		expect(runTranslate.mock.calls[1]?.[0]).toMatchObject({
+			text: "See ⟦0⟧ for details.",
+		});
 		expect(out[0]?.translated).toBe("参见 https://example.com/x 获取细节。");
 		expect(out[0]?.sentences?.[0]?.quote).toBe(
 			"See https://example.com/x for details.",
 		);
+	});
+
+	it("does not publish a translation with damaged formulas after retry", async () => {
+		runTranslate.mockResolvedValue("公式 ⟦0⟧ ⟦0⟧");
+		const out = await runLayoutRegionTranslate({
+			items: [item("math", "Use $x^2$ now.", 0)],
+			onUpdate: () => {},
+		});
+		expect(runTranslate).toHaveBeenCalledTimes(2);
+		expect(out[0]?.status).toBe("error");
+		expect(out[0]?.translated).toBeUndefined();
+	});
+
+	it("sends all of a long sentence within the transport budget and retains its anchor", async () => {
+		const source = `${"longword ".repeat(1100)}END.`;
+		runTranslate.mockImplementation(async (task) =>
+			(task as { text: string }).text.trim(),
+		);
+		const out = await runLayoutRegionTranslate({
+			items: [item("long", source, 0)],
+			onUpdate: () => {},
+		});
+		expect(runTranslate.mock.calls.length).toBeGreaterThan(1);
+		for (const call of runTranslate.mock.calls)
+			expect((call[0] as { text: string }).text.length).toBeLessThanOrEqual(
+				4500,
+			);
+		expect(out[0]?.translated).toContain("END.");
+		expect(out[0]?.sentences?.[0]?.quote).toBe(source);
+		expect(out[0]?.status).toBe("done");
 	});
 
 	it("numbers each sentence and stores the pair on the block", async () => {
@@ -152,6 +205,6 @@ describe("runLayoutRegionTranslate paragraph chains", () => {
 		expect(runTranslate).toHaveBeenCalledTimes(3);
 		expect(out[0]?.status).toBe("error");
 		expect(out[0]?.sentences).toBeUndefined();
-		expect(out[0]?.translated).toBe("第一句。");
+		expect(out[0]?.translated).toBeUndefined();
 	});
 });

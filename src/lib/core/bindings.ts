@@ -272,6 +272,13 @@ export const commands = {
 	 *  Deduplicates within the batch and against existing catalog entries.
 	 */
 	lookupImportBatch: (args: LookupImportBatchArgs) => typedError<ApiResult<LookupImportBatchResult_Serialize>, string>(__TAURI_INVOKE("lookup_import_batch", { args })),
+	/**
+	 *  Extract paper identifiers from pasted chat text or an AI-chat share URL
+	 *  (#652). Deterministic scanner — no LLM; pasted text never leaves the
+	 *  machine, share pages are fetched once and the page text is dropped after
+	 *  extraction.
+	 */
+	chatImportExtract: (args: ChatImportExtractArgs) => typedError<ApiResult<ChatImportExtractResult>, string>(__TAURI_INVOKE("chat_import_extract", { args })),
 	skillInstall: (args: SkillInstallArgs) => __TAURI_INVOKE<ApiResult<SkillImportResult[]>>("skill_install", { args }),
 	skillDiscard: (discoveryId: string) => __TAURI_INVOKE<ApiResult<null>>("skill_discard", { discoveryId }),
 	/**  Import local PDF file(s) into the vault as paper folders (copy + catalog + liteparse). */
@@ -567,6 +574,10 @@ export const commands = {
 	fsWatchStart: (vaultPath: string) => typedError<null, string>(__TAURI_INVOKE("fs_watch_start", { vaultPath })),
 	/**  Stop watching for this window (no-op if not watching). */
 	fsWatchStop: () => typedError<null, string>(__TAURI_INVOKE("fs_watch_stop")),
+	wordGetStatus: () => __TAURI_INVOKE<WordStatus>("word_get_status"),
+	wordSetEnabled: (enabled: boolean) => typedError<WordStatus, string>(__TAURI_INVOKE("word_set_enabled", { enabled })),
+	wordCancel: (requestId: string) => typedError<null, string>(__TAURI_INVOKE("word_cancel", { requestId })),
+	wordSubmit: (args: WordSubmit) => typedError<null, string>(__TAURI_INVOKE("word_submit", { args })),
 	connectorGetStatus: () => __TAURI_INVOKE<ApiResult<ConnectorStatus>>("connector_get_status"),
 	connectorSetEnabled: (args: ConnectorSetEnabledArgs) => typedError<ApiResult<ConnectorStatus>, string>(__TAURI_INVOKE("connector_set_enabled", { args })),
 	connectorSetVault: (args: ConnectorSetVaultArgs) => __TAURI_INVOKE<ApiResult<null>>("connector_set_vault", { args }),
@@ -753,6 +764,7 @@ export const events = {
 	vaultOpenError: makeEvent<VaultOpenErrorEvent>("vault:open-error"),
 	vaultOpenRequest: makeEvent<VaultOpenRequestEvent>("vault:open-request"),
 	windowClosed: makeEvent<WindowClosedEvent_Deserialize>("window:closed"),
+	wordChanged: makeEvent<WordChangedEvent>("word:changed"),
 };
 
 /* Types */
@@ -2101,6 +2113,19 @@ export type CatalogScanResponse_Serialize = {
 	userAgent: string,
 	/**  See [`AgentRegistryState::user_agent_provider_ids`]. */
 	userAgentProviderIds: string,
+};
+
+export type ChatImportExtractArgs = {
+	/**  Pasted chat text, or a bare AI-chat share URL (chatgpt.com/share/...). */
+	text: string,
+};
+
+export type ChatImportExtractResult = {
+	arxiv: string[],
+	dois: string[],
+	pmids: string[],
+	/**  Set when the input was a share link whose page we fetched. */
+	fetchedFrom: string | null,
 };
 
 export type Citation = Citation_Serialize | Citation_Deserialize;
@@ -5893,6 +5918,40 @@ export type WindowClosedEvent_Deserialize = {
 export type WindowClosedEvent_Serialize = {
 	kind: string,
 	view?: string | null,
+};
+
+export type WordChangedEvent = null;
+
+export type WordPaper = {
+	id: string,
+	title: string,
+	authors: string[],
+	year: number | null,
+};
+
+export type WordRequest = {
+	id: string,
+	command: string,
+	document: string,
+	papers: WordPaper[],
+	selected: string[],
+	locator: string,
+	style: string,
+};
+
+export type WordStatus = {
+	supported: boolean,
+	enabled: boolean,
+	busy: boolean,
+	pending: WordRequest | null,
+	error: string | null,
+};
+
+export type WordSubmit = {
+	requestId: string,
+	selected: string[],
+	locator: string,
+	style: string,
 };
 
 export type WritingGitCommit = {

@@ -25,6 +25,7 @@ import {
 } from "@/lib/pdf/layout/layout-translate-dom-fit";
 import { isLayoutTranslateItemPainted } from "@/lib/pdf/layout/layout-translate-reliable";
 import { linkColorOnPaper } from "@/lib/pdf/layout/link-ink";
+import type { LayoutSourceStyle } from "@/lib/pdf/layout/source-style";
 import {
 	assignmentsWithin,
 	assignPreservedLinks,
@@ -405,6 +406,8 @@ function fontSizeForLayoutTranslateItem(
 	pageHeightPx: number,
 	text: string,
 ): number {
+	// Preserve the real PDF em; do not grow short translations to fill the box.
+	if (item.sourceStyle) return item.sourceStyle.fontSize * pageHeightPx;
 	const boxWidthPx = item.bbox.w * pageWidthPx;
 	const boxHeightPx = item.bbox.h * pageHeightPx;
 	let entry = fontSizeCache.get(item.id);
@@ -457,6 +460,7 @@ function applyParagraphMetrics(
 }
 
 type ExactFitParagraphProps = {
+	sourceStyle?: LayoutSourceStyle;
 	text: string;
 	itemId: string;
 	sentences?: LayoutTranslateItem["sentences"];
@@ -590,6 +594,7 @@ function LinkifiedText({
  * silently chops off an otherwise complete translation.
  */
 export const LayoutTranslateParagraph = memo(function LayoutTranslateParagraph({
+	sourceStyle,
 	text,
 	itemId,
 	sentences,
@@ -615,6 +620,7 @@ export const LayoutTranslateParagraph = memo(function LayoutTranslateParagraph({
 		boxHeightPx,
 		initialFontSize,
 		isHeading,
+		fontStyleKey: `${sourceStyle?.bold ?? isHeading}:${sourceStyle?.italic ?? false}`,
 	});
 	const cachedDomFit = readLayoutTranslateDomFit(domFitKey);
 
@@ -653,6 +659,8 @@ export const LayoutTranslateParagraph = memo(function LayoutTranslateParagraph({
 			data-paper={paperDark ? "dark" : undefined}
 			style={{
 				fontSize: cachedDomFit?.fontSize ?? initialFontSize,
+				fontWeight: sourceStyle ? (sourceStyle.bold ? 700 : 400) : undefined,
+				fontStyle: sourceStyle?.italic ? "italic" : "normal",
 				lineHeight: cachedDomFit?.lineHeight ?? LINE_HEIGHT,
 				overflowWrap: cachedDomFit?.overflowWrap ?? "normal",
 				// Browser-native UAX #14 breaking avoids a CJK opening bracket at a
@@ -754,9 +762,10 @@ export const LayoutTranslateOverlay = memo(function LayoutTranslateOverlay({
 			// Doc titles already dwarf body; page chrome (date, logo) must not be
 			// inflated. Only short section strips need the body-relative floor.
 			const sectionStrip = isHeading && item.bbox.h < 0.035;
-			const paintFontSize = sectionStrip
-				? applyHeadingBodyFloor(baseFs, bodyRef)
-				: baseFs;
+			const paintFontSize =
+				sectionStrip && !item.sourceStyle
+					? applyHeadingBodyFloor(baseFs, bodyRef)
+					: baseFs;
 			return {
 				...item,
 				sourceBbox: item.bbox,
@@ -867,6 +876,7 @@ export const LayoutTranslateOverlay = memo(function LayoutTranslateOverlay({
 									itemId={item.id}
 									sentences={item.sentences}
 									initialFontSize={fontSize}
+									sourceStyle={item.sourceStyle}
 									boxWidthPx={boxWidthPx}
 									boxHeightPx={boxHeightPx}
 									isHeading={isHeading}

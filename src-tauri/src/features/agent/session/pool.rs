@@ -4,8 +4,9 @@
 //! tearing it down; `run_once` takes a matching slot to skip the
 //! `spawn → initialize → session/new` cold chain (measured at 3.5s+ per turn,
 //! see #536). Idle slots are recycled after [`POOL_IDLE_TTL`] (or EOF /
-//! eviction), and a never-used slot's empty session is `session/delete`d at
-//! teardown so warm starts do not pile up empty threads in agent history.
+//! eviction). A warm session that never received a user prompt stays out of
+//! history: teardown calls `session/delete` when the agent allows it, and the
+//! id stays hidden when it does not.
 
 use crate::features::agent::acp::terminal::AcpTerminalManager;
 use crate::features::agent::models::AgentModelsEvent;
@@ -13,8 +14,8 @@ use crate::features::agent::remote_host::RemoteAgentLaunch;
 use crate::features::agent::session::handlers::TurnRegistry;
 use agent_client_protocol::schema::v1::{SessionConfigOption, SessionId};
 use agent_client_protocol::{Agent, ConnectionTo};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -77,9 +78,11 @@ pub(crate) struct PooledSlot {
     pub end: watch::Sender<bool>,
     /// Heartbeat counter; every bump restarts the idle TTL.
     pub activity: watch::Sender<u64>,
-    /// Set once a turn prompted on this slot (suppresses the empty-session
-    /// delete at teardown).
+    /// When false, teardown may delete this session. Set once a turn bound
+    /// the slot to a session the user is continuing.
     pub used: Arc<AtomicBool>,
+    /// `initialize` advertised `sessionCapabilities.delete`.
+    pub supports_delete: bool,
     /// Cached setup results for `snapshot_warm_result`.
     pub models: Option<AgentModelsEvent>,
     pub usage: Option<(u64, u64)>,
@@ -149,12 +152,105 @@ impl<T> SlotMap<T> {
     }
 }
 
+const UNPROMPTED_SESSION_CAP: usize = 2000;
+
+/// Warm `session/new` ids that have not had a user prompt delivered.
+/// History listing skips them. The file survives restart so an agent that
+/// cannot `session/delete` does not show the empty thread again.
+struct UnpromptedSessions {
+    ids: Mutex<Vec<String>>,
+    path: PathBuf,
+}
+
+fn unprompted_sessions_path() -> PathBuf {
+    crate::core::paths::agentero_data_dir().join("unprompted-acp-sessions.json")
+}
+
+fn read_unprompted_ids(path: &Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(ids) = serde_json::from_str::<Vec<String>>(&text) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for id in ids {
+        let id = id.trim().to_string();
+        if id.is_empty() || out.iter().any(|existing| existing == &id) {
+            continue;
+        }
+        out.push(id);
+    }
+    if out.len() > UNPROMPTED_SESSION_CAP {
+        let overflow = out.len() - UNPROMPTED_SESSION_CAP;
+        out.drain(0..overflow);
+    }
+    out
+}
+
+impl UnpromptedSessions {
+    fn open(path: PathBuf) -> Self {
+        let ids = read_unprompted_ids(&path);
+        Self {
+            ids: Mutex::new(ids),
+            path,
+        }
+    }
+
+    fn persist(&self, ids: &[String]) {
+        if let Some(parent) = self.path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(body) = serde_json::to_vec(ids) {
+            let _ = std::fs::write(&self.path, body);
+        }
+    }
+
+    fn track(&self, session_id: &str) {
+        let session_id = session_id.trim();
+        if session_id.is_empty() {
+            return;
+        }
+        let Ok(mut ids) = self.ids.lock() else {
+            return;
+        };
+        if ids.iter().any(|id| id == session_id) {
+            return;
+        }
+        ids.push(session_id.to_string());
+        if ids.len() > UNPROMPTED_SESSION_CAP {
+            let overflow = ids.len() - UNPROMPTED_SESSION_CAP;
+            ids.drain(0..overflow);
+        }
+        self.persist(&ids);
+    }
+
+    fn forget(&self, session_id: &str) {
+        let Ok(mut ids) = self.ids.lock() else {
+            return;
+        };
+        let before = ids.len();
+        ids.retain(|id| id != session_id);
+        if ids.len() != before {
+            self.persist(&ids);
+        }
+    }
+
+    fn snapshot(&self) -> HashSet<String> {
+        self.ids
+            .lock()
+            .map(|ids| ids.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
 /// Registry of pooled warm connections (at most one per agent).
 pub struct AgentWarmPool {
     slots: Mutex<SlotMap<PooledSlot>>,
     tasks: Mutex<HashMap<Uuid, WarmState>>,
     closed: AtomicBool,
     changed: Notify,
+    unprompted: UnpromptedSessions,
 }
 
 enum TakeState {
@@ -193,7 +289,22 @@ impl AgentWarmPool {
             tasks: Mutex::new(HashMap::new()),
             closed: AtomicBool::new(false),
             changed: Notify::new(),
+            unprompted: UnpromptedSessions::open(unprompted_sessions_path()),
         }
+    }
+
+    /// Hide a warm session until a user prompt is delivered on it.
+    pub(crate) fn track_unprompted(&self, session_id: &str) {
+        self.unprompted.track(session_id);
+    }
+
+    /// The session received a prompt, or `session/delete` removed it.
+    pub(crate) fn forget_unprompted(&self, session_id: &str) {
+        self.unprompted.forget(session_id);
+    }
+
+    pub(crate) fn unprompted_ids(&self) -> HashSet<String> {
+        self.unprompted.snapshot()
     }
 
     pub(crate) fn start_warm(self: &Arc<Self>, key: &PoolKey) -> WarmTask {
@@ -557,6 +668,7 @@ mod slot_map_tests {
                     end,
                     activity,
                     used: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    supports_delete: false,
                     models: None,
                     usage: None,
                 });
@@ -570,5 +682,26 @@ mod slot_map_tests {
             })
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn unprompted_ids_persist_until_forgotten() {
+        let path = std::env::temp_dir().join(format!(
+            "agentero-unprompted-{}-{}.json",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let store = super::UnpromptedSessions::open(path.clone());
+        store.track("warm-1");
+        store.track("warm-1");
+        store.track("warm-2");
+        let reloaded = super::UnpromptedSessions::open(path.clone());
+        assert!(reloaded.snapshot().contains("warm-1"));
+        assert!(reloaded.snapshot().contains("warm-2"));
+        reloaded.forget("warm-1");
+        let again = super::UnpromptedSessions::open(path.clone());
+        assert!(!again.snapshot().contains("warm-1"));
+        assert!(again.snapshot().contains("warm-2"));
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -19,3 +19,6 @@ pub mod sync;
     not(any(target_os = "ios", target_os = "android"))
 ))]
 pub mod plugins;
+
+#[cfg(feature = "desktop")]
+pub mod word;

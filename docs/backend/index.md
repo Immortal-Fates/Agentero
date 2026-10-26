@@ -39,7 +39,7 @@ src-tauri/src/
     system/     # settings、builtin（构建期内置 provider 凭证）、desktop_apps（本地桌面应用检测）
     decision/   # 决策层装配（DecisionEngine + providers + schemas）
     agent/ jobs/ lifecycle（job 事件）
-  integration/  # connector、mcp、remote、bridge、sync（desktop-only）
+  integration/  # connector、word、mcp、remote、bridge、sync（desktop-only）
   lib.rs
   main.rs
 ```
@@ -144,3 +144,5 @@ ACP / SSH 子进程由 Rust 与 ACP SDK 启动，不注册 Tauri shell 插件。
 ## 本地插件
 
 [本地插件系统](plugins.md)：安装、按 Vault 授权、进程隔离、受控数据 API、命令/菜单/事件、设置及私有存储。
+
+Word 官方插件兼容原型见 [word.md](word.md)：当前为 macOS 正文引文，Windows 尚未实现。

@@ -4,6 +4,7 @@
  * AGENTERO_LAYOUT_MODEL=/path/to/pp-doclayoutv3.onnx \
  * node node_modules/vitest/vitest.mjs run test/pdf-layout-arxiv.test.ts
  * Inputs: <name>.pdf per AGENTERO_LAYOUT_PDFS (default resnet,vit).
+ * AGENTERO_LAYOUT_MAX_PAGES optionally bounds a focused visual reproduction.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -74,7 +75,7 @@ describe.skipIf(!directory || !model)("arXiv PDF layout smoke", () => {
 	});
 	it.each(
 		(process.env.AGENTERO_LAYOUT_PDFS ?? "resnet,vit").split(","),
-	)("renders and analyzes every page of %s", async (name) => {
+	)("renders and analyzes selected pages of %s", async (name) => {
 		const root = directory ?? "";
 		const bytes = readFileSync(join(root, `${name}.pdf`));
 		const doc = await pdf
@@ -89,7 +90,9 @@ describe.skipIf(!directory || !model)("arXiv PDF layout smoke", () => {
 		const raw: PdfLayoutRegion[] = [];
 		const pages = [];
 		try {
-			for (const page of doc.pages) {
+			const limit =
+				Number(process.env.AGENTERO_LAYOUT_MAX_PAGES) || doc.pages.length;
+			for (const page of doc.pages.slice(0, Math.max(1, limit))) {
 				const image = await pdf
 					.renderPageRaw(doc, page, { scaleFactor: 2 })
 					.toPromise();
