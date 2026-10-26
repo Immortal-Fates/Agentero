@@ -3,6 +3,7 @@ import {
 	closeAllWritingFiles,
 	closeOtherWritingFiles,
 	closeWritingFile,
+	forgetWritingProject,
 	writingStore,
 } from "@/lib/writing/store";
 
@@ -55,5 +56,14 @@ describe("writing tabs", () => {
 		expect(state.openFiles).toEqual([]);
 		expect(state.activeFile).toBeNull();
 		expect(state.activeRoot).toBe(root);
+	});
+
+	it("forgets a deleted project and returns to the project list", () => {
+		writingStore.setState({ recents: [root, chapter] });
+		forgetWritingProject(root);
+		const state = writingStore.getState();
+		expect(state.activeRoot).toBeNull();
+		expect(state.openFiles).toEqual([]);
+		expect(state.recents).toEqual([]);
 	});
 });

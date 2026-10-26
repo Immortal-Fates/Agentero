@@ -5,10 +5,12 @@
 
 import { createStore } from "zustand/vanilla";
 import { normalizePath } from "@/lib/core/path";
-import type { Manuscript, WorkspaceSurface } from "@/lib/writing/session";
 import {
+	type Manuscript,
+	manuscriptDir,
 	readWritingPrefs,
 	touchRecent,
+	type WorkspaceSurface,
 	writeWritingPrefs,
 } from "@/lib/writing/session";
 
@@ -23,6 +25,10 @@ type WritingStore = {
 	recents: string[];
 	manuscripts: Manuscript[];
 	discovering: boolean;
+	/** Writing canvas shows the vault recycle bin. Session only. */
+	showTrash: boolean;
+	/** Editor pane shows upload history instead of the source. Session only. */
+	historyOpen: boolean;
 };
 
 export const writingStore = createStore<WritingStore>(() => ({
@@ -34,6 +40,8 @@ export const writingStore = createStore<WritingStore>(() => ({
 	recents: [],
 	manuscripts: [],
 	discovering: false,
+	showTrash: false,
+	historyOpen: false,
 }));
 
 function persist(): void {
@@ -56,6 +64,8 @@ export function bindWritingVault(vaultPath: string | null): void {
 			recents: [],
 			manuscripts: [],
 			discovering: false,
+			showTrash: false,
+			historyOpen: false,
 		});
 		return;
 	}
@@ -69,6 +79,8 @@ export function bindWritingVault(vaultPath: string | null): void {
 		recents: prefs.recents,
 		manuscripts: [],
 		discovering: false,
+		showTrash: false,
+		historyOpen: false,
 	});
 }
 
@@ -93,6 +105,8 @@ export function selectManuscript(rootFile: string): void {
 		activeFile: same ? (state.activeFile ?? rootFile) : rootFile,
 		openFiles: files,
 		recents,
+		showTrash: false,
+		...(same ? {} : { historyOpen: false }),
 	});
 	persist();
 }
@@ -100,8 +114,77 @@ export function selectManuscript(rootFile: string): void {
 /** Leave the open project and return to the project list. Stays on writing. */
 export function closeManuscript(): void {
 	const state = writingStore.getState();
-	if (!state.activeRoot && !state.activeFile) return;
-	writingStore.setState({ activeRoot: null, activeFile: null, openFiles: [] });
+	if (!state.activeRoot && !state.activeFile && !state.showTrash) return;
+	writingStore.setState({
+		activeRoot: null,
+		activeFile: null,
+		openFiles: [],
+		showTrash: false,
+		historyOpen: false,
+	});
+	persist();
+}
+
+/** Show the vault recycle bin on the writing canvas. */
+export function openWritingTrash(): void {
+	writingStore.setState({
+		showTrash: true,
+		surface: "writing",
+		historyOpen: false,
+	});
+}
+
+/**
+ * Drop a deleted project from the session. The path is already gone.
+ * `file` removes one manuscript that lived directly in `thesis/`.
+ * `directory` removes every recent under that project folder.
+ */
+export function forgetWritingProject(
+	rootFile: string,
+	scope: "directory" | "file" = "directory",
+): void {
+	const state = writingStore.getState();
+	if (scope === "file") {
+		const key = normalizePath(rootFile);
+		const recents = state.recents.filter((item) => normalizePath(item) !== key);
+		const hitsActive =
+			state.activeRoot != null && normalizePath(state.activeRoot) === key;
+		writingStore.setState({
+			recents,
+			...(hitsActive
+				? {
+						activeRoot: null,
+						activeFile: null,
+						openFiles: [],
+						showTrash: false,
+					}
+				: {}),
+		});
+		persist();
+		return;
+	}
+	const dirKey = normalizePath(manuscriptDir(rootFile));
+	const recents = state.recents.filter((item) => {
+		const itemDir = normalizePath(manuscriptDir(item));
+		return itemDir !== dirKey && !itemDir.startsWith(`${dirKey}/`);
+	});
+	const activeDir = state.activeRoot
+		? normalizePath(manuscriptDir(state.activeRoot))
+		: "";
+	const hitsActive =
+		dirKey.length > 0 &&
+		(activeDir === dirKey || activeDir.startsWith(`${dirKey}/`));
+	writingStore.setState({
+		recents,
+		...(hitsActive
+			? {
+					activeRoot: null,
+					activeFile: null,
+					openFiles: [],
+					showTrash: false,
+				}
+			: {}),
+	});
 	persist();
 }
 

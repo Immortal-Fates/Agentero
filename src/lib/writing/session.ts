@@ -1,7 +1,7 @@
 /**
  * One writing project the surface can open.
- * The root file is the TeX main file. The title prefers `\title`, then a
- * directory name that is not the thesis shelf.
+ * The root file is the TeX main file. A title the author wrote wins; an
+ * official template's sample title does not replace the folder name.
  */
 
 import { basenameOf, dirnameOf, normalizePath } from "@/lib/core/path";
@@ -43,15 +43,56 @@ export function manuscriptFromRoot(rootFile: string): Manuscript {
 	return { rootFile, title, fileName };
 }
 
-/** First `\title{...}` in a TeX preamble, without a nested group. */
-export function texDocumentTitle(source: string): string | null {
-	const match = source.match(/\\title\s*\{([^{}]*)\}/);
-	if (!match) return null;
-	const text = match[1]
-		.replace(/\\[a-zA-Z]+/g, "")
+/**
+ * Sample titles shipped in the official kits. They describe the template,
+ * not the paper the user just named.
+ */
+const TEMPLATE_TITLES = new Set([
+	"author guidelines for proceedings",
+	"formatting instructions for iclr 2027 conference submissions",
+	"instructions for *acl proceedings",
+	"author guidelines for eccv submission",
+	"formatting instructions for neurips 2026",
+	"submission and formatting instructions for international conference on machine learning (icml 2026)",
+]);
+
+function withoutComments(source: string): string {
+	return source
+		.split(/\r?\n/)
+		.map((line) => {
+			for (let index = 0; index < line.length; index++) {
+				if (line[index] === "%" && (index === 0 || line[index - 1] !== "\\")) {
+					return line.slice(0, index);
+				}
+			}
+			return line;
+		})
+		.join("\n");
+}
+
+/** Turn a title argument into the words a person would read. */
+function plainTexTitle(raw: string): string {
+	return raw
+		.replace(/\\\\/g, " ")
+		.replace(/\\[a-zA-Z@]+\*?/g, "")
+		.replace(/\\./g, " ")
+		.replace(/~/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
-	return text || null;
+}
+
+/** First real `\title` or `\icmltitle`, ignoring comments and empty groups. */
+export function texDocumentTitle(source: string): string | null {
+	const pattern = /\\(?:icmltitle|title)(?![A-Za-z])\s*\{([^{}]*)\}/g;
+	for (const match of withoutComments(source).matchAll(pattern)) {
+		const text = plainTexTitle(match[1] ?? "");
+		if (text) return text;
+	}
+	return null;
+}
+
+function isTemplateSampleTitle(title: string): boolean {
+	return TEMPLATE_TITLES.has(title.toLowerCase());
 }
 
 /**
@@ -63,7 +104,7 @@ export function writingProjectTitle(
 	sourceHead: string,
 ): string {
 	const titled = texDocumentTitle(sourceHead);
-	if (titled) return titled;
+	if (titled && !isTemplateSampleTitle(titled)) return titled;
 	const dir = basenameOf(manuscriptDir(rootFile));
 	if (dir && dir.toLowerCase() !== "thesis") return dir;
 	const stem = basenameOf(rootFile).replace(/\.tex$/i, "");
@@ -76,6 +117,43 @@ export function manuscriptDir(rootFile: string): string {
 	const trimmed = rootFile.replace(/[\\/]+$/, "");
 	const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
 	return index <= 0 ? "" : trimmed.slice(0, index);
+}
+
+/**
+ * Vault-relative path moved to the recycle bin.
+ * `thesis/<project>/…` moves the project folder.
+ * A manuscript file sitting directly in `thesis/` moves only that file.
+ * The shelf directory itself is never removed.
+ */
+export function writingProjectTrashRel(
+	vaultPath: string,
+	rootFile: string,
+): string | null {
+	const rel = vaultRelativePath(vaultPath, rootFile);
+	if (!rel) return null;
+	const parts = rel.split("/").filter((part) => part.length > 0);
+	if (parts.length < 2 || parts[0].toLowerCase() !== "thesis") return null;
+	if (parts.some((part) => part === "." || part === "..")) return null;
+	if (parts.length === 2) return parts.join("/");
+	return `${parts[0]}/${parts[1]}`;
+}
+
+/**
+ * Vault-relative directory whose saves belong to one writing history.
+ * A file directly under `thesis/` uses the shelf; a nested file uses
+ * `thesis/<project>`.
+ */
+export function writingHistoryProjectRel(
+	vaultPath: string,
+	filePath: string,
+): string | null {
+	const rel = vaultRelativePath(vaultPath, filePath);
+	if (!rel) return null;
+	const parts = rel.split("/").filter((part) => part.length > 0);
+	if (parts.length < 2 || parts[0].toLowerCase() !== "thesis") return null;
+	if (parts.some((part) => part === "." || part === "..")) return null;
+	if (parts.length === 2) return "thesis";
+	return `${parts[0]}/${parts[1]}`;
 }
 
 export function touchRecent(

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { compareWritingNodes, isWritingSourceName } from "@/lib/writing/files";
+import {
+	compareWritingNodes,
+	isWritingSourceName,
+	withoutNestedProjects,
+} from "@/lib/writing/files";
 import {
 	manuscriptDir,
 	manuscriptFromRoot,
@@ -10,7 +14,31 @@ import {
 	touchRecent,
 	WRITING_RECENT_LIMIT,
 	writingProjectTitle,
+	writingProjectTrashRel,
 } from "@/lib/writing/session";
+
+describe("writing project file list", () => {
+	it("hides another project's directory", () => {
+		const nodes = [
+			{ kind: "file", path: "D:/vault/thesis/main.tex", name: "main.tex" },
+			{
+				kind: "directory",
+				path: "D:/vault/thesis/test-1",
+				name: "test-1",
+			},
+			{
+				kind: "directory",
+				path: "D:/vault/thesis/sections",
+				name: "sections",
+			},
+		];
+		const shown = withoutNestedProjects(
+			nodes,
+			new Set(["D:/vault/thesis/test-1"]),
+		);
+		expect(shown.map((node) => node.name)).toEqual(["main.tex", "sections"]);
+	});
+});
 
 describe("writing source filter", () => {
 	it("hides latex build products and keeps source", () => {
@@ -49,8 +77,26 @@ describe("writing session", () => {
 		expect(texDocumentTitle("\\title{A Note}\n")).toBe("A Note");
 		expect(texDocumentTitle("no title here")).toBeNull();
 		expect(
+			texDocumentTitle(
+				"\\title{\\LaTeX\\ Author Guidelines for \\confName~Proceedings}",
+			),
+		).toBe("Author Guidelines for Proceedings");
+		expect(texDocumentTitle("% \\title{Hidden}\n\\title{Shown}")).toBe("Shown");
+		expect(
 			writingProjectTitle("/vault/thesis/main.tex", "\\title{A Note}"),
 		).toBe("A Note");
+		expect(
+			writingProjectTitle(
+				"/vault/thesis/cvpr-test/main.tex",
+				"\\title{\\LaTeX\\ Author Guidelines for \\confName~Proceedings}",
+			),
+		).toBe("cvpr-test");
+		expect(
+			writingProjectTitle(
+				"/vault/thesis/cvpr-test/main.tex",
+				"\\title{Depth Anything}",
+			),
+		).toBe("Depth Anything");
 		expect(writingProjectTitle("/vault/thesis/main.tex", "")).toBe("");
 		expect(writingProjectTitle("/vault/thesis/talk/main.tex", "")).toBe("talk");
 		expect(writingProjectTitle("/vault/thesis/slides.tex", "")).toBe("slides");
@@ -115,5 +161,20 @@ describe("writing session", () => {
 			recents: ["/vault/thesis/main.tex"],
 		});
 		expect(prefsForVault("/missing", raw).surface).toBe("reading");
+	});
+});
+
+describe("writing project trash path", () => {
+	it("moves a project directory and a loose shelf file, not the shelf", () => {
+		expect(
+			writingProjectTrashRel("D:/vault", "D:/vault/thesis/test-cvpr/main.tex"),
+		).toBe("thesis/test-cvpr");
+		expect(writingProjectTrashRel("D:/vault", "D:/vault/thesis/main.tex")).toBe(
+			"thesis/main.tex",
+		);
+		expect(
+			writingProjectTrashRel("D:/vault", "D:/vault/notes/main.tex"),
+		).toBeNull();
+		expect(writingProjectTrashRel("D:/vault", "D:/vault/thesis")).toBeNull();
 	});
 });
