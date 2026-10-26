@@ -1,6 +1,6 @@
 # LaTeX 写作与编译
 
-LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有 EmbedPDF 查看器；实时预览走独立 LuaLaTeX/rtex 会话。后端见 [../backend/latex.md](../backend/latex.md)。文稿工作面把写作和阅读分成两个画面：中间是项目源码和 PDF，论文库留在阅读；多个项目各自编译。见 [writing.md](writing.md)。
+LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有 EmbedPDF 查看器；实时预览走独立 LuaLaTeX/rtex 会话。后端见 [../backend/latex.md](../backend/latex.md)。写作工作面把写作和阅读分成两个画面：中间是项目源码和 PDF，论文库留在阅读；多个项目各自编译。见 [writing.md](writing.md)。
 
 ## 界面与编译
 
@@ -19,7 +19,7 @@ LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有
 
 主文件自动识别支持 `% !TEX root`、自身 document 标记、反向 include 图和 subfiles 的父文件。项目设置可显式选择主文件，或让某个 subfile 独立编译；选择随本机工作区保留。
 
-引擎仍按根文件 `% !TEX program` / `% !TEX TS-program` → 项目记忆 → XeLaTeX / 已安装引擎的顺序选择。实时预览固定使用 LuaLaTeX，切换预览不会改正式编译引擎。
+引擎按根文件 `% !TEX program` / `% !TEX TS-program` → 项目里记住的选择 → 模板要求的引擎（会议模板为 pdfLaTeX，`babelfont` 为 LuaLaTeX）→ XeLaTeX / 已安装引擎的顺序选择。实时预览固定使用 LuaLaTeX，切换预览不会改正式编译引擎。
 
 项目设置支持输出目录、中间产物目录、输出文件名、编译后跟随源码光标，以及多个命名构建配方。配方列表使用 JSON 编辑，侧栏选择当前配方并记忆；默认项仍使用项目引擎驱动 latexmk。
 
@@ -56,7 +56,7 @@ LaTeX 编辑使用 CodeMirror；正式编译走本机 latexmk，PDF 使用已有
 
 ## 代码入口与验证
 
-`lib/tex/config.ts` 保存项目偏好；`build-queue.ts` / `auto-build.ts` 负责调度；`build-state.ts` 汇总构建输出；`project-index.ts` 提供补全、引用跳转与大纲共享的项目索引；`synctex.ts` 负责源码与 PDF 导航。UI 入口是 `latex-panel.tsx`、`latex-build-log.tsx`、`text-editor-lint-footer.tsx` 与 `tex-citation-picker.tsx`。
+`lib/tex/config.ts` 保存项目偏好；`build-queue.ts` / `auto-build.ts` 负责调度；`build-state.ts` 汇总构建输出；`project-index.ts` 提供补全、引用跳转与大纲共享的项目索引；`synctex.ts` 负责源码与 PDF 导航。写作里编译和日志在 PDF 顶栏，引擎和项目设置在应用设置的「写作」，结构在 `writing-outline.tsx`，引用在 `tex-citation-picker.tsx`。
 
 `lib/workspace/tex-outline-bridge.ts` 只发布大纲快照；大纲点击通过 `lib/tex/editor-navigation.ts` 的 `navigateTexSource` 定位源码。
 
