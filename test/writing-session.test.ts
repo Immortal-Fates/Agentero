@@ -24,12 +24,7 @@ vi.mock("@/lib/vault", () => ({
 	readVaultFile: vi.fn(),
 }));
 
-vi.mock("@/lib/workspace/tex-compile", () => ({
-	resolveTexRootInfo: vi.fn(),
-}));
-
 import { listVaultDirChildren, readVaultFile } from "@/lib/vault";
-import { resolveTexRootInfo } from "@/lib/workspace/tex-compile";
 import { discoverWritingProjects } from "@/lib/writing/discover";
 
 describe("writing project file list", () => {
@@ -213,43 +208,55 @@ function directoryNode(parent: string, name: string): FileNode {
 }
 
 describe("writing project discovery", () => {
-	it("keeps an unreferenced section inside the root-level project", async () => {
+	it("lists one project per first-level folder under thesis", async () => {
 		const shelf = "/vault/thesis";
-		const sections = `${shelf}/sections`;
-		const paper2 = `${shelf}/paper2`;
-		const main = `${shelf}/main.tex`;
-		const intro = `${sections}/intro.tex`;
-		const unused = `${sections}/ack.tex`;
-		const second = `${paper2}/paper.tex`;
+		const paper = `${shelf}/paper`;
+		const paperSections = `${paper}/sections`;
+		const paperMain = `${paper}/main.tex`;
+		const draft = `${shelf}/draft`;
+		const draftTex = `${draft}/draft.tex`;
+		const nested = `${shelf}/nested`;
+		const nestedSrc = `${nested}/src`;
+		const nestedMain = `${nestedSrc}/main.tex`;
+		const empty = `${shelf}/empty`;
 		const children: Record<string, FileNode[]> = {
 			[shelf]: [
-				fileNode(shelf, "main.tex"),
-				directoryNode(shelf, "sections"),
-				directoryNode(shelf, "paper2"),
+				fileNode(shelf, "loose.tex"),
+				directoryNode(shelf, "paper"),
+				directoryNode(shelf, "draft"),
+				directoryNode(shelf, "nested"),
+				directoryNode(shelf, "empty"),
+				directoryNode(shelf, "build"),
+				directoryNode(shelf, ".git"),
 			],
-			[sections]: [
-				fileNode(sections, "intro.tex"),
-				fileNode(sections, "ack.tex"),
-			],
-			[paper2]: [fileNode(paper2, "paper.tex")],
+			[paper]: [fileNode(paper, "main.tex"), directoryNode(paper, "sections")],
+			[paperSections]: [fileNode(paperSections, "intro.tex")],
+			[draft]: [fileNode(draft, "draft.tex"), fileNode(draft, "notes.md")],
+			[nested]: [directoryNode(nested, "src")],
+			[nestedSrc]: [fileNode(nestedSrc, "main.tex")],
+			[empty]: [fileNode(empty, "notes.md")],
 		};
 		vi.mocked(listVaultDirChildren).mockImplementation(
 			async (_root: string, dir: string) => children[dir] ?? [],
 		);
-		vi.mocked(resolveTexRootInfo).mockImplementation(async (path) => {
-			if (path === unused) return { rootPath: path, fallbackSelf: true };
-			if (path === intro) return { rootPath: main, fallbackSelf: false };
-			return { rootPath: path, fallbackSelf: false };
+		vi.mocked(readVaultFile).mockImplementation(async (path) => {
+			if (path === paperMain) return "\\documentclass{article}\n\\title{Main}";
+			if (path === nestedMain)
+				return "\\documentclass{article}\n\\title{Nested}";
+			return "\\documentclass{article}";
 		});
-		vi.mocked(readVaultFile).mockImplementation(async (path) =>
-			path === main
-				? "\\documentclass{article}\n\\title{Main}"
-				: "\\documentclass{article}\n\\title{Second}",
-		);
 
 		const found = await discoverWritingProjects("/vault");
 
-		expect(found.map((item) => item.rootFile)).toEqual([main, second]);
-		expect(found.map((item) => item.title)).toEqual(["Main", "Second"]);
+		expect(found.map((item) => item.rootFile)).toEqual([
+			draftTex,
+			paperMain,
+			nestedMain,
+		]);
+		expect(found.map((item) => item.title)).toEqual([
+			"draft",
+			"Main",
+			"Nested",
+		]);
 	});
 });

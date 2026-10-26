@@ -283,8 +283,52 @@ function rememberWritingFile(
 	return [...openFiles, path];
 }
 
+/**
+ * Folder discovery replaces the project list. Keep the open project while its
+ * folder exists; otherwise fall back to the first folder or close the project.
+ */
 export function setDiscoveredManuscripts(manuscripts: Manuscript[]): void {
-	writingStore.setState({ manuscripts, discovering: false });
+	const state = writingStore.getState();
+	const activeDir = state.activeRoot
+		? normalizePath(manuscriptDir(state.activeRoot))
+		: null;
+	const active = activeDir
+		? manuscripts.find(
+				(item) => normalizePath(manuscriptDir(item.rootFile)) === activeDir,
+			)
+		: undefined;
+	if (active && state.activeRoot) {
+		if (normalizePath(active.rootFile) === normalizePath(state.activeRoot)) {
+			writingStore.setState({ manuscripts, discovering: false });
+			return;
+		}
+		const previous = state.activeRoot;
+		const rootFile = active.rootFile;
+		const replace = (path: string) =>
+			normalizePath(path) === normalizePath(previous) ? rootFile : path;
+		writingStore.setState({
+			manuscripts,
+			discovering: false,
+			activeRoot: rootFile,
+			activeFile: state.activeFile ? replace(state.activeFile) : null,
+			openFiles: state.openFiles.map(replace),
+		});
+		persist();
+		return;
+	}
+	const rootFile = manuscripts[0]?.rootFile ?? null;
+	writingStore.setState({
+		manuscripts,
+		discovering: false,
+		activeRoot: rootFile,
+		activeFile: rootFile,
+		openFiles: rootFile ? [rootFile] : [],
+		historyOpen: false,
+		historyActive: false,
+		syncOpen: false,
+		syncActive: false,
+	});
+	persist();
 }
 
 export function setWritingDiscovering(discovering: boolean): void {

@@ -1,58 +1,57 @@
 /**
- * Left rail for writing: switch projects, then its files and the existing
- * compile / outline panel. New projects are created from the project menu.
+ * Left rail for writing: switch between the folders under thesis/, then its
+ * files and the compile / outline panel. New projects create a folder; other
+ * folder changes happen outside the app.
  */
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { ManuscriptFiles } from "@/components/writing/manuscript-files";
 import { NewProjectForm } from "@/components/writing/new-project-form";
-import { WritingDeleteDialog } from "@/components/writing/writing-delete-dialog";
 import { WritingOutline } from "@/components/writing/writing-outline";
 import { useVaultStore, useWritingStore } from "@/hooks/use-app-stores";
 import { useTexRoot } from "@/hooks/use-tex-root";
+import { errorText } from "@/lib/core/error";
+import { notifyError } from "@/lib/core/notify";
 import { normalizePath } from "@/lib/core/path";
 import { cn } from "@/lib/core/utils";
+import { vaultStore } from "@/lib/vault/store";
 import { discoverWritingProjects } from "@/lib/writing/discover";
-import {
-	manuscriptDir,
-	mergeManuscripts,
-	writingProjectTrashRel,
-} from "@/lib/writing/session";
+import { manuscriptDir } from "@/lib/writing/session";
 import {
 	selectManuscript,
 	setDiscoveredManuscripts,
 	setWritingDiscovering,
 } from "@/lib/writing/store";
+import { trashWritingProject } from "@/lib/writing/trash";
+
+function sameProject(a: string, b: string): boolean {
+	return normalizePath(manuscriptDir(a)) === normalizePath(manuscriptDir(b));
+}
+
+const ROW_CLASS =
+	"flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground";
 
 export function WritingRail() {
 	const { t } = useTranslation("sidebar");
 	const vaultPath = useVaultStore((s) => s.vaultPath);
 	const activeRoot = useWritingStore((s) => s.activeRoot);
 	const activeFile = useWritingStore((s) => s.activeFile);
-	const recents = useWritingStore((s) => s.recents);
-	const discovered = useWritingStore((s) => s.manuscripts);
+	const manuscripts = useWritingStore((s) => s.manuscripts);
 	const discovering = useWritingStore((s) => s.discovering);
 	const compileRoot = useTexRoot(activeRoot);
-	const manuscripts = mergeManuscripts(discovered, recents, activeRoot);
-	const active = manuscripts.find(
-		(item) =>
-			activeRoot != null &&
-			normalizePath(item.rootFile) === normalizePath(activeRoot),
-	);
+	const [menuOpen, setMenuOpen] = useState(false);
 	const [creating, setCreating] = useState(false);
-	const [pendingDelete, setPendingDelete] = useState<{
-		rootFile: string;
-		title: string;
-	} | null>(null);
+	const active = manuscripts.find(
+		(item) => activeRoot != null && sameProject(item.rootFile, activeRoot),
+	);
 	const rootDir = active ? manuscriptDir(active.rootFile) : "";
 	const here = rootDir ? normalizePath(rootDir) : "";
 	const projectDirs = new Set<string>();
@@ -63,24 +62,46 @@ export function WritingRail() {
 	const label = active
 		? active.title || t("writing.untitled")
 		: t("writing.write");
-	const canDelete =
-		active != null &&
-		vaultPath != null &&
-		writingProjectTrashRel(vaultPath, active.rootFile) != null;
 
+	const removeProject = (rootFile: string) => {
+		if (!vaultPath) return;
+		void trashWritingProject(vaultPath, rootFile)
+			.then((ok) => {
+				if (!ok) notifyError(t("writing.deleteFailed"));
+			})
+			.catch((error) => {
+				notifyError(errorText(error) || t("writing.deleteFailed"));
+			});
+	};
+
+	// Structural vault changes (external folder create/rename/delete) rebuild
+	// the tree; rediscover the project folders each time it moves.
 	useEffect(() => {
 		if (!vaultPath) return;
 		let cancelled = false;
-		setWritingDiscovering(true);
-		void discoverWritingProjects(vaultPath)
-			.then((found) => {
-				if (!cancelled) setDiscoveredManuscripts(found);
-			})
-			.catch(() => {
-				if (!cancelled) setWritingDiscovering(false);
-			});
+		let generation = 0;
+		const discover = () => {
+			const current = ++generation;
+			setWritingDiscovering(true);
+			void discoverWritingProjects(vaultPath)
+				.then((found) => {
+					if (!cancelled && current === generation) {
+						setDiscoveredManuscripts(found);
+					}
+				})
+				.catch(() => {
+					if (!cancelled && current === generation) {
+						setWritingDiscovering(false);
+					}
+				});
+		};
+		discover();
+		const unsubscribe = vaultStore.subscribe((state, previous) => {
+			if (state.tree !== previous.tree) discover();
+		});
 		return () => {
 			cancelled = true;
+			unsubscribe();
 		};
 	}, [vaultPath]);
 
@@ -94,86 +115,102 @@ export function WritingRail() {
 						{t("writing.loading")}
 					</p>
 				) : null}
-				<DropdownMenu>
-					<DropdownMenuTrigger className="hover:bg-sidebar-accent/80 flex h-8 w-full min-w-0 items-center gap-1 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring/60">
-						<span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+				<Popover
+					open={menuOpen}
+					onOpenChange={(open) => {
+						setMenuOpen(open);
+						if (!open) setCreating(false);
+					}}
+				>
+					<PopoverTrigger className="hover:bg-sidebar-accent/80 flex h-8 w-full min-w-0 items-center gap-1 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring/60">
+						<span className="min-w-0 flex-1 truncate text-left font-medium">
+							{label}
+						</span>
 						<ChevronDown
-							className="text-muted-foreground size-3.5 shrink-0"
+							className="text-muted-foreground size-3 shrink-0"
 							aria-hidden
 						/>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent>
-						<DropdownMenuItem onSelect={() => setCreating(true)}>
-							{t("writing.newProject")}
-						</DropdownMenuItem>
-						{manuscripts.length > 0 ? <DropdownMenuSeparator /> : null}
-						{manuscripts.map((item) => {
-							const selected =
-								activeRoot != null &&
-								normalizePath(item.rootFile) === normalizePath(activeRoot);
-							return (
-								<DropdownMenuItem
-									key={normalizePath(item.rootFile)}
-									onSelect={() => {
+					</PopoverTrigger>
+					<PopoverContent align="start" className="w-72 gap-0 p-1">
+						{creating ? (
+							<div className="p-1.5">
+								<NewProjectForm
+									vaultPath={vaultPath}
+									startOpen
+									onCreated={() => {
 										setCreating(false);
-										selectManuscript(item.rootFile);
+										setMenuOpen(false);
 									}}
-									className={cn(selected && "bg-accent")}
+								/>
+							</div>
+						) : (
+							<div className="flex flex-col">
+								<button
+									type="button"
+									onClick={() => setCreating(true)}
+									className={ROW_CLASS}
 								>
-									<span className="min-w-0 flex-1 truncate">
-										{item.title || t("writing.untitled")}
-									</span>
-								</DropdownMenuItem>
-							);
-						})}
-						{active && canDelete ? (
-							<>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem
-									onSelect={() =>
-										setPendingDelete({
-											rootFile: active.rootFile,
-											title: active.title || t("writing.untitled"),
-										})
-									}
-									className="text-destructive"
-								>
-									{t("writing.deleteProject")}
-								</DropdownMenuItem>
-							</>
-						) : null}
-					</DropdownMenuContent>
-				</DropdownMenu>
-				{creating ? (
-					<div className="px-1 pb-1">
-						<NewProjectForm
-							vaultPath={vaultPath}
-							startOpen
-							onCreated={() => setCreating(false)}
-						/>
-					</div>
+									{t("writing.newProject")}
+								</button>
+								{manuscripts.length > 0 ? <Separator className="my-1" /> : null}
+								{manuscripts.map((item) => {
+									const selected =
+										activeRoot != null &&
+										sameProject(item.rootFile, activeRoot);
+									return (
+										<div
+											key={normalizePath(item.rootFile)}
+											className={cn(
+												"group/project hover:bg-accent hover:text-accent-foreground flex h-8 w-full items-center rounded-md pr-1 pl-2",
+												selected && "bg-accent text-accent-foreground",
+											)}
+										>
+											<button
+												type="button"
+												onClick={() => {
+													selectManuscript(item.rootFile);
+													setMenuOpen(false);
+												}}
+												className="flex h-full min-w-0 flex-1 cursor-pointer items-center text-left text-sm outline-none"
+											>
+												<span className="min-w-0 flex-1 truncate">
+													{item.title || t("writing.untitled")}
+												</span>
+											</button>
+											<button
+												type="button"
+												aria-label={t("writing.deleteProject")}
+												title={t("writing.deleteProject")}
+												onClick={() => removeProject(item.rootFile)}
+												className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive pointer-events-none flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-0 outline-none transition-opacity group-focus-within/project:pointer-events-auto group-focus-within/project:opacity-100 group-hover/project:pointer-events-auto group-hover/project:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring/60"
+											>
+												<Trash2 className="size-3.5" aria-hidden />
+											</button>
+										</div>
+									);
+								})}
+							</div>
+						)}
+					</PopoverContent>
+				</Popover>
+				{!discovering && manuscripts.length === 0 ? (
+					<p className="text-muted-foreground px-1 py-2 text-xs">
+						{t("writing.emptyTitle")}
+					</p>
 				) : null}
 			</div>
-			{active && rootDir ? (
+			{active && activeRoot && rootDir ? (
 				<>
-					<p className="text-muted-foreground shrink-0 px-3 pt-1 pb-0.5 text-xs">
-						{t("writing.files")}
-					</p>
 					<ManuscriptFiles
 						vaultPath={vaultPath}
 						rootDir={rootDir}
 						activePath={activeFile}
 						projectDirs={projectDirs}
-						projectRoot={active.rootFile}
+						projectRoot={activeRoot}
 					/>
-					<WritingOutline texPath={compileRoot ?? active.rootFile} />
+					<WritingOutline texPath={compileRoot ?? activeRoot} />
 				</>
 			) : null}
-			<WritingDeleteDialog
-				vaultPath={vaultPath}
-				target={pendingDelete}
-				onClose={() => setPendingDelete(null)}
-			/>
 		</div>
 	);
 }

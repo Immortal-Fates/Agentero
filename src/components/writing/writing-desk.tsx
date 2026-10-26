@@ -11,7 +11,6 @@ import {
 	ResizableHandle,
 	ResizablePanel,
 } from "@/components/ui/resizable";
-import { NewProjectForm } from "@/components/writing/new-project-form";
 import { WritingFileTabs } from "@/components/writing/writing-file-tabs";
 import { WritingHistory } from "@/components/writing/writing-history";
 import { WritingPdfBar } from "@/components/writing/writing-pdf-bar";
@@ -63,22 +62,13 @@ export function WritingDesk() {
 	const compileRoot = useTexRoot(activeRoot);
 	const activeFile = useWritingStore((s) => s.activeFile);
 	const discovered = useWritingStore((s) => s.manuscripts);
-	const recents = useWritingStore((s) => s.recents);
 	const discovering = useWritingStore((s) => s.discovering);
 	const historyActive = useWritingStore((s) => s.historyActive);
 	const syncActive = useWritingStore((s) => s.syncActive);
 	const [liveRoot, setLiveRoot] = useState<string | null>(null);
 	const livePreview = activeRoot != null && liveRoot === activeRoot;
 	const fallbackRoot =
-		activeRoot || discovering
-			? null
-			: (recents.find((path) =>
-					discovered.some(
-						(item) => normalizePath(item.rootFile) === normalizePath(path),
-					),
-				) ??
-				discovered[0]?.rootFile ??
-				null);
+		activeRoot || discovering ? null : (discovered[0]?.rootFile ?? null);
 
 	useEffect(() => {
 		if (!vaultPath || activeRoot || !fallbackRoot) return;
@@ -93,9 +83,6 @@ export function WritingDesk() {
 				<p className="text-muted-foreground text-sm">
 					{discovering ? t("writing.loading") : t("writing.emptyTitle")}
 				</p>
-				{discovering ? null : (
-					<NewProjectForm vaultPath={vaultPath} startOpen />
-				)}
 			</div>
 		);
 	}
