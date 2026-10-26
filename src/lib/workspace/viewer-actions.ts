@@ -49,6 +49,7 @@ import {
 } from "@/lib/tex/auto-build";
 import { queueTexBuild } from "@/lib/tex/build-queue";
 import { getTexProjectSettings } from "@/lib/tex/config";
+import { tryOpenWritingSource } from "@/lib/tex/editor-navigation";
 import { syncTexAfterBuild } from "@/lib/tex/synctex";
 import { isTexLiveRootActive } from "@/lib/tex-live/session";
 import {
@@ -873,6 +874,7 @@ export function openCitation(source: string): void {
 	const fragmentIndex = trimmed.indexOf("#");
 	const path = fragmentIndex >= 0 ? trimmed.slice(0, fragmentIndex) : trimmed;
 	const fragment = fragmentIndex >= 0 ? trimmed.slice(fragmentIndex + 1) : "";
+	if (tryOpenWritingSource(path, fragment)) return;
 	if (!fragment) {
 		// Prefer opening the paper unit for PDF paths; plain notes still use graph open.
 		if (/\.pdf$/i.test(path)) {

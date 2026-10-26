@@ -1,6 +1,8 @@
 import type { EditorView } from "@codemirror/view";
 import { normalizePath } from "@/lib/core/path";
-import { writingStore } from "@/lib/writing/store";
+import { joinVaultPath, vaultRelativePath } from "@/lib/vault/path";
+import { vaultStore } from "@/lib/vault/store";
+import { setWritingFile, writingStore } from "@/lib/writing/store";
 
 export type TexEditorCursor = { path: string; line: number; column: number };
 type EditorRegistration = {
@@ -161,4 +163,37 @@ export function navigateTexSource(
 			jump(canonical, line, column);
 		}
 	});
+}
+
+const WRITING_SOURCE = /\.(?:tex|bib|sty|cls|bst)$/i;
+
+function fragmentLine(fragment: string): number | null {
+	const match = fragment.match(/^(?:line=)?L?(\d+)$/i);
+	if (!match) return null;
+	const line = Number(match[1]);
+	return Number.isFinite(line) && line > 0 ? line : null;
+}
+
+/**
+ * Agent citations of a manuscript source open in the writing editor.
+ * Papers and PDFs keep the reading jump.
+ */
+export function tryOpenWritingSource(path: string, fragment: string): boolean {
+	const writing = writingStore.getState();
+	if (writing.surface !== "writing" || writing.showTrash) return false;
+	const vaultPath = vaultStore.getState().vaultPath;
+	if (!vaultPath) return false;
+	const rel =
+		vaultRelativePath(vaultPath, path) ??
+		path.replace(/\\/g, "/").replace(/^\.\//, "");
+	if (!rel.toLowerCase().startsWith("thesis/")) return false;
+	if (!WRITING_SOURCE.test(rel) || rel.split("/").includes("..")) return false;
+	const full = joinVaultPath(vaultPath, rel);
+	const line = fragmentLine(fragment);
+	if (line) {
+		navigateTexSource(full, line);
+		return true;
+	}
+	setWritingFile(full);
+	return true;
 }

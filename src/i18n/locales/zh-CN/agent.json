@@ -28,7 +28,11 @@
 		"summarizePaper": "总结当前论文",
 		"askLibrary": "就我的文献库提问",
 		"listClaims": "列出关键论点与证据",
-		"draftRelatedWork": "撰写相关工作（Related Work）"
+		"draftRelatedWork": "撰写相关工作（Related Work）",
+		"continueManuscript": "从稿件停下的地方续写，保持现在的 LaTeX 和语气。",
+		"tightenProse": "把我正在改的这一节写得更紧。论点和引用保留。",
+		"pressArgument": "指出论证里站不住的地方，并说明源文件该怎么改。",
+		"citeFromLibrary": "根据我文库里的论文，起草下一段并写上引用。"
 	},
 	"history": {
 		"aria": "打开对话历史",
@@ -112,6 +116,7 @@
 	"empty": {
 		"title": "与你的知识库对话",
 		"description": "消息将发送给你的 ACP Agent。点击上方的 Agent 名称可切换后端。",
+		"writingDescription": "当前稿件已经附上。在源码或 PDF 里选中一段，就可以针对它提问。",
 		"waiting": "正在等待 Agent……"
 	},
 	"thinking": "思考中……",

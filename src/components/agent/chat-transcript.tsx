@@ -90,9 +90,8 @@ import {
 	copyText,
 	isPendingAskUserToolStatus,
 	parseAskUserQuestions,
-	SUGGESTION_KEYS,
-	SUGGESTION_WORKFLOW,
 	streamingLabel,
+	suggestionItems,
 	toolPartState,
 } from "@/lib/agent/chat-state";
 import { stripInlineTokens } from "@/lib/agent/composer-inline-tokens";
@@ -100,6 +99,7 @@ import { stripPromptEnvelopeForDisplay } from "@/lib/agent/prompt-display";
 import { selectionNavigationStore } from "@/lib/agent/selection-navigation-state";
 import { selectionsPromptBlock } from "@/lib/agent/selection-prompt";
 import { cn } from "@/lib/core/utils";
+import { writingStore } from "@/lib/writing/store";
 
 /** Compact note: interactive form is docked below, not inside the tool card. */
 function AskUserToolPendingNote() {
@@ -1008,6 +1008,11 @@ export const ChatTranscript = memo(function ChatTranscript({
 		editCompositionProps,
 	};
 	const hasOpenSource = Boolean(onOpenSource);
+	const writing = useStore(
+		writingStore,
+		(state) => state.surface === "writing" && !state.showTrash,
+	);
+	const suggestions = suggestionItems(writing);
 	const rowHandlers = useMemo<RowHandlers>(
 		() => ({
 			isEditBlockedByIme: (event) =>
@@ -1054,7 +1059,9 @@ export const ChatTranscript = memo(function ChatTranscript({
 					<div className="flex w-full flex-col gap-6">
 						<ConversationEmptyState
 							title={t("empty.title")}
-							description={t("empty.description")}
+							description={t(
+								writing ? "empty.writingDescription" : "empty.description",
+							)}
 						>
 							<div className="mt-4 flex w-full max-w-sm flex-col items-stretch gap-2">
 								{activeTabIsRunning ? (
@@ -1062,15 +1069,15 @@ export const ChatTranscript = memo(function ChatTranscript({
 										{t("empty.waiting")}
 									</Shimmer>
 								) : (
-									SUGGESTION_KEYS.map((key) => {
-										const label = t(`suggestions.${key}`);
+									suggestions.map((item) => {
+										const label = t(`suggestions.${item.key}`);
 										return (
 											<Suggestion
-												key={key}
+												key={item.key}
 												suggestion={label}
 												className="h-auto w-full justify-start whitespace-normal rounded-lg px-3 py-2.5 text-left"
-												onClick={(v) =>
-													onSendSuggestion(v, SUGGESTION_WORKFLOW[key])
+												onClick={(value) =>
+													onSendSuggestion(value, item.workflow)
 												}
 												disabled={activeTabIsRunning}
 											/>
