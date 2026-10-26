@@ -264,8 +264,6 @@
 		"fontSize": {
 			"label": "Editor font size",
 			"value": "{{size}} px",
-			"increase": "Increase font size",
-			"decrease": "Decrease font size",
 			"select": "Select font size"
 		},
 		"fontFamily": {
@@ -295,10 +293,7 @@
 		},
 		"editorToolbar": {
 			"label": "Formatting toolbar"
-		},
-		"livePreview": "Open live preview",
-		"livePreviewClose": "Close live preview",
-		"livePreviewUnavailable": "Live preview needs LuaLaTeX and realtime-tex support files"
+		}
 	},
 	"agent": {
 		"title": "Agent",

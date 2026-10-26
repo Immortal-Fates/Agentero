@@ -239,15 +239,13 @@ function ProjectEditor({ path }: { path: string }) {
 			path={path}
 			reloadKey={0}
 			active
-			showLivePreview={false}
+			texLiveOwner="writing"
 			onPersist={persistTextFile}
 			onDirtyChange={() => {}}
 			onManualSave={(saved) => {
 				void compileTexOnManualSave(saved);
 			}}
 			hideLintFooter
-			toolbarPlacement="bar"
-			showSyncPdf={false}
 			className="min-h-0 flex-1"
 		/>
 	);

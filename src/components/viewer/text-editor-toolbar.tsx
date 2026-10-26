@@ -1,11 +1,4 @@
-import {
-	BookOpen,
-	ChevronDown,
-	Crosshair,
-	Minus,
-	Plus,
-	Radio,
-} from "lucide-react";
+import { ChevronDown, Quote } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -24,28 +17,16 @@ import { cn } from "@/lib/core/utils";
 interface TextEditorToolbarProps {
 	fontSize: TextEditorFontSize;
 	onFontSizeChange: (size: TextEditorFontSize) => void;
-	/** Live TeX preview toggle; null hides it (not a .tex / LuaLaTeX missing). */
-	livePreview?: {
-		disabled: boolean;
-		pressed?: boolean;
-		title: string;
-		onOpen: () => void;
-	} | null;
+	/** TeX-only actions; null hides the citation entry. */
 	texTools?: {
 		onCitation: () => void;
-		onSyncPdf: () => void;
-		/** Writing places forward sync on the split handle instead. */
-		hideSyncPdf?: boolean;
 	} | null;
-	placement?: "overlay" | "bar";
 }
 
 export function TextEditorToolbar({
 	fontSize,
 	onFontSizeChange,
-	livePreview,
 	texTools,
-	placement = "overlay",
 }: TextEditorToolbarProps) {
 	const { t } = useTranslation("settings");
 	const { t: tx } = useTranslation("latexLanguage");
@@ -60,90 +41,27 @@ export function TextEditorToolbar({
 		[onFontSizeChange],
 	);
 
-	const increment = useCallback(() => {
-		const idx = FONT_SIZES.indexOf(fontSize);
-		if (idx < FONT_SIZES.length - 1) {
-			onFontSizeChange(FONT_SIZES[idx + 1]);
-		}
-	}, [fontSize, onFontSizeChange]);
-
-	const decrement = useCallback(() => {
-		const idx = FONT_SIZES.indexOf(fontSize);
-		if (idx > 0) {
-			onFontSizeChange(FONT_SIZES[idx - 1]);
-		}
-	}, [fontSize, onFontSizeChange]);
-
-	const bar = placement === "bar";
-
 	return (
-		<div
-			className={
-				bar
-					? "flex h-8 shrink-0 items-center justify-end gap-1 border-b border-border px-2"
-					: "pointer-events-none absolute top-2 right-3 z-20 flex origin-top-right items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-			}
-		>
+		<div className="absolute top-2 right-3 z-20 flex items-center gap-1">
 			<div
 				data-text-editor-chrome
 				className={cn(
-					"pointer-events-auto flex h-7 select-none items-center gap-0.5",
-					bar ? "" : cn("rounded-lg p-0.5", PDF_CHROME_CHIP),
+					"pointer-events-auto flex h-7 select-none items-center gap-0.5 rounded-lg p-0.5",
+					PDF_CHROME_CHIP,
 				)}
 			>
 				{texTools ? (
-					<>
-						{texTools.hideSyncPdf ? null : (
-							<Button
-								type="button"
-								size="icon-xs"
-								variant="ghost"
-								aria-label={tx("syncPdf")}
-								title={`${tx("syncPdf")} (⌘/Ctrl+Alt+J)`}
-								onClick={texTools.onSyncPdf}
-							>
-								<Crosshair className="size-3.5" aria-hidden />
-							</Button>
-						)}
-						<Button
-							type="button"
-							size="icon-xs"
-							variant="ghost"
-							aria-label={tx("insertCitation")}
-							title={tx("insertCitation")}
-							onClick={texTools.onCitation}
-						>
-							<BookOpen className="size-3.5" aria-hidden />
-						</Button>
-					</>
-				) : null}
-				{livePreview ? (
 					<Button
 						type="button"
-						size="icon-xs"
-						variant={livePreview.pressed ? "secondary" : "ghost"}
-						className="shrink-0 self-center"
-						aria-label={livePreview.title}
-						aria-pressed={livePreview.pressed || undefined}
-						title={livePreview.title}
-						disabled={livePreview.disabled}
-						onClick={livePreview.onOpen}
+						size="xs"
+						variant="ghost"
+						className="shrink-0 self-center whitespace-nowrap"
+						onClick={texTools.onCitation}
 					>
-						<Radio className="size-3.5" aria-hidden />
+						<Quote className="size-3.5" aria-hidden />
+						{tx("insertCitation")}
 					</Button>
 				) : null}
-
-				<Button
-					type="button"
-					size="icon-xs"
-					variant="ghost"
-					className="shrink-0 self-center"
-					aria-label={t("appearance.fontSize.decrease")}
-					disabled={fontSize <= FONT_SIZES[0]}
-					onClick={decrement}
-				>
-					<Minus className="size-3.5" aria-hidden />
-				</Button>
 
 				<Popover open={open} onOpenChange={setOpen}>
 					<PopoverTrigger asChild>
@@ -151,11 +69,11 @@ export function TextEditorToolbar({
 							type="button"
 							size="xs"
 							variant="ghost"
-							className="flex h-5 min-w-7 gap-0.5 self-center whitespace-nowrap px-1.5 text-xs"
+							className="flex h-5 gap-1 self-center whitespace-nowrap px-1.5 text-xs"
 							ref={triggerRef}
 							aria-label={t("appearance.fontSize.select")}
 						>
-							<span>{fontSize}</span>
+							<span>{fontSize}px</span>
 							<ChevronDown className="size-3" aria-hidden />
 						</Button>
 					</PopoverTrigger>
@@ -187,18 +105,6 @@ export function TextEditorToolbar({
 						</div>
 					</PopoverContent>
 				</Popover>
-
-				<Button
-					type="button"
-					size="icon-xs"
-					variant="ghost"
-					className="shrink-0 self-center"
-					aria-label={t("appearance.fontSize.increase")}
-					disabled={fontSize >= FONT_SIZES[FONT_SIZES.length - 1]}
-					onClick={increment}
-				>
-					<Plus className="size-3.5" aria-hidden />
-				</Button>
 			</div>
 		</div>
 	);

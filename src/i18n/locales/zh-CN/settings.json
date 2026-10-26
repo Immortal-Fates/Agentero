@@ -264,8 +264,6 @@
 		"fontSize": {
 			"label": "编辑器字号",
 			"value": "{{size}} px",
-			"increase": "增大字号",
-			"decrease": "减小字号",
 			"select": "选择字号"
 		},
 		"fontFamily": {
@@ -295,10 +293,7 @@
 		},
 		"editorToolbar": {
 			"label": "格式工具栏"
-		},
-		"livePreview": "打开实时预览",
-		"livePreviewClose": "关闭实时预览",
-		"livePreviewUnavailable": "实时预览需要 LuaLaTeX 和 realtime-tex 支持文件"
+		}
 	},
 	"agent": {
 		"title": "Agent",
