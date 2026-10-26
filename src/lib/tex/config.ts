@@ -176,6 +176,39 @@ export function setDirectoryTexRoot(directory: string, rootPath: string): void {
 	writeJsonStorage(STORAGE_KEY, texSettingsStore.getState());
 }
 
+/** Keep compile-root choices attached after a file or folder moves. */
+export function remapTexSettingsPaths(
+	moves: readonly { from: string; to: string }[],
+): void {
+	if (moves.length === 0) return;
+	const remap = (path: string): string => {
+		const current = normalizePath(path);
+		const currentKey = current.toLowerCase();
+		for (const move of moves) {
+			const from = normalizePath(move.from);
+			const to = normalizePath(move.to);
+			const fromKey = from.toLowerCase();
+			if (currentKey === fromKey) return to;
+			if (currentKey.startsWith(`${fromKey}/`)) {
+				return `${to}${current.slice(from.length)}`;
+			}
+		}
+		return path;
+	};
+	texSettingsStore.setState((state) => {
+		const projects: TexSettingsState["projects"] = {};
+		for (const [key, value] of Object.entries(state.projects)) {
+			projects[remap(key)] = value;
+		}
+		const roots: TexSettingsState["roots"] = {};
+		for (const [key, value] of Object.entries(state.roots)) {
+			roots[remap(key)] = remap(value);
+		}
+		return { projects, roots };
+	});
+	writeJsonStorage(STORAGE_KEY, texSettingsStore.getState());
+}
+
 export function explicitTexRoot(sourcePath: string): string | undefined {
 	const path = normalizePath(sourcePath);
 	return Object.entries(texSettingsStore.getState().roots)

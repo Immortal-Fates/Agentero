@@ -9,6 +9,10 @@ import { Image, Table2 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
+import {
+	FILE_TREE_ROW_SELECTED_STATE,
+	FILE_TREE_ROW_STATE,
+} from "@/components/ai-elements/file-tree";
 import { normalizePath } from "@/lib/core/path";
 import { cn } from "@/lib/core/utils";
 import { trackTexProject } from "@/lib/tex/auto-build";
@@ -137,10 +141,8 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 											navigateTexSource(item.path ?? texPath, item.line);
 										}}
 										className={cn(
-											"flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left outline-none",
-											"transition-colors duration-[var(--motion-duration-micro)] motion-reduce:transition-none",
-											"hover:bg-sidebar-accent/60 active:bg-sidebar-accent/80",
-											"focus-visible:ring-1 focus-visible:ring-ring/60",
+											"flex h-7 w-full items-center gap-1.5 rounded pr-2 text-left",
+											FILE_TREE_ROW_STATE,
 											section
 												? depth === 0
 													? "font-semibold text-[13px] text-foreground"
@@ -149,8 +151,7 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 														: "font-normal text-[11px] text-muted-foreground/80"
 												: "font-normal text-[11px] text-muted-foreground/50",
 											section && depth === 0 && index > 0 && "mt-1.5",
-											current &&
-												"bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent",
+											current && FILE_TREE_ROW_SELECTED_STATE,
 										)}
 										style={{
 											paddingLeft: `${indent}rem`,
@@ -158,7 +159,7 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 									>
 										{item.kind === "label" ? (
 											<span
-												className="text-muted-foreground/35 w-3 shrink-0 text-center"
+												className="text-muted-foreground/35 w-4 shrink-0 text-center"
 												aria-hidden
 											>
 												#
@@ -166,7 +167,7 @@ export function WritingOutline({ texPath }: { texPath: string }) {
 										) : null}
 										{Icon ? (
 											<Icon
-												className="text-muted-foreground/60 size-3 shrink-0"
+												className="text-muted-foreground/60 size-4 shrink-0"
 												aria-hidden
 											/>
 										) : null}

@@ -100,6 +100,35 @@ export function setWritingSurface(surface: WorkspaceSurface): void {
 	persist();
 }
 
+/** Follow a renamed or moved file/folder across project, tabs, and recents. */
+export function remapWritingPaths(
+	moves: readonly { from: string; to: string }[],
+): void {
+	if (moves.length === 0) return;
+	const remap = (path: string): string => {
+		const current = normalizePath(path);
+		const currentKey = current.toLowerCase();
+		for (const move of moves) {
+			const from = normalizePath(move.from);
+			const to = normalizePath(move.to);
+			const fromKey = from.toLowerCase();
+			if (currentKey === fromKey) return to;
+			if (currentKey.startsWith(`${fromKey}/`)) {
+				return `${to}${current.slice(from.length)}`;
+			}
+		}
+		return path;
+	};
+	const state = writingStore.getState();
+	writingStore.setState({
+		activeRoot: state.activeRoot ? remap(state.activeRoot) : null,
+		activeFile: state.activeFile ? remap(state.activeFile) : null,
+		openFiles: state.openFiles.map(remap),
+		recents: state.recents.map(remap),
+	});
+	persist();
+}
+
 export function selectManuscript(rootFile: string): void {
 	const state = writingStore.getState();
 	const same =

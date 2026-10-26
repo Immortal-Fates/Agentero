@@ -641,17 +641,21 @@ type PasteDestination = {
 	isPaperLeaf: boolean;
 };
 
+/** A source path and the absolute path it now lives at. */
+export type MovedPathPair = { from: string; to: string };
+
 /** Move a list of absolute source paths into a resolved destination parent. */
 async function movePathsToDestination(
 	vaultPath: string,
 	srcAbsPaths: string[],
 	dest: PasteDestination,
-): Promise<{ failed: string[]; blocked: string[] }> {
+): Promise<{ failed: string[]; blocked: string[]; moved: MovedPathPair[] }> {
 	const destRel = normalizeVaultRel(dest.rel);
 	const destUnderPapers = destRel === "papers" || destRel.startsWith("papers/");
 	const rootKey = pathKey(vaultPath);
 	const failed: string[] = [];
 	const blocked: string[] = [];
+	const moved: MovedPathPair[] = [];
 
 	for (const srcAbs of srcAbsPaths) {
 		const normSrc = srcAbs.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -728,48 +732,52 @@ async function movePathsToDestination(
 		} catch {
 			trackInternalRenamePaths(pendingEventPaths, Date.now() + 2000);
 			failed.push(srcAbs);
+			continue;
 		}
+		moved.push({ from: normSrc, to: toAbs });
 	}
 
-	return { failed, blocked };
+	return { failed, blocked, moved };
 }
 
 /** Paste previously cut paths into the given target (folder, file, or vault root). */
 export async function pasteCutPaths(
 	targetPath: string | null | undefined,
-): Promise<void> {
+): Promise<MovedPathPair[]> {
 	const vaultPath = getVaultPath();
 	if (!vaultPath) {
 		notifyError(i18n.t("sidebar:fileTree.needsVault"));
-		return;
+		return [];
 	}
 	if (!isTauri()) {
 		notifyError(i18n.t("sidebar:fileTree.pasteDesktopOnly"));
-		return;
+		return [];
 	}
 	if (isRemoteVaultHandle(vaultPath)) {
 		notifyWarning(i18n.t("sidebar:fileTree.remoteCutPasteDisabled"));
-		return;
+		return [];
 	}
 
 	const { cutPaths } = vaultStore.getState();
-	if (cutPaths.length === 0) return;
+	if (cutPaths.length === 0) return [];
 
 	const { tree } = vaultStore.getState();
 	const dest = resolvePasteDestination(vaultPath, tree, targetPath);
 	if (!dest) {
 		notifyError(i18n.t("sidebar:fileTree.pasteNeedsSelection"));
-		return;
+		return [];
 	}
 
 	setVaultBusy(true);
+	let moved: MovedPathPair[] = [];
 
 	try {
-		const { failed, blocked } = await movePathsToDestination(
-			vaultPath,
-			cutPaths,
-			dest,
-		);
+		const {
+			failed,
+			blocked,
+			moved: applied,
+		} = await movePathsToDestination(vaultPath, cutPaths, dest);
+		moved = applied;
 		// Clear successfully moved items; keep failed/blocked ones staged so the
 		// user sees what did not move.
 		setCutPaths([...failed, ...blocked]);
@@ -792,6 +800,7 @@ export async function pasteCutPaths(
 	} finally {
 		setVaultBusy(false);
 	}
+	return moved;
 }
 
 /** Move a list of paths to the destination implied by the drop target. */

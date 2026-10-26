@@ -3,12 +3,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -16,8 +11,14 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DocumentTab } from "@/components/workspace/document-tab";
+import {
+	useWritingPathItems,
+	WritingMenuContent,
+	type WritingMenuItem,
+} from "@/components/writing/writing-menu";
 import { basenameOf, normalizePath } from "@/lib/core/path";
 import { cn } from "@/lib/core/utils";
+import { formatShortcutById } from "@/lib/shell/shortcuts";
 import {
 	closeAllWritingFiles,
 	closeOtherWritingFiles,
@@ -77,62 +78,15 @@ export function WritingFileTabs() {
 							<div className="dv-tabs-container dv-horizontal">
 								{tabs.map((path) => {
 									const key = normalizePath(path);
-									const selected = key === activeKey;
-									const title = basenameOf(path);
 									return (
-										<ContextMenu key={key}>
-											<ContextMenuTrigger asChild>
-												<div
-													role="tab"
-													aria-selected={selected}
-													tabIndex={selected ? 0 : -1}
-													title={title}
-													className={cn(
-														"dv-tab",
-														selected ? "dv-active-tab" : "dv-inactive-tab",
-													)}
-													onClick={() => setWritingFile(path)}
-													onAuxClick={(event) => {
-														if (event.button === 1) {
-															event.preventDefault();
-															closeWritingFile(path);
-														}
-													}}
-													onKeyDown={(event) => {
-														if (event.key === "Enter" || event.key === " ") {
-															event.preventDefault();
-															setWritingFile(path);
-														}
-													}}
-												>
-													<DocumentTab
-														title={title}
-														closeLabel={t("app:tabs.close", { title })}
-														onClose={() => closeWritingFile(path)}
-													/>
-												</div>
-											</ContextMenuTrigger>
-											<ContextMenuContent>
-												<ContextMenuItem
-													onSelect={() => closeWritingFile(path)}
-												>
-													{t("app:tabs.contextClose")}
-												</ContextMenuItem>
-												<ContextMenuItem
-													disabled={
-														tabs.length < 2 && !historyOpen && !syncOpen
-													}
-													onSelect={() => closeOtherWritingFiles(path)}
-												>
-													{t("app:tabs.contextCloseOthers")}
-												</ContextMenuItem>
-												<ContextMenuItem
-													onSelect={() => closeAllWritingFiles()}
-												>
-													{t("app:tabs.contextCloseAll")}
-												</ContextMenuItem>
-											</ContextMenuContent>
-										</ContextMenu>
+										<WritingFileTab
+											key={key}
+											path={path}
+											selected={key === activeKey}
+											closeOthersDisabled={
+												tabs.length < 2 && !historyOpen && !syncOpen
+											}
+										/>
 									);
 								})}
 								{historyOpen ? (
@@ -232,6 +186,77 @@ export function WritingFileTabs() {
 				</DropdownMenu>
 			) : null}
 		</div>
+	);
+}
+
+function WritingFileTab({
+	path,
+	selected,
+	closeOthersDisabled,
+}: {
+	path: string;
+	selected: boolean;
+	closeOthersDisabled: boolean;
+}) {
+	const { t } = useTranslation(["sidebar", "app"]);
+	const pathItems = useWritingPathItems(path);
+	const title = basenameOf(path);
+	const items: WritingMenuItem[] = [
+		...pathItems,
+		{
+			id: "close",
+			label: t("app:tabs.contextClose"),
+			shortcut: formatShortcutById("closeTab"),
+			separatorBefore: true,
+			run: () => closeWritingFile(path),
+		},
+		{
+			id: "close-others",
+			label: t("app:tabs.contextCloseOthers"),
+			disabled: closeOthersDisabled,
+			run: () => closeOtherWritingFiles(path),
+		},
+		{
+			id: "close-all",
+			label: t("app:tabs.contextCloseAll"),
+			run: () => closeAllWritingFiles(),
+		},
+	];
+	return (
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<div
+					role="tab"
+					aria-selected={selected}
+					tabIndex={selected ? 0 : -1}
+					title={title}
+					className={cn(
+						"dv-tab",
+						selected ? "dv-active-tab" : "dv-inactive-tab",
+					)}
+					onClick={() => setWritingFile(path)}
+					onAuxClick={(event) => {
+						if (event.button === 1) {
+							event.preventDefault();
+							closeWritingFile(path);
+						}
+					}}
+					onKeyDown={(event) => {
+						if (event.key === "Enter" || event.key === " ") {
+							event.preventDefault();
+							setWritingFile(path);
+						}
+					}}
+				>
+					<DocumentTab
+						title={title}
+						closeLabel={t("app:tabs.close", { title })}
+						onClose={() => closeWritingFile(path)}
+					/>
+				</div>
+			</ContextMenuTrigger>
+			<WritingMenuContent items={items} />
+		</ContextMenu>
 	);
 }
 

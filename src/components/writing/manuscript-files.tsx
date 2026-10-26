@@ -1,44 +1,40 @@
 /**
  * Files of the open manuscript. Build artifacts stay hidden.
- * Right-click and the row menu share the same actions.
+ * Right-click opens the same actions for every row.
  */
 
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
-import type { TFunction } from "i18next";
-import { ChevronRight, FileText, Folder, MoreHorizontal } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { FileText, Folder, FolderOpen } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
-import { Button } from "@/components/ui/button";
 import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuSeparator,
-	ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+	FILE_TREE_ROW_SELECTED_STATE,
+	FILE_TREE_ROW_STATE,
+	FileTreeDisclosureIcon,
+} from "@/components/ai-elements/file-tree";
+import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
 	Dialog,
 	DialogContent,
 	DialogFooter,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { presentAgentComposer } from "@/lib/agent/composer-focus";
-import { broadcastAgentAttachContext } from "@/lib/agent/context-attach";
-import { copyTextToClipboard } from "@/lib/core/clipboard";
+import {
+	useWritingPathItems,
+	WritingMenuContent,
+	type WritingMenuItem,
+} from "@/components/writing/writing-menu";
+import { WritingMoveDialog } from "@/components/writing/writing-move-dialog";
+import { useVaultStore } from "@/hooks/use-app-stores";
 import { errorText } from "@/lib/core/error";
 import { notifyError, notifySuccess } from "@/lib/core/notify";
-import { basenameOf, displayPath, normalizePath } from "@/lib/core/path";
+import { basenameOf, normalizePath } from "@/lib/core/path";
 import { cn } from "@/lib/core/utils";
+import { formatShortcutById } from "@/lib/shell/shortcuts";
 import {
 	explicitTexRoot,
 	setDirectoryTexRoot,
@@ -57,24 +53,43 @@ import {
 	writeVaultBytes,
 	writeVaultFile,
 } from "@/lib/vault";
-import {
-	openInTerminal,
-	revealInFileManager,
-	revealInOsLabelKey,
-} from "@/lib/vault/reveal";
+import { cutSelectedPaths, pasteCutPaths } from "@/lib/vault/actions";
+import { normalizePathKey } from "@/lib/vault/path";
+import { refreshTree } from "@/lib/vault/store";
 import { moveVaultPath } from "@/lib/wiki";
+import { syncMovedPaths } from "@/lib/wiki/actions";
 import { dirtyVaultPaths } from "@/lib/workspace/persistence";
 import {
 	compareWritingNodes,
 	isWritingSourceName,
 	withoutNestedProjects,
 } from "@/lib/writing/files";
-import { closeWritingFile, setWritingFile } from "@/lib/writing/store";
+import {
+	closeWritingFile,
+	setWritingFile,
+	writingStore,
+} from "@/lib/writing/store";
+import { applyWritingMoves } from "@/lib/writing/tree-actions";
+import {
+	clearWritingTreeDelete,
+	forgetWritingTreeTargets,
+	setWritingTreeTarget,
+	type WritingTreeTarget,
+	writingTreeStore,
+} from "@/lib/writing/tree-target";
 
 function visibleNodes(nodes: readonly FileNode[]): FileNode[] {
 	return nodes
 		.filter((node) => isWritingSourceName(node.kind, node.name))
 		.sort(compareWritingNodes);
+}
+
+function withLeadingSeparator(
+	items: readonly WritingMenuItem[],
+): WritingMenuItem[] {
+	return items.map((item, index) =>
+		index === 0 ? { ...item, separatorBefore: true } : item,
+	);
 }
 
 type NameAsk = {
@@ -103,8 +118,22 @@ export function ManuscriptFiles({
 	const [childNodes, setChildNodes] = useState<Record<string, FileNode[]>>({});
 	const [revision, setRevision] = useState(0);
 	const [ask, setAsk] = useState<NameAsk | null>(null);
-	const [pendingDelete, setPendingDelete] = useState<FileNode | null>(null);
+	const [pendingDelete, setPendingDelete] = useState<WritingTreeTarget | null>(
+		null,
+	);
+	const [pendingMove, setPendingMove] = useState<FileNode | null>(null);
 	const roots = useStore(texSettingsStore, (state) => state.roots);
+	const cutPaths = useVaultStore((state) => state.cutPaths);
+	const treeRevision = useStore(writingTreeStore, (state) => state.revision);
+	const deleteRequest = useStore(
+		writingTreeStore,
+		(state) => state.deleteRequest,
+	);
+	const cutPathKeys = useMemo(
+		() => new Set(cutPaths.map((path) => normalizePathKey(path))),
+		[cutPaths],
+	);
+	const rootPathItems = useWritingPathItems(rootDir);
 	const mainPath =
 		roots[normalizePath(rootDir)] ?? explicitTexRoot(rootDir) ?? projectRoot;
 
@@ -124,9 +153,36 @@ export function ManuscriptFiles({
 		};
 	}, [vaultPath, rootDir, revision]);
 
+	useEffect(() => {
+		if (!deleteRequest) return;
+		clearWritingTreeDelete();
+		setPendingDelete(deleteRequest);
+	}, [deleteRequest]);
+
+	useEffect(() => {
+		if (treeRevision === 0) return;
+		setChildNodes({});
+		setRevision((current) => current + 1);
+	}, [treeRevision]);
+
 	const reload = () => {
 		setChildNodes({});
 		setRevision((current) => current + 1);
+	};
+
+	const applyMovedPaths = (moved: readonly { from: string; to: string }[]) => {
+		if (moved.length === 0) return;
+		applyWritingMoves(moved);
+		reload();
+	};
+
+	const canPasteInto = (dir: string): boolean => {
+		if (cutPaths.length === 0) return false;
+		const key = normalizePathKey(dir);
+		return (
+			!cutPathKeys.has(key) &&
+			!cutPaths.some((path) => key.startsWith(`${normalizePathKey(path)}/`))
+		);
 	};
 
 	const toggleDirectory = (node: FileNode) => {
@@ -170,25 +226,49 @@ export function ManuscriptFiles({
 		reload();
 	}
 
+	async function moveNodeTo(node: FileNode, target: string) {
+		const from = vaultRelativePath(vaultPath, node.path);
+		const to = vaultRelativePath(vaultPath, target);
+		if (!from || !to) return;
+		const result = await moveVaultPath(
+			vaultPath,
+			from,
+			to,
+			dirtyVaultPaths(vaultPath),
+		);
+		syncMovedPaths(vaultPath, node.path, target, from, to, result);
+		applyWritingMoves([{ from: node.path, to: target }]);
+		await refreshTree(vaultPath);
+		reload();
+	}
+
 	async function renameFile(node: FileNode, name: string) {
 		const trimmed = name.trim();
 		if (!isValidVaultEntryName(trimmed)) {
 			notifyError(t("fileTree.invalidName"));
 			return;
 		}
-		const from = vaultRelativePath(vaultPath, node.path);
 		const parent = node.path.slice(0, node.path.length - node.name.length);
 		const target = joinVaultPath(parent.replace(/[\\/]$/, ""), trimmed);
-		const to = vaultRelativePath(vaultPath, target);
-		if (!from || !to) return;
 		if (await vaultPathExists(target)) {
 			notifyError(t("fileTree.alreadyExists", { name: trimmed }));
 			return;
 		}
-		await moveVaultPath(vaultPath, from, to, dirtyVaultPaths(vaultPath));
-		closeWritingFile(node.path);
-		setWritingFile(target);
-		reload();
+		await moveNodeTo(node, target);
+	}
+
+	async function moveFile(node: FileNode, destDir: string) {
+		const target = joinVaultPath(destDir, node.name);
+		if (normalizePath(target) === normalizePath(node.path)) {
+			setPendingMove(null);
+			return;
+		}
+		if (await vaultPathExists(target)) {
+			notifyError(t("fileTree.alreadyExists", { name: node.name }));
+			return;
+		}
+		await moveNodeTo(node, target);
+		setPendingMove(null);
 	}
 
 	async function downloadFile(node: FileNode) {
@@ -219,9 +299,16 @@ export function ManuscriptFiles({
 		notifySuccess(t("writing.setMainFileDone"));
 	}
 
-	async function deleteFile(node: FileNode) {
+	async function deleteFile(node: WritingTreeTarget) {
 		await removeVaultPath(node.path);
-		closeWritingFile(node.path);
+		const key = normalizePath(node.path).toLowerCase();
+		for (const file of writingStore.getState().openFiles) {
+			const current = normalizePath(file).toLowerCase();
+			if (current === key || current.startsWith(`${key}/`)) {
+				closeWritingFile(file);
+			}
+		}
+		forgetWritingTreeTargets(node.path);
 		setPendingDelete(null);
 		reload();
 	}
@@ -234,71 +321,137 @@ export function ManuscriptFiles({
 		);
 	}
 	const shown = withoutNestedProjects(nodes, projectDirs);
+	const rootItems: WritingMenuItem[] = [
+		{
+			id: "new-file",
+			label: t("fileTree.newFile"),
+			run: () =>
+				setAsk({
+					title: t("fileTree.newFile"),
+					initial: "",
+					submit: (name) => createEntry(rootDir, name, false),
+				}),
+		},
+		{
+			id: "new-folder",
+			label: t("fileTree.newFolder"),
+			run: () =>
+				setAsk({
+					title: t("fileTree.newFolder"),
+					initial: "",
+					submit: (name) => createEntry(rootDir, name, true),
+				}),
+		},
+		{
+			id: "upload",
+			label: t("writing.upload"),
+			run: () => void uploadInto(rootDir).catch(fail),
+		},
+		...(canPasteInto(rootDir)
+			? [
+					{
+						id: "paste",
+						label: t("fileTree.paste"),
+						shortcut: formatShortcutById("pasteTreeItem"),
+						separatorBefore: true,
+						run: () => void pasteInto(rootDir).catch(fail),
+					},
+				]
+			: []),
+		...withLeadingSeparator(rootPathItems),
+	];
+
+	async function pasteInto(dir: string) {
+		const moved = await pasteCutPaths(dir);
+		applyMovedPaths(moved);
+	}
 
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto px-1 pb-1">
-			<FolderMenu
-				path={rootDir}
-				label={basenameOf(rootDir) || t("writing.files")}
-				onNewFile={() =>
-					setAsk({
-						title: t("fileTree.newFile"),
-						initial: "",
-						submit: (name) => createEntry(rootDir, name, false),
-					})
-				}
-				onNewFolder={() =>
-					setAsk({
-						title: t("fileTree.newFolder"),
-						initial: "",
-						submit: (name) => createEntry(rootDir, name, true),
-					})
-				}
-				onUpload={() => void uploadInto(rootDir).catch(fail)}
-			/>
-			{shown.length === 0 ? (
-				<p className="text-muted-foreground px-2 py-2 text-xs">
-					{t("writing.noSources")}
-				</p>
-			) : (
-				<NodeList
-					nodes={shown}
-					depth={0}
-					activePath={activePath}
-					expanded={expanded}
-					childNodes={childNodes}
-					projectDirs={projectDirs}
-					loadingLabel={t("writing.loadingFiles")}
-					mainPath={mainPath}
-					onMakeMain={makeMain}
-					onToggle={toggleDirectory}
-					onNewFile={(dir) =>
-						setAsk({
-							title: t("fileTree.newFile"),
-							initial: "",
-							submit: (name) => createEntry(dir, name, false),
-						})
-					}
-					onNewFolder={(dir) =>
-						setAsk({
-							title: t("fileTree.newFolder"),
-							initial: "",
-							submit: (name) => createEntry(dir, name, true),
-						})
-					}
-					onUpload={(dir) => void uploadInto(dir).catch(fail)}
-					onRename={(node) =>
-						setAsk({
-							title: t("fileTree.rename"),
-							initial: node.name,
-							submit: (name) => renameFile(node, name),
-						})
-					}
-					onDownload={(node) => void downloadFile(node).catch(fail)}
-					onDelete={setPendingDelete}
-				/>
-			)}
+		<>
+			<ContextMenu>
+				<ContextMenuTrigger asChild>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: right-click selects the project root for shortcuts */}
+					<div
+						data-file-tree=""
+						className="min-h-0 flex-1 overflow-y-auto px-1 pt-1 pb-1"
+						onContextMenu={(event) => {
+							if (
+								event.target instanceof Element &&
+								event.target.closest("button")
+							) {
+								return;
+							}
+							setWritingTreeTarget({
+								path: rootDir,
+								name: basenameOf(rootDir),
+								kind: "directory",
+							});
+						}}
+					>
+						{shown.length === 0 ? (
+							<p className="text-muted-foreground px-2 py-2 text-xs">
+								{t("writing.noSources")}
+							</p>
+						) : (
+							<NodeList
+								nodes={shown}
+								depth={0}
+								activePath={activePath}
+								expanded={expanded}
+								childNodes={childNodes}
+								projectDirs={projectDirs}
+								loadingLabel={t("writing.loadingFiles")}
+								mainPath={mainPath}
+								cutPathKeys={cutPathKeys}
+								canPasteInto={canPasteInto}
+								onMakeMain={makeMain}
+								onToggle={toggleDirectory}
+								onNewFile={(dir) =>
+									setAsk({
+										title: t("fileTree.newFile"),
+										initial: "",
+										submit: (name) => createEntry(dir, name, false),
+									})
+								}
+								onNewFolder={(dir) =>
+									setAsk({
+										title: t("fileTree.newFolder"),
+										initial: "",
+										submit: (name) => createEntry(dir, name, true),
+									})
+								}
+								onUpload={(dir) => void uploadInto(dir).catch(fail)}
+								onCut={(node) => cutSelectedPaths([node.path])}
+								onPaste={(dir) => void pasteInto(dir).catch(fail)}
+								onMove={setPendingMove}
+								onRename={(node) =>
+									setAsk({
+										title: t("fileTree.rename"),
+										initial: node.name,
+										submit: (name) => renameFile(node, name),
+									})
+								}
+								onDownload={(node) => void downloadFile(node).catch(fail)}
+								onDelete={setPendingDelete}
+							/>
+						)}
+					</div>
+				</ContextMenuTrigger>
+				<WritingMenuContent items={rootItems} />
+			</ContextMenu>
 			<NameDialog ask={ask} onClose={() => setAsk(null)} />
+			<WritingMoveDialog
+				open={pendingMove != null}
+				vaultPath={vaultPath}
+				rootDir={rootDir}
+				projectDirs={projectDirs}
+				node={pendingMove}
+				onClose={() => setPendingMove(null)}
+				onMove={(destination) => {
+					if (!pendingMove) return;
+					void moveFile(pendingMove, destination).catch(fail);
+				}}
+			/>
 			<Dialog
 				open={pendingDelete != null}
 				onOpenChange={(next) => {
@@ -325,104 +478,12 @@ export function ManuscriptFiles({
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-		</div>
+		</>
 	);
 }
 
 function fail(error: unknown) {
 	notifyError(errorText(error));
-}
-
-type WritingMenuItem = {
-	id: string;
-	label: string;
-	disabled?: boolean;
-	destructive?: boolean;
-	run: () => void;
-};
-
-function pathMenuItems(
-	t: TFunction<"sidebar">,
-	path: string,
-): WritingMenuItem[] {
-	return [
-		{
-			id: "copy",
-			label: t("fileTree.copyPath"),
-			run: () => {
-				void copyTextToClipboard(displayPath(path), {
-					successMessage: t("fileTree.copiedPath"),
-					errorMessage: t("fileTree.copyPathFailed"),
-					successNotify: { duration: 2000 },
-				});
-			},
-		},
-		{
-			id: "reveal",
-			label: t(revealInOsLabelKey()),
-			run: () => {
-				void revealInFileManager(path).catch(() => {
-					notifyError(t("fileTree.revealFailed"));
-				});
-			},
-		},
-		{
-			id: "terminal",
-			label: t("fileTree.openInTerminal"),
-			run: () => {
-				void openInTerminal(path).catch(() => {
-					notifyError(t("fileTree.openInTerminalFailed"));
-				});
-			},
-		},
-		{
-			id: "chat",
-			label: t("fileTree.addToChat"),
-			run: () => {
-				broadcastAgentAttachContext([path]);
-				presentAgentComposer();
-			},
-		},
-	];
-}
-
-function FolderMenu({
-	path,
-	label,
-	onNewFile,
-	onNewFolder,
-	onUpload,
-}: {
-	path: string;
-	label: string;
-	onNewFile: () => void;
-	onNewFolder: () => void;
-	onUpload: () => void;
-}) {
-	const { t } = useTranslation("sidebar");
-	const items: WritingMenuItem[] = [
-		{ id: "new-file", label: t("fileTree.newFile"), run: onNewFile },
-		{ id: "new-folder", label: t("fileTree.newFolder"), run: onNewFolder },
-		{ id: "upload", label: t("writing.upload"), run: onUpload },
-		...pathMenuItems(t, path),
-	];
-	return (
-		<ContextMenu>
-			<ContextMenuTrigger asChild>
-				<div className="group flex h-7 items-center gap-1 rounded-md pr-1 pl-2">
-					<Folder
-						className="size-3.5 shrink-0 text-muted-foreground"
-						aria-hidden
-					/>
-					<span className="min-w-0 flex-1 truncate text-sm font-medium">
-						{label}
-					</span>
-					<RowMenu items={items} />
-				</div>
-			</ContextMenuTrigger>
-			<MenuContent items={items} />
-		</ContextMenu>
-	);
 }
 
 function NodeList({
@@ -434,11 +495,16 @@ function NodeList({
 	projectDirs,
 	loadingLabel,
 	mainPath,
+	cutPathKeys,
+	canPasteInto,
 	onMakeMain,
 	onToggle,
 	onNewFile,
 	onNewFolder,
 	onUpload,
+	onCut,
+	onPaste,
+	onMove,
 	onRename,
 	onDownload,
 	onDelete,
@@ -451,11 +517,16 @@ function NodeList({
 	projectDirs: ReadonlySet<string>;
 	loadingLabel: string;
 	mainPath: string;
+	cutPathKeys: ReadonlySet<string>;
+	canPasteInto: (dir: string) => boolean;
 	onMakeMain: (node: FileNode) => void;
 	onToggle: (node: FileNode) => void;
 	onNewFile: (dir: string) => void;
 	onNewFolder: (dir: string) => void;
 	onUpload: (dir: string) => void;
+	onCut: (node: FileNode) => void;
+	onPaste: (dir: string) => void;
+	onMove: (node: FileNode) => void;
 	onRename: (node: FileNode) => void;
 	onDownload: (node: FileNode) => void;
 	onDelete: (node: FileNode) => void;
@@ -473,11 +544,16 @@ function NodeList({
 						}
 						expanded={expanded.has(node.path)}
 						mainPath={mainPath}
+						cut={cutPathKeys.has(normalizePathKey(node.path))}
+						canPaste={canPasteInto(node.path)}
 						onMakeMain={onMakeMain}
 						onToggle={onToggle}
 						onNewFile={onNewFile}
 						onNewFolder={onNewFolder}
 						onUpload={onUpload}
+						onCut={onCut}
+						onPaste={onPaste}
+						onMove={onMove}
 						onRename={onRename}
 						onDownload={onDownload}
 						onDelete={onDelete}
@@ -496,11 +572,16 @@ function NodeList({
 								projectDirs={projectDirs}
 								loadingLabel={loadingLabel}
 								mainPath={mainPath}
+								cutPathKeys={cutPathKeys}
+								canPasteInto={canPasteInto}
 								onMakeMain={onMakeMain}
 								onToggle={onToggle}
 								onNewFile={onNewFile}
 								onNewFolder={onNewFolder}
 								onUpload={onUpload}
+								onCut={onCut}
+								onPaste={onPaste}
+								onMove={onMove}
 								onRename={onRename}
 								onDownload={onDownload}
 								onDelete={onDelete}
@@ -508,7 +589,7 @@ function NodeList({
 						) : (
 							<p
 								className="text-muted-foreground py-1 text-xs"
-								style={{ paddingLeft: 20 + depth * 12 }}
+								style={{ paddingLeft: 28 + depth * 12 }}
 							>
 								{loadingLabel}
 							</p>
@@ -526,11 +607,16 @@ function FileRow({
 	selected,
 	expanded,
 	mainPath,
+	cut,
+	canPaste,
 	onMakeMain,
 	onToggle,
 	onNewFile,
 	onNewFolder,
 	onUpload,
+	onCut,
+	onPaste,
+	onMove,
 	onRename,
 	onDownload,
 	onDelete,
@@ -540,21 +626,32 @@ function FileRow({
 	selected: boolean;
 	expanded: boolean;
 	mainPath: string;
+	cut: boolean;
+	canPaste: boolean;
 	onMakeMain: (node: FileNode) => void;
 	onToggle: (node: FileNode) => void;
 	onNewFile: (dir: string) => void;
 	onNewFolder: (dir: string) => void;
 	onUpload: (dir: string) => void;
+	onCut: (node: FileNode) => void;
+	onPaste: (dir: string) => void;
+	onMove: (node: FileNode) => void;
 	onRename: (node: FileNode) => void;
 	onDownload: (node: FileNode) => void;
 	onDelete: (node: FileNode) => void;
 }) {
 	const { t } = useTranslation("sidebar");
+	const pathItems = useWritingPathItems(node.path);
 	const directory = node.kind === "directory";
 	const texFile = !directory && node.name.toLowerCase().endsWith(".tex");
 	const isMain =
 		texFile && normalizePath(node.path) === normalizePath(mainPath);
-	const Icon = directory ? Folder : FileText;
+	const markTarget = () =>
+		setWritingTreeTarget({
+			path: node.path,
+			name: node.name,
+			kind: node.kind,
+		});
 	const items: WritingMenuItem[] = directory
 		? [
 				{
@@ -572,16 +669,41 @@ function FileRow({
 					label: t("writing.upload"),
 					run: () => onUpload(node.path),
 				},
-				...pathMenuItems(t, node.path),
+				{
+					id: "cut",
+					label: t("fileTree.cut"),
+					shortcut: formatShortcutById("cutTreeItem"),
+					separatorBefore: true,
+					run: () => onCut(node),
+				},
+				...(canPaste
+					? [
+							{
+								id: "paste",
+								label: t("fileTree.pasteInto", { name: node.name }),
+								shortcut: formatShortcutById("pasteTreeItem"),
+								run: () => onPaste(node.path),
+							},
+						]
+					: []),
+				{
+					id: "move",
+					label: t("fileTree.move"),
+					run: () => onMove(node),
+				},
+				...withLeadingSeparator(pathItems),
 				{
 					id: "rename",
 					label: t("fileTree.rename"),
+					separatorBefore: true,
 					run: () => onRename(node),
 				},
 				{
 					id: "delete",
 					label: t("writing.deleteFile"),
+					shortcut: formatShortcutById("deleteTreeItem"),
 					destructive: true,
+					separatorBefore: true,
 					run: () => onDelete(node),
 				},
 			]
@@ -601,6 +723,7 @@ function FileRow({
 				{
 					id: "rename",
 					label: t("fileTree.rename"),
+					separatorBefore: texFile,
 					run: () => onRename(node),
 				},
 				{
@@ -608,170 +731,76 @@ function FileRow({
 					label: t("writing.download"),
 					run: () => onDownload(node),
 				},
-				...pathMenuItems(t, node.path),
+				{
+					id: "cut",
+					label: t("fileTree.cut"),
+					shortcut: formatShortcutById("cutTreeItem"),
+					separatorBefore: true,
+					run: () => onCut(node),
+				},
+				{
+					id: "move",
+					label: t("fileTree.move"),
+					run: () => onMove(node),
+				},
+				...withLeadingSeparator(pathItems),
 				{
 					id: "delete",
 					label: t("writing.deleteFile"),
+					shortcut: formatShortcutById("deleteTreeItem"),
 					destructive: true,
+					separatorBefore: true,
 					run: () => onDelete(node),
 				},
 			];
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger asChild>
-				<div
+				<button
+					type="button"
+					aria-expanded={directory ? expanded : undefined}
+					aria-current={selected ? "page" : undefined}
+					title={node.name}
+					onContextMenu={() => {
+						markTarget();
+						if (!directory) setWritingFile(node.path);
+					}}
+					onFocus={markTarget}
+					onClick={() => {
+						markTarget();
+						if (directory) onToggle(node);
+						else setWritingFile(node.path);
+					}}
 					className={cn(
-						"group flex h-7 min-w-0 items-center gap-1 rounded-md pr-1 text-sm",
-						selected && "bg-sidebar-accent text-sidebar-accent-foreground",
+						"group flex h-7 w-full min-w-0 items-center gap-1 rounded pr-4 text-left text-sm",
+						FILE_TREE_ROW_STATE,
+						selected && FILE_TREE_ROW_SELECTED_STATE,
+						cut && "opacity-50",
 					)}
-					style={{ paddingLeft: 8 + depth * 12 }}
+					style={{ paddingLeft: 16 + depth * 12 }}
 				>
-					<button
-						type="button"
-						aria-expanded={directory ? expanded : undefined}
-						aria-current={selected ? "page" : undefined}
-						title={node.name}
-						onContextMenu={() => {
-							if (!directory) setWritingFile(node.path);
-						}}
-						onClick={() => {
-							if (directory) onToggle(node);
-							else setWritingFile(node.path);
-						}}
-						className="flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md text-left outline-none hover:bg-sidebar-accent/80 focus-visible:ring-1 focus-visible:ring-ring/60"
-					>
-						{directory ? (
-							<ChevronRight
-								className={cn(
-									"size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
-									expanded && "rotate-90",
-								)}
-								aria-hidden
-							/>
-						) : (
-							<span className="size-3.5 shrink-0" aria-hidden />
-						)}
-						<Icon
-							className="size-3.5 shrink-0 text-muted-foreground"
+					{directory ? (
+						<FileTreeDisclosureIcon
+							isExpanded={expanded}
+							icon={
+								expanded ? (
+									<FolderOpen className="size-4 text-blue-500" aria-hidden />
+								) : (
+									<Folder className="size-4 text-blue-500" aria-hidden />
+								)
+							}
+						/>
+					) : (
+						<FileText
+							className="size-4 shrink-0 text-muted-foreground"
 							aria-hidden
 						/>
-						<span className="min-w-0 flex-1 truncate">{node.name}</span>
-					</button>
-					<RowMenu items={items} />
-				</div>
+					)}
+					<span className="min-w-0 flex-1 truncate">{node.name}</span>
+				</button>
 			</ContextMenuTrigger>
-			<MenuContent items={items} />
+			<WritingMenuContent items={items} />
 		</ContextMenu>
-	);
-}
-
-function MenuContent({ items }: { items: WritingMenuItem[] }) {
-	const deleteAt = items.findIndex((item) => item.destructive);
-	return (
-		<ContextMenuContent>
-			{items.map((item, index) => (
-				<MenuEntry
-					key={item.id}
-					item={item}
-					kind="context"
-					separator={Boolean(item.destructive && index === deleteAt)}
-				/>
-			))}
-		</ContextMenuContent>
-	);
-}
-
-function RowMenu({ items }: { items: WritingMenuItem[] }) {
-	const { t } = useTranslation("sidebar");
-	const deleteAt = items.findIndex((item) => item.destructive);
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger
-				className="text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-md opacity-0 outline-none hover:bg-sidebar-accent group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring/60 data-[state=open]:opacity-100"
-				aria-label={t("writing.more")}
-			>
-				<MoreHorizontal className="size-3.5" aria-hidden />
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end">
-				{items.map((item, index) => (
-					<MenuEntry
-						key={item.id}
-						item={item}
-						kind="dropdown"
-						separator={Boolean(item.destructive && index === deleteAt)}
-					/>
-				))}
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
-}
-
-function MenuEntry({
-	item,
-	separator,
-	kind,
-}: {
-	item: WritingMenuItem;
-	separator: boolean;
-	kind: "context" | "dropdown";
-}) {
-	const action = (
-		<Action
-			kind={kind}
-			disabled={item.disabled}
-			destructive={item.destructive}
-			onSelect={item.run}
-		>
-			{item.label}
-		</Action>
-	);
-	if (!separator) return action;
-	return (
-		<>
-			{kind === "context" ? (
-				<ContextMenuSeparator />
-			) : (
-				<DropdownMenuSeparator />
-			)}
-			{action}
-		</>
-	);
-}
-
-function Action({
-	kind,
-	disabled,
-	destructive,
-	onSelect,
-	children,
-}: {
-	kind: "context" | "dropdown";
-	disabled?: boolean;
-	destructive?: boolean;
-	onSelect: () => void;
-	children: ReactNode;
-}) {
-	if (kind === "dropdown") {
-		return (
-			<DropdownMenuItem
-				disabled={disabled}
-				variant={destructive ? "destructive" : "default"}
-				onSelect={onSelect}
-			>
-				{children}
-			</DropdownMenuItem>
-		);
-	}
-	return (
-		<ContextMenuItem
-			disabled={disabled}
-			className={
-				destructive ? "text-destructive focus:text-destructive" : undefined
-			}
-			onSelect={onSelect}
-		>
-			{children}
-		</ContextMenuItem>
 	);
 }
 
