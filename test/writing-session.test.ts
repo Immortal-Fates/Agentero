@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { FileNode } from "@/lib/vault/types";
 import {
 	compareWritingNodes,
 	isWritingSourceName,
@@ -16,6 +17,20 @@ import {
 	writingProjectTitle,
 	writingProjectTrashRel,
 } from "@/lib/writing/session";
+
+vi.mock("@/lib/vault", () => ({
+	joinVaultPath: (vaultPath: string, rel: string) => `${vaultPath}/${rel}`,
+	listVaultDirChildren: vi.fn(),
+	readVaultFile: vi.fn(),
+}));
+
+vi.mock("@/lib/workspace/tex-compile", () => ({
+	resolveTexRootInfo: vi.fn(),
+}));
+
+import { listVaultDirChildren, readVaultFile } from "@/lib/vault";
+import { resolveTexRootInfo } from "@/lib/workspace/tex-compile";
+import { discoverWritingProjects } from "@/lib/writing/discover";
 
 describe("writing project file list", () => {
 	it("hides another project's directory", () => {
@@ -176,5 +191,65 @@ describe("writing project trash path", () => {
 			writingProjectTrashRel("D:/vault", "D:/vault/notes/main.tex"),
 		).toBeNull();
 		expect(writingProjectTrashRel("D:/vault", "D:/vault/thesis")).toBeNull();
+	});
+});
+
+function fileNode(parent: string, name: string): FileNode {
+	return {
+		id: `${parent}/${name}`,
+		name,
+		path: `${parent}/${name}`,
+		kind: "file",
+	};
+}
+
+function directoryNode(parent: string, name: string): FileNode {
+	return {
+		id: `${parent}/${name}`,
+		name,
+		path: `${parent}/${name}`,
+		kind: "directory",
+	};
+}
+
+describe("writing project discovery", () => {
+	it("keeps an unreferenced section inside the root-level project", async () => {
+		const shelf = "/vault/thesis";
+		const sections = `${shelf}/sections`;
+		const paper2 = `${shelf}/paper2`;
+		const main = `${shelf}/main.tex`;
+		const intro = `${sections}/intro.tex`;
+		const unused = `${sections}/ack.tex`;
+		const second = `${paper2}/paper.tex`;
+		const children: Record<string, FileNode[]> = {
+			[shelf]: [
+				fileNode(shelf, "main.tex"),
+				directoryNode(shelf, "sections"),
+				directoryNode(shelf, "paper2"),
+			],
+			[sections]: [
+				fileNode(sections, "intro.tex"),
+				fileNode(sections, "ack.tex"),
+			],
+			[paper2]: [fileNode(paper2, "paper.tex")],
+		};
+		vi.mocked(listVaultDirChildren).mockImplementation(
+			async (_root: string, dir: string) => children[dir] ?? [],
+		);
+		vi.mocked(resolveTexRootInfo).mockImplementation(async (path) => {
+			if (path === unused) return { rootPath: path, fallbackSelf: true };
+			if (path === intro) return { rootPath: main, fallbackSelf: false };
+			return { rootPath: path, fallbackSelf: false };
+		});
+		vi.mocked(readVaultFile).mockImplementation(async (path) =>
+			path === main
+				? "\\documentclass{article}\n\\title{Main}"
+				: "\\documentclass{article}\n\\title{Second}",
+		);
+
+		const found = await discoverWritingProjects("/vault");
+
+		expect(found.map((item) => item.rootFile)).toEqual([main, second]);
+		expect(found.map((item) => item.title)).toEqual(["Main", "Second"]);
 	});
 });

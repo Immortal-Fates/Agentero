@@ -1,6 +1,9 @@
 /**
  * Find TeX roots under the vault's thesis/ directory.
  * One level of nested folders is enough for a main file plus chapter dirs.
+ * A scanned file the resolver only falls back to (a chapter no main file
+ * references) is content, not a project, so a root-level `thesis/main.tex`
+ * keeps its `sections/` folder instead of spawning a project from it.
  */
 
 import { normalizePath } from "@/lib/core/path";
@@ -10,7 +13,7 @@ import {
 	listVaultDirChildren,
 	readVaultFile,
 } from "@/lib/vault";
-import { resolveTexRoot } from "@/lib/workspace/tex-compile";
+import { resolveTexRootInfo } from "@/lib/workspace/tex-compile";
 import { isWritingSourceName } from "@/lib/writing/files";
 import {
 	type Manuscript,
@@ -46,7 +49,8 @@ async function collectRoots(
 	for (const file of texFiles) {
 		if (budget.left <= 0) break;
 		budget.left -= 1;
-		roots.push(await resolveTexRoot(file.path));
+		const resolved = await resolveTexRootInfo(file.path);
+		if (!resolved.fallbackSelf) roots.push(resolved.rootPath);
 	}
 	if (depth <= 0) return roots;
 	const directories = children

@@ -144,6 +144,16 @@ export async function inspectTexEngine(
 	return engineChoiceForRoot(rootPath);
 }
 
+export type TexRootResolution = {
+	rootPath: string;
+	/**
+	 * Nothing tied the file to a document: no magic comment, no root
+	 * indicator, no main file referencing it. Callers that list projects
+	 * skip these; compilation still uses `rootPath`.
+	 */
+	fallbackSelf: boolean;
+};
+
 /**
  * Resolve the compile root for a .tex path: `% !TEX root` magic-comment chain
  * → self indicator (\documentclass / \begin{document}) → vault-wide reverse
@@ -151,18 +161,30 @@ export async function inspectTexEngine(
  * (callers flush editors first, so a just-typed magic comment is visible);
  * falls back to `texPath` on any error so compilation still runs.
  */
-export async function resolveTexRoot(texPath: string): Promise<string> {
+export async function resolveTexRootInfo(
+	texPath: string,
+): Promise<TexRootResolution> {
 	const override = explicitTexRoot(texPath);
-	if (override) return override;
+	if (override) return { rootPath: override, fallbackSelf: false };
 	try {
 		const res = await commands.resolveLatexRoot(
 			texPath,
 			vaultStore.getState().vaultPath ?? "",
 		);
-		return res.ok && res.data?.rootPath ? res.data.rootPath : texPath;
+		if (res.ok && res.data?.rootPath) {
+			return {
+				rootPath: res.data.rootPath,
+				fallbackSelf: res.data.source === "fallbackSelf",
+			};
+		}
 	} catch {
-		return texPath;
+		// Transient IPC failure: callers still need a usable path.
 	}
+	return { rootPath: texPath, fallbackSelf: false };
+}
+
+export async function resolveTexRoot(texPath: string): Promise<string> {
+	return (await resolveTexRootInfo(texPath)).rootPath;
 }
 
 /**
