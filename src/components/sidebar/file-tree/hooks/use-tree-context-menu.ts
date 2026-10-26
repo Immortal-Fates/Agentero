@@ -10,11 +10,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { presentAgentComposer } from "@/lib/agent/composer-focus";
-import { broadcastAgentAttachContext } from "@/lib/agent/context-attach";
-import { copyTextToClipboard } from "@/lib/core/clipboard";
-import { displayPath } from "@/lib/core/path";
-import { isTauri } from "@/lib/core/tauri";
+import { errorText } from "@/lib/core/error";
 import {
 	isPaperDirectory,
 	isPapersRoot,
@@ -30,8 +26,13 @@ import {
 } from "@/lib/vault";
 import { isVaultAgentRoot } from "@/lib/vault/agent-tree";
 import { normalizePathKey } from "@/lib/vault/path";
-import { openInTerminal, revealInFileManager } from "@/lib/vault/reveal";
 import { openTexPdf } from "@/lib/workspace/actions";
+import {
+	addFilePathToChat,
+	copyFilePath,
+	openFilePathInTerminal,
+	revealFilePath,
+} from "@/lib/workspace/file-path-actions";
 import { isTexPath } from "@/lib/workspace/viewer";
 import type { TreeContextMenuPortalProps } from "../tree-context-menu";
 import { pathKey, VAULT_ROOT_LABEL_KEY, vaultRootFace } from "../tree-helpers";
@@ -161,49 +162,28 @@ export function useTreeContextMenu({
 		[createDraft, renameDraft, prepareContextSelection],
 	);
 
-	const reveal = useCallback(
-		(path: string) => {
-			setMenu(null);
-			if (!canRevealPath(path)) return;
-			if (!isTauri()) {
-				setRevealError(t("fileTree.revealDesktopOnly"));
-				return;
-			}
-			setRevealError(null);
-			void revealInFileManager(path).catch(() => {
-				setRevealError(t("fileTree.revealFailed"));
-			});
-		},
-		[t],
-	);
+	const reveal = useCallback((path: string) => {
+		setMenu(null);
+		if (!canRevealPath(path)) return;
+		setRevealError(null);
+		void revealFilePath(path).catch((error) => {
+			setRevealError(errorText(error));
+		});
+	}, []);
 
-	const openTerminal = useCallback(
-		(path: string) => {
-			setMenu(null);
-			if (!canRevealPath(path)) return;
-			if (!isTauri()) {
-				setRevealError(t("fileTree.openInTerminalDesktopOnly"));
-				return;
-			}
-			setRevealError(null);
-			void openInTerminal(path).catch(() => {
-				setRevealError(t("fileTree.openInTerminalFailed"));
-			});
-		},
-		[t],
-	);
+	const openTerminal = useCallback((path: string) => {
+		setMenu(null);
+		if (!canRevealPath(path)) return;
+		setRevealError(null);
+		void openFilePathInTerminal(path).catch((error) => {
+			setRevealError(errorText(error));
+		});
+	}, []);
 
-	const copyPath = useCallback(
-		(path: string) => {
-			setMenu(null);
-			void copyTextToClipboard(displayPath(path), {
-				successMessage: t("fileTree.copiedPath"),
-				errorMessage: t("fileTree.copyPathFailed"),
-				successNotify: { duration: 2000 },
-			});
-		},
-		[t],
-	);
+	const copyPath = useCallback((path: string) => {
+		setMenu(null);
+		copyFilePath(path);
+	}, []);
 
 	// Toggle a Plaza source without closing the menu (multi-toggle friendly).
 	const togglePlazaSource = useCallback((id: string) => {
@@ -317,8 +297,7 @@ export function useTreeContextMenu({
 			!targetIsVirtual && menu.path && !menu.path.startsWith("agentero:")
 				? () => {
 						setMenu(null);
-						broadcastAgentAttachContext([menu.path]);
-						presentAgentComposer();
+						addFilePathToChat(menu.path);
 					}
 				: undefined,
 		onNewFile:
