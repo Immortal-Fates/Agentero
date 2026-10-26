@@ -76,6 +76,11 @@ export function paragraphFromCharacters(
 	heading: boolean,
 ): Paragraph {
 	const style = dominantStyle(chars);
+	// Ignore tiny local-coordinate text from embedded figures overlapping a
+	// normal page paragraph. Its untransformed font size cannot be treated as
+	// a superscript of the page's heading/body font.
+	if (style.size >= 4)
+		chars = chars.filter((c) => c.style.size >= style.size * 0.3);
 	const anchors = chars.filter(
 		(c) => c.style.size >= style.size * 0.85 && !mathFont.test(c.style.font),
 	);
@@ -392,6 +397,20 @@ export async function extractReflowDocument(
 				const chars = characters.filter(
 					(c) => !claimed.has(c.index) && centerInside(c.visualBox, box),
 				);
+				if (
+					chars.length &&
+					characters.some(
+						(c) => claimed.has(c.index) && centerInside(c.visualBox, box),
+					)
+				) {
+					// Anchor overlapping detections to the characters they actually own.
+					const owned = unionBoxes(
+						chars.filter((c) => c.text.trim()).map((c) => c.box),
+					);
+					const bottom = Math.min(box.y + box.h, owned.y + owned.h);
+					box.y = Math.max(box.y, owned.y);
+					box.h = Math.max(owned.h, bottom - box.y);
+				}
 				for (const c of chars) claimed.add(c.index);
 				return paragraphFromCharacters(
 					item.id,
@@ -407,6 +426,24 @@ export async function extractReflowDocument(
 			const remaining = characters.filter(
 				(c) => !claimed.has(c.index) && centerInside(c.visualBox, table.rect),
 			);
+			// A layout model can label a diagram containing vertical word labels as
+			// a table. Detect vertical advance from adjacent source glyphs before
+			// row clustering; otherwise each letter becomes a tiny fake cell.
+			const orderedByIndex = remaining
+				.filter((c) => c.text.trim())
+				.sort((a, b) => a.index - b.index);
+			let vertical = 0,
+				horizontal = 0;
+			for (let i = 1; i < orderedByIndex.length; i++) {
+				const a = orderedByIndex[i - 1],
+					b = orderedByIndex[i];
+				if (b.index - a.index !== 1) continue;
+				const dx = Math.abs(b.box.x - a.box.x),
+					dy = Math.abs(b.box.y - a.box.y);
+				if (dy > dx * 2 && dx < 2) vertical++;
+				else if (dx > dy * 2 && dy < 2) horizontal++;
+			}
+			if (vertical > horizontal && vertical > 5) continue;
 			const rows = groupReadingLines(remaining, (c) => ({
 				x: c.box.x,
 				y: c.box.y,
@@ -422,7 +459,7 @@ export async function extractReflowDocument(
 					if (
 						previous &&
 						c.box.x - (previous.box.x + previous.box.w) >
-							Math.max(previous.style.size, c.style.size) * 1.5
+							Math.max(previous.style.size, c.style.size) * 0.7
 					) {
 						cells.push(cell);
 						cell = [];
@@ -444,6 +481,10 @@ export async function extractReflowDocument(
 						[],
 						false,
 					);
+					// Mathematical and numeric cells are already correct in the source.
+					// Keep them intact rather than cutting superscripts into separate rows.
+					if (!/\p{L}/u.test(p.protectedText.replace(/⟪(?:F|\/?S)\d+⟫/gu, "")))
+						continue;
 					p.fixedBox = true;
 					paragraphs.push(p);
 					for (const c of cell) claimed.add(c.index);

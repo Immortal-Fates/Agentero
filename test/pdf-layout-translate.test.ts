@@ -191,7 +191,7 @@ describe("listTranslatableLayoutRegions", () => {
 		expect(list[1]?.source).toContain("Table 2");
 	});
 
-	it("skips reference entries and the References heading", () => {
+	it("includes reference entries and the References heading in full-document translation", () => {
 		const list = listTranslatableLayoutRegions([
 			region({
 				id: "ref1",
@@ -225,7 +225,7 @@ describe("listTranslatableLayoutRegions", () => {
 				text: "Introduction body.",
 			}),
 		]);
-		expect(list.map((r) => r.id)).toEqual(["body"]);
+		expect(list.map((r) => r.id)).toEqual(["body", "reftitle", "ref1", "refc"]);
 	});
 
 	it("skips aside_text side-margin regions", () => {

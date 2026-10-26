@@ -62,16 +62,22 @@ export async function writeReflowPdf(
 		for (const paragraph of page.paragraphs) {
 			if (!paragraph.fits)
 				throw new Error(`Translation does not fit: ${paragraph.id}`);
-			// Clear original formula strokes along with translated source. Original
-			// vector figures outside the source rectangle remain untouched.
-			const b = paragraph.sourceBox;
-			target.drawRectangle({
-				x: b.x,
-				y: page.height - b.y - b.h,
-				width: b.w,
-				height: b.h,
-				color: rgb(1, 1, 1),
-			});
+			// Text was removed by PDFium. Only formula strokes need covering;
+			// clearing whole paragraphs erases table rules and coloured backgrounds.
+			const originalParagraph = sourcePage?.paragraphs.find(
+				(p) => p.id === paragraph.id,
+			);
+			for (const { box: b } of originalParagraph?.formulas ?? []) {
+				target.drawRectangle({
+					x: b.x,
+					y: page.height - b.y - b.h,
+					width: b.w,
+					height: b.h,
+					color: rgb(1, 1, 1),
+				});
+			}
+		}
+		for (const paragraph of page.paragraphs) {
 			for (const unit of paragraph.units) {
 				if (unit.formula) {
 					const f = unit.formula.box;

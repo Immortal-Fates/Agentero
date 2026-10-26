@@ -236,3 +236,66 @@ pnpm exec vitest run test/pdf-reflow-real.test.ts
 但尚未达到「核心算法无差异」或「最终效果完全一致」。
 
 自动检查：2338 项测试通过、7 项按环境跳过；TypeScript、依赖分层检查通过。Biome 无错误，有 7 项既有 warning 与 1 项 info（均在本次修改之外）。
+
+
+## 全文端到端验收（2026-10-26，第三轮）
+
+本节取代前两轮“只测选定段落”的验收范围。仍不代表算法等价。
+全文输出与完整逐页差异报告存于本机 `~/Downloads/agentero-pdf-full-validation/`，PDF、截图及实验记录不进入 Git。
+
+| 项目 | Attention | ResNet |
+|---|---:|---:|
+| 全部页数 | 15 | 12 |
+| 完成翻译单元（含表格） | 245 | 350 |
+| header 分类单元 | 27 | 22 |
+| 翻译表格文字单元 | 72 | 163 |
+| 保护公式岛（含部分引用，非公式总数） | 239 | 347 |
+| 最小布局缩放 | 0.4 | 0.5 |
+
+同一 Google gtx en→zh-CN 服务通过本机 HTTP adapter 供两边调用，缓存请求/译文。
+Agentero 使用真实生产的可靠性包装、batching、token 校验、提取、排版和写出；仅 Host 网络传输被替换。
+BabelDOC 使用本文件开头固定 commit 的原生非 LLM ILTranslator 路径，开启 `--translate-table-text`、
+`--min-text-length 1`、`--no-auto-extract-glossary`，只替换翻译 adapter，不注入匹配段落、不替换其 IR。
+未验证 LLM prompt、术语、不同翻译 provider 或原生保存对话框；不能用这轮结果代表这些能力。
+
+标题「你所需要的就是注意力」「用于图像识别的深度残差学习」均已输出。
+IR 段落/表格单元 ID 与翻译结果全量相等，无失败单元；所有布局 fits；输出27页逐页检查无保护占位符泄漏。
+独立公式、数值/纯数学表格单元保留源矢量内容；图内文字不等于全部覆盖。fits 不是无碰撞或语义正确的证明。
+已渲染并查看全部27页和上游对照接触表，重点检查两篇首页、Attention 第6/10/13/14页和 ResNet 第3/4页修复结果。
+
+### 本轮迭代修复
+
+- 全文测试取消短文本/页数采样；参考文献条目与标题加入翻译。
+- 数字占位符被当作数值时使用非数字别名重试；仍破坏结构则按保护边界分段翻译，记录回退。
+  Attention `6-0`、ResNet `0-2` / `3-1` 使用该回退；去掉回退片段的孤立句首标点，修复 ResNet 第4页整句英文回显。
+- 重叠检测框按剩余字符重新锚定，移除无 IR 的重复项，修复 ResNet 第3页两级标题覆盖。
+- 极小局部坐标字形不混入页面标题，修复 Attention 第13页乱码。
+- 竖向字符占主导的误识别表格保留为图，修复 Attention 第14页图中文字被逐字重排。
+- 表格按更小的水平间距分列；纯数学单元保持原文，避免拆断上下标。
+- PDFium 删除源文字后只遮盖公式笔画；所有遮盖先于文字写出，修复整段清白擦断表格线和抹掉重叠标题。
+- ResNet 第8页图没有 caption 是允许情况，移除“所有图必有 titleBbox”的过时 smoke 断言，仍检查存在的 titleBbox 包含关系。
+
+### 未通过项 / 后续 TODO
+
+- [x] 两篇全部页的翻译、导出和 BabelDOC 对照；标题/正文/公式/表格/参考文献纳入检查。
+- [x] 全量单元与 IR 对应、页数保持、占位符完整性和框内适配检查。
+- [ ] 图内标签、旋转文字、图形状态/XObject 与曲线关联；目前多处英文图例保留。
+- [ ] 复杂表格结构：多层表头仍拥挤，小单元缩至40%/50%；部分短英文被 MT 原样返回。
+- [ ] 作者姓名/模型名保护与语义质量；当前姓名被不恰当翻译，不能当作校译稿。
+- [ ] 与 BabelDOC 等价的公式分组、段落/跨页上下文、排版扩框与缩放统计。
+- [ ] 字体子集、扫描/旋转/CropBox、原生桌面全操作及更多 provider 验收。
+
+全文复现：先运行模型 smoke 生成 `attention-after.json` / `resnet-after.json`，输入目录放同版本 PDF，启动 HTTP adapter
+（POST `{text}` 返回 `{text}`），随后：
+
+```sh
+AGENTERO_REFLOW_FIXTURES=/path/to/fixtures \
+AGENTERO_REFLOW_FONT=/path/to/fonts/SourceHanSerifCN-Regular.ttf \
+AGENTERO_REFLOW_PAGES=all AGENTERO_REFLOW_MODE=full \
+AGENTERO_REFLOW_MT_ENDPOINT=http://127.0.0.1:18744 \
+pnpm exec vitest run test/pdf-reflow-real.test.ts
+```
+
+独立保存的差异报告包含27页逐页记录、原件和输出 SHA-256、四份 PDF、实验 adapter、MT 缓存、IR/布局/状态及渲染接触表。
+本轮全文用例2项通过；全量单测2340项通过后新增标题污染回归，相关52项通过；TypeScript 通过。
+**结论：全文运行验收通过，完全等价验收不通过。** 本轮不能关闭 BabelDOC 等价目标。

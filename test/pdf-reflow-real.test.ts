@@ -4,14 +4,48 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PdfiumNative } from "@embedpdf/engines/pdfium";
 import { init } from "@embedpdf/pdfium";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	listTranslatableLayoutRegions,
 	toLayoutTranslateItems,
 } from "@/lib/pdf/layout/layout-translate";
+import { runLayoutRegionTranslate } from "@/lib/pdf/layout/layout-translate-reliable";
 import type { PdfLayoutRegion } from "@/lib/pdf/layout/types";
 import { buildReflowPdf } from "@/lib/pdf/reflow/export";
 import { extractReflowDocument } from "@/lib/pdf/reflow/extract";
+import { prepareReflowItems } from "@/lib/pdf/reflow/service";
+
+// In full acceptance mode only the Host transport is replaced by a local HTTP
+// adapter. The production batching, token validation and retries still execute.
+vi.mock("@/lib/settings", () => ({
+	loadSettings: () => ({
+		translate: {
+			provider: "googleapi",
+			sourceLang: "en",
+			targetLang: "zh-CN",
+			providerConfigs: {},
+			agentId: "",
+			modelId: "",
+		},
+	}),
+}));
+vi.mock("@/lib/translate", () => ({
+	runTranslate: async ({ text }: { text: string }) => {
+		const endpoint = process.env.AGENTERO_REFLOW_MT_ENDPOINT;
+		if (!endpoint)
+			throw new Error("Full acceptance requires AGENTERO_REFLOW_MT_ENDPOINT");
+		const response = await fetch(endpoint, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text }),
+			signal: AbortSignal.timeout(90000),
+		});
+		const result = (await response.json()) as { text?: string; error?: string };
+		if (!response.ok || !result.text)
+			throw new Error(result.error ?? "Empty MT response");
+		return result.text;
+	},
+}));
 
 const dir = process.env.AGENTERO_REFLOW_FIXTURES,
 	font = process.env.AGENTERO_REFLOW_FONT;
@@ -47,7 +81,11 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 			const regions = (
 				JSON.parse(readFileSync(join(root, `${name}-after.json`), "utf8"))
 					.raw as PdfLayoutRegion[]
-			).filter((r) => pages.includes(r.pageIndex));
+			).filter(
+				(r) =>
+					process.env.AGENTERO_REFLOW_PAGES === "all" ||
+					pages.includes(r.pageIndex),
+			);
 			const items = toLayoutTranslateItems(
 				listTranslatableLayoutRegions(regions),
 			);
@@ -71,6 +109,33 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 							),
 						) as { source: string; translated: string }[]);
 			const translations = new Map<string, string>();
+			if (mode === "full") {
+				const prepared = await prepareReflowItems(engine, doc, items, regions);
+				console.log(name, "prepared", prepared.length);
+				const result = await runLayoutRegionTranslate({
+					items: prepared,
+					onUpdate: (items) =>
+						writeFileSync(
+							join(root, `${name}-full-status.json`),
+							JSON.stringify(items),
+						),
+					concurrency: 2,
+				});
+				writeFileSync(
+					join(root, `${name}-full-status.json`),
+					JSON.stringify(result),
+				);
+				expect(
+					result
+						.filter((i) => i.status !== "done")
+						.map((i) => ({ id: i.id, error: i.error })),
+				).toEqual([]);
+				expect(result.map((i) => i.id).sort()).toEqual(
+					ir.pages.flatMap((p) => p.paragraphs.map((p) => p.id)).sort(),
+				);
+				for (const item of result)
+					translations.set(item.id, item.translated ?? "");
+			}
 			const service =
 				mode === "service"
 					? (JSON.parse(
@@ -81,6 +146,7 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 						) as Record<string, string>)
 					: {};
 			for (const p of ir.pages.flatMap((p) => p.paragraphs)) {
+				if (mode === "full") continue;
 				if (mode !== "fixed") {
 					const text = mode === "identity" ? p.protectedText : service[p.id];
 					if (text) translations.set(p.id, text);
@@ -149,6 +215,15 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 					content: output.bytes.slice().buffer,
 				})
 				.toPromise();
+			if (mode === "full") {
+				expect(exported.pages.length).toBe(doc.pages.length);
+				for (const page of exported.pages) {
+					const runs = await engine.getPageTextRuns(exported, page).toPromise();
+					expect(runs.runs.map((r) => r.text).join("")).not.toMatch(
+						/⟪|⟦|ZXQ[A-Z]+QXZ/u,
+					);
+				}
+			}
 			const text = await engine
 				.getPageTextRuns(exported, exported.pages[0])
 				.toPromise();
@@ -166,5 +241,5 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 			await engine.closeDocument(doc).toPromise();
 			await engine.destroy().toPromise();
 		}
-	}, 180000);
+	}, 1800000);
 });

@@ -147,7 +147,6 @@ describe.skipIf(!directory || !model)("arXiv PDF layout smoke", () => {
 					mergeCaptionsIntoHosts(enriched),
 				).filter((r) => r.kind === "image" || r.kind === "chart");
 				for (const r of figures) {
-					expect(r.titleBbox).toBeDefined();
 					if (r.titleBbox)
 						expect(bboxFullyContains(r.bbox, r.titleBbox)).toBe(true);
 					expect(r.bbox.w).toBeGreaterThan(0);

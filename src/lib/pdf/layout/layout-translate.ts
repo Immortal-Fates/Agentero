@@ -180,7 +180,7 @@ export function isReferenceSectionTitle(text: string): boolean {
 /**
  * Reading-order list of regions with extractable source text
  * (body, abstract, headers, figure/table captions).
- * Skips algorithm / reference / aside_text regions (and text inside them).
+ * Skips algorithm / aside_text regions; bibliography entries are included.
  */
 export function listTranslatableLayoutRegions(
 	regions: readonly PdfLayoutRegion[],
@@ -189,16 +189,10 @@ export function listTranslatableLayoutRegions(
 	const algorithms = regions.filter(
 		(r) => isAlgorithmLayoutKind(r.kind) && r.score >= minScore,
 	);
-	// reference / reference_content are stored as kind=text; use raw label.
-	const referenceBlocks = regions.filter(
-		(r) => isReferenceLayoutLabel(r.label) && r.score >= minScore,
-	);
 	const out: LayoutTranslateRegion[] = [];
 	for (const r of regions) {
 		// Never translate algorithm detections themselves.
 		if (isAlgorithmLayoutKind(r.kind)) continue;
-		// Bibliography entries from the layout model.
-		if (isReferenceLayoutLabel(r.label)) continue;
 		// Side-margin / running column text (e.g. arXiv strip when labeled aside_text).
 		if (isAsideTextLayoutLabel(r.label)) continue;
 		if (!isLayoutTranslatableKind(r.kind)) continue;
@@ -206,13 +200,10 @@ export function listTranslatableLayoutRegions(
 		if (!(r.bbox.w > 0 && r.bbox.h > 0)) continue;
 		// Pseudocode / lines inside an algorithm bbox stay in the original language.
 		if (isInsideAlgorithmRegion(r, algorithms)) continue;
-		// Text/headers nested inside a reference block (e.g. multi-line cites).
-		if (isInsideAlgorithmRegion(r, referenceBlocks)) continue;
 		const raw = layoutRegionSourceText(r);
 		const full = normalizeLayoutSourceText(raw, r.kind);
 		if (!full) continue;
 		if (isAlgorithmTitleText(full)) continue;
-		if (isReferenceSectionTitle(full)) continue;
 		out.push({
 			id: r.id,
 			pageIndex: r.pageIndex,
@@ -924,8 +915,58 @@ export async function runLayoutRegionTranslate(options: {
 			retry.missing ||
 			retry.invalid ||
 			(structural && !validReflowTranslation(structural, retry.text))
-		)
+		) {
+			if (structural) {
+				// Some MT engines interpret a numeric placeholder as a number (e.g.
+				// "factor of ⟦4⟧" becomes "4 倍"). Retry with nonnumeric opaque words.
+				const aliases = tokens.map((token, index) => ({
+					token: token.placeholder,
+					alias: `ZXQ${index.toString(26).replace(/[0-9a-p]/g, (c) => String.fromCharCode(65 + Number.parseInt(c, 26)))}QXZ`,
+				}));
+				let protectedSource = unit.source;
+				for (const { token, alias } of aliases)
+					protectedSource = protectedSource.replaceAll(token, alias);
+				let alternate = await translateText(protectedSource, pageOf(unit));
+				for (const { token, alias } of aliases)
+					alternate = alternate.replace(new RegExp(alias, "gi"), token);
+				const restoredAlternate = restoreInlineTokens(alternate, tokens);
+				if (
+					!restoredAlternate.missing &&
+					!restoredAlternate.invalid &&
+					validReflowTranslation(structural, restoredAlternate.text)
+				)
+					return restoredAlternate.text;
+				// Last resort: keep structural boundaries in source order and translate
+				// only their intervening prose. This trades sentence fluency for an
+				// intact formula/style contract, and is exposed for acceptance audits.
+				const protectedParts: string[] = [];
+				for (const part of unit.source.split(/(⟦\d+⟧)/u)) {
+					if (!part.trim() || /^⟦\d+⟧$/u.test(part) || !/\p{L}/u.test(part))
+						protectedParts.push(part);
+					else {
+						// A fragment may start with the previous reference's sentence
+						// punctuation. Keep it outside the MT request: otherwise some
+						// engines echo the entire fragment unchanged.
+						const leading =
+							part.match(/^[\s.,;:!?。；，：！？)\]]*/u)?.[0] ?? "";
+						protectedParts.push(
+							leading +
+								(await translateText(part.slice(leading.length), pageOf(unit))),
+						);
+					}
+				}
+				const segmented = restoreInlineTokens(protectedParts.join(" "), tokens);
+				if (
+					!segmented.missing &&
+					!segmented.invalid &&
+					validReflowTranslation(structural, segmented.text)
+				) {
+					unit.job.chain.members[0].reflowFallback = "protected-spans";
+					return segmented.text;
+				}
+			}
 			throw new Error(i18n.t("viewer:pdf.layoutTranslate.invalidTokens"));
+		}
 		return retry.text;
 	};
 

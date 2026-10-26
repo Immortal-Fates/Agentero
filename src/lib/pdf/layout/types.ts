@@ -114,6 +114,7 @@ export type LayoutTranslateSentence = {
 export type LayoutTranslateRegion = {
 	/** Character-level source; regenerated from the PDF, not duplicated in cache. */
 	reflow?: import("@/lib/pdf/reflow/types").Paragraph;
+	reflowFallback?: "protected-spans";
 	/** Shared page preview rendered from the same PDF bytes used for export. */
 	reflowPreview?: string;
 	reflowLayout?: import("@/lib/pdf/reflow/types").ParagraphLayout;

@@ -59,6 +59,25 @@ const fonts: ReflowFonts = {
 	cjkBold: metric,
 };
 describe("character-level PDF reflow", () => {
+	it("does not merge tiny embedded figure text into a page heading", () => {
+		const heading = chars("Attention Visualizations");
+		const embedded = chars("Input", (c) => ({
+			...c,
+			index: c.index + 100,
+			style: { ...style, size: 1 },
+		}));
+		const p = paragraphFromCharacters(
+			"heading",
+			0,
+			{ x: 10, y: 10, w: 200, h: 20 },
+			[...heading, ...embedded],
+			[],
+			true,
+		);
+		expect(p.source).toBe("Attention Visualizations");
+		expect(p.formulas).toEqual([]);
+	});
+
 	it("keeps bold mathematical operands inside function brackets", () => {
 		const p = paragraphFromCharacters(
 			"p",

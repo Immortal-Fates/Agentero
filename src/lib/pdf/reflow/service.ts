@@ -18,24 +18,35 @@ export async function prepareReflowItems(
 	const byId = new Map(
 		ir.pages.flatMap((p) => p.paragraphs.map((q) => [q.id, q] as const)),
 	);
-	const prepared = items.map((item) => {
-		const reflow = byId.get(item.id);
-		if (!reflow) return item;
-		const source = reflow.protectedText;
-		return {
-			...item,
-			source,
-			raw: reflow.source,
-			reflow,
-			...(source !== item.source
-				? {
-						status: "pending" as const,
-						translated: undefined,
-						sentences: undefined,
-					}
-				: {}),
-		};
-	});
+	const prepared: LayoutTranslateItem[] = items.flatMap(
+		(item): LayoutTranslateItem[] => {
+			const reflow = byId.get(item.id);
+			if (!reflow) return [];
+			const source = reflow.protectedText;
+			const page = doc.pages[item.pageIndex];
+			return [
+				{
+					...item,
+					source,
+					bbox: {
+						x: reflow.box.x / page.size.width,
+						y: reflow.box.y / page.size.height,
+						w: reflow.box.w / page.size.width,
+						h: reflow.box.h / page.size.height,
+					},
+					raw: reflow.source,
+					reflow,
+					...(source !== item.source
+						? {
+								status: "pending" as const,
+								translated: undefined,
+								sentences: undefined,
+							}
+						: {}),
+				},
+			];
+		},
+	);
 	for (const page of ir.pages)
 		for (const p of page.paragraphs) {
 			if (items.some((i) => i.id === p.id)) continue;
