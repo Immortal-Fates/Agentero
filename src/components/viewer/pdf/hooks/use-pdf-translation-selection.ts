@@ -143,6 +143,7 @@ async function locatePages(
 		}
 		if (!generation()) return null;
 		const rects = picks.flatMap((pick) => {
+			if (pick.glyphRects?.length) return pick.glyphRects;
 			const located = runs.length
 				? locateQuoteInBlock({
 						quote: pick.locateText,

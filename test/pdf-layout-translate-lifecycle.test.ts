@@ -226,7 +226,16 @@ function createHarness() {
 			});
 		},
 	};
+	const prepareReflow = async (items: Item[]) => items;
 	const modules: Record<string, unknown> = {
+		"./use-pdf-reflow": {
+			usePdfReflow: () => ({
+				prepare: prepareReflow,
+				reflowBusy: false,
+				reflowReady: false,
+				exportTranslatedPdf: async () => {},
+			}),
+		},
 		react,
 		"react-i18next": { useTranslation: () => ({ t: (key: string) => key }) },
 		sonner: {

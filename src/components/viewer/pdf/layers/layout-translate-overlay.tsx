@@ -1,3 +1,4 @@
+import { ReflowPageOverlay } from "./reflow-page-overlay";
 /**
  * Progressive translation overlays for layout body-text regions.
  * Full bbox stays covered (hides source PDF text); font size tracks paper
@@ -729,21 +730,28 @@ export const LayoutTranslateOverlay = memo(function LayoutTranslateOverlay({
 	onHoverLink,
 }: LayoutTranslateOverlayProps) {
 	const onPage = useMemo(() => {
-		const painted = items.filter(isLayoutTranslateItemPainted).map((item) => {
-			const paintText =
-				item.status === "running"
-					? (item.translated ?? "…")
-					: (item.translated ?? "");
-			// Size from the source box. Expansion below must not inflate a
-			// heading just because the translation borrowed extra height.
-			const paintFontSize = fontSizeForLayoutTranslateItem(
-				item,
-				pageWidthPx,
-				pageHeightPx,
-				paintText,
-			);
-			return { item, paintText, paintFontSize };
-		});
+		const painted = items
+			.filter(
+				(item) =>
+					!item.reflow &&
+					!/⟪(?:F|\/?S)\d+⟫/u.test(item.source) &&
+					isLayoutTranslateItemPainted(item),
+			)
+			.map((item) => {
+				const paintText =
+					item.status === "running"
+						? (item.translated ?? "…")
+						: (item.translated ?? "");
+				// Size from the source box. Expansion below must not inflate a
+				// heading just because the translation borrowed extra height.
+				const paintFontSize = fontSizeForLayoutTranslateItem(
+					item,
+					pageWidthPx,
+					pageHeightPx,
+					paintText,
+				);
+				return { item, paintText, paintFontSize };
+			});
 		// Same-page body reference so section titles outrank paragraphs even
 		// when the layout detector hugged the heading glyphs (tiny bbox).
 		// Tall paragraph boxes only — captions, author lines and footnotes are
@@ -784,18 +792,34 @@ export const LayoutTranslateOverlay = memo(function LayoutTranslateOverlay({
 	const tintByItem = useMemo(
 		() =>
 			sentenceHighlightTints({
-				layoutItems: onPage,
+				layoutItems: items,
 				highlightQuotes,
 				sentenceRectsByItemId,
 			}),
-		[highlightQuotes, onPage, sentenceRectsByItemId],
+		[highlightQuotes, items, sentenceRectsByItemId],
 	);
 	const linksByItem = useMemo(
 		() => claimTranslateLinks(onPage, links ?? []),
 		[links, onPage],
 	);
-	if (onPage.length === 0) return null;
+	const preview = items.find((item) => item.reflowPreview)?.reflowPreview;
+	if (preview)
+		return (
+			<ReflowPageOverlay
+				tints={tintByItem}
+				links={links}
+				glyphRuns={glyphRuns}
+				onOpenLink={onOpenLink}
+				onHoverLink={onHoverLink}
+				tone={tone}
+				items={items}
+				preview={preview}
+				width={pageWidthPx}
+				height={pageHeightPx}
+			/>
+		);
 
+	if (onPage.length === 0) return null;
 	return (
 		<>
 			{onPage.map((item) => {

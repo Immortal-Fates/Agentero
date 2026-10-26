@@ -1,3 +1,4 @@
+import { validReflowTranslation } from "@/lib/pdf/reflow/types";
 /**
  * Bulk page translation for layout body-text regions (text / abstract / header).
  * Progressive: callers apply each result as soon as it completes.
@@ -578,6 +579,9 @@ function sameLayoutTranslateBucketSlot(
 		before.id === after.id &&
 		before.status === after.status &&
 		before.translated === after.translated &&
+		before.reflow === after.reflow &&
+		before.reflowPreview === after.reflowPreview &&
+		before.reflowLayout === after.reflowLayout &&
 		sentencePaintKey(before) === sentencePaintKey(after)
 	);
 }
@@ -831,7 +835,16 @@ export async function runLayoutRegionTranslate(options: {
 	for (const chain of buildLayoutTranslateChains(items).filter(
 		chainNeedsTranslate,
 	)) {
-		const drafts = draftChainSentences(chain.members);
+		const structural = chain.members[0]?.reflow;
+		const drafts: LayoutSentenceDraft[] = structural
+			? [
+					{
+						quote: structural.source,
+						source: structural.protectedText,
+						spans: [{ memberIndex: 0, rawLength: structural.source.length }],
+					},
+				]
+			: draftChainSentences(chain.members);
 		if (drafts.length === 0) {
 			for (const member of chain.members) {
 				member.status = "error";
@@ -895,13 +908,23 @@ export async function runLayoutRegionTranslate(options: {
 		tokens: readonly MaskedToken[],
 	): Promise<string> => {
 		const restored = restoreInlineTokens(segment.trim(), tokens);
-		if (restored.missing === 0 && !restored.invalid) return restored.text;
+		const structural = unit.job.chain.members[0]?.reflow;
+		if (
+			restored.missing === 0 &&
+			!restored.invalid &&
+			(!structural || validReflowTranslation(structural, restored.text))
+		)
+			return restored.text;
 		if (signal?.aborted) return "";
 		const retry = restoreInlineTokens(
 			await translateText(unit.source, pageOf(unit)),
 			tokens,
 		);
-		if (retry.missing || retry.invalid)
+		if (
+			retry.missing ||
+			retry.invalid ||
+			(structural && !validReflowTranslation(structural, retry.text))
+		)
 			throw new Error(i18n.t("viewer:pdf.layoutTranslate.invalidTokens"));
 		return retry.text;
 	};

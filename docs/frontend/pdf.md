@@ -172,6 +172,7 @@ guard 也会取消首帧默认放大。未按实体 Ctrl 的细粒度像素事�
 | `src/lib/pdf/highlight/` | 高亮 / 批注 |
 | `src/lib/pdf/ask/` | 划词提问 |
 | `src/lib/pdf/layout/` | EmbedPDF layout-analysis：归一化 bbox、`source/layout.json` raw sidecar、`source/layout-translate.json` 全文翻译缓存、内存 UI store |
+| `src/lib/pdf/reflow/` | 字符/公式 IR、固定字体、译文排版、矢量 PDF 输出与链接迁移 |
 | `src/lib/pdf/region.ts` | 区域坐标归一化与 PDF rect 转换 |
 | `src/lib/pdf/citation-dest-map.ts` | dest-map Worker 加载与缓存；`schedulePdfDestMapsBuild` 供 citations / crossref hover hooks 空闲延迟构建（可取消、失败仅 warn） |
 | `src/lib/pdf/translate/` | 划词翻译 IO |
@@ -192,7 +193,7 @@ PDF 左侧 **Figures** 按钮 → 页内浮层（原「解析」：分析 / 叠�
 
 → **[pdf-layout-analysis.md](pdf-layout-analysis.md)**
 
-要点：先文字角色再联图；图题须整框在 figure bbox 内；图无 title 丢弃；默认置信度 30%；Paper PDF 的初步解析结果缓存到 `{paper}/source/layout.json`，后续 merge/filter 可重复计算。全文翻译先把跨栏跨页的续段拼成一条，再按句切开（拉丁 `.` `!` `?` 要空白或结尾，`。` `！` `？` 单独即可；缩写和小数不切），归一化后按阅读顺序分批请求（`buildTranslateBatches`，一个 `[[n]]` 一句，标记解析失败则逐句重译）。缓存写入 `{paper}/source/layout-translate.json`（schema 2，含句对），按 provider / 语言 / region 原文校验后复用。详见 [translate.md](translate.md)。
+要点：先文字角色再联图；图题须整框在 figure bbox 内；图无 title 丢弃；默认置信度 30%；Paper PDF 的初步解析结果缓存到 `{paper}/source/layout.json`，后续 merge/filter 可重复计算。旧 DOM 翻译路径先把跨栏跨页的续段拼成一条，再按句切开（拉丁 `.` `!` `?` 要空白或结尾，`。` `！` `？` 单独即可；缩写和小数不切），归一化后按阅读顺序分批请求（`buildTranslateBatches`，一个 `[[n]]` 一句，标记解析失败则逐句重译）。缓存写入 `{paper}/source/layout-translate.json`（schema 2，含句对），按 provider / 语言 / region 原文校验后复用。详见 [translate.md](translate.md)。
 
 **单击视觉批注：** hover 插图 / 表 / 算法 / 公式的命中框时，框上出现默认主题的中性 2px 描边（不跟随外观配色）（即将裁剪的确切 bbox）与右上角「单击进行批注」提示；单击裁剪该区域并直接保存为 note-only visual mark，同时在页右缘评论列打开就地编辑（与手动框选相同；不自动发送 Agent）。框选模式或裁剪进行中时命中框不挂载。
 
@@ -217,3 +218,5 @@ Host 下载/解析：[../backend/paper-import.md](../backend/paper-import.md)。
 - 选区几何目前按可见时间 / 指针意图加载，附近文字矩形按页码延迟；如性能记录显示仍与滚动争用 worker，再单独评估真实 scroll-idle 调度，不追加引擎补丁。
 
 - EmbedPDF 升级时继续核对 engines 原生内存 / 坐标 / refcount、tiling 旋转与 DPR、AI 按 backend 选择 ORT 入口的补丁；2.15.1 对应实现仍与 2.14.4 相同，不能仅凭升版删掉。zoom 评论列留白补丁也需核对上游是否已有等价配置。待上游修复 annotation 同 uid 在途变更被旧 commit 清 pending 的问题后，移除删除协调器。
+
+字符级全文翻译路径使用 `src/lib/pdf/reflow/`，将公式作为可移动矢量片段，基于固定字体度量重排；预览与译文/双语 PDF 导出共用输出。该路径按段落对齐，旧句链逻辑只用于无引擎上下文的回退。限制及字体下载见 [translate.md](translate.md#与-babeldoc-的差异和后续)。

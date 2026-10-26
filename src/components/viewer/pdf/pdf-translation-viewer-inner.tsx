@@ -167,6 +167,11 @@ export function PdfTranslationViewerInner({
 		toggleLayoutTranslate,
 		togglePageLayoutTranslate,
 	} = usePdfLayoutTranslate({
+		reflowContext: () => {
+			const engine = engineRef.current,
+				document = docCapRef.current?.getDocument(docId);
+			return engine && document ? { engine, document } : null;
+		},
 		docId,
 		layoutRawRegions,
 		translationPane: true,

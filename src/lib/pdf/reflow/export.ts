@@ -1,0 +1,272 @@
+import type { PdfDocumentObject, PdfEngine } from "@embedpdf/models";
+import fontkit from "@pdf-lib/fontkit";
+import {
+	PDFArray,
+	PDFDict,
+	PDFDocument,
+	PDFName,
+	type PDFPage,
+	rgb,
+	StandardFonts,
+} from "pdf-lib";
+import type { ReflowFontBytes } from "./fonts";
+import { layoutReflowDocument, type ReflowFonts } from "./layout";
+import { relocateReflowLinks } from "./links";
+import type { PageLayout, ReflowDocument } from "./types";
+
+export async function embedReflowFonts(
+	pdf: PDFDocument,
+	cjkBytes: Uint8Array | ReflowFontBytes,
+): Promise<ReflowFonts> {
+	pdf.registerFontkit(fontkit);
+	const bundle = cjkBytes instanceof Uint8Array ? null : cjkBytes;
+	const cjkData = cjkBytes instanceof Uint8Array ? cjkBytes : cjkBytes.cjk;
+	const [regular, bold, italic, boldItalic, cjk, cjkBold] = await Promise.all([
+		pdf.embedFont(bundle?.regular ?? StandardFonts.TimesRoman),
+		pdf.embedFont(bundle?.bold ?? StandardFonts.TimesRomanBold),
+		pdf.embedFont(bundle?.italic ?? StandardFonts.TimesRomanItalic),
+		pdf.embedFont(bundle?.boldItalic ?? StandardFonts.TimesRomanBoldItalic),
+		// fontkit 1.1.1 subsetting drops composite Source Han outlines. Full
+		// embedding preserves all glyphs; share these font objects document-wide.
+		pdf.embedFont(cjkData, { subset: false }),
+		bundle
+			? pdf.embedFont(bundle.cjkBold, { subset: false })
+			: pdf.embedFont(cjkData, { subset: false }),
+	]);
+	return { regular, bold, italic, boldItalic, cjk, cjkBold };
+}
+export type ReflowOutput = { bytes: Uint8Array; pages: PageLayout[] };
+/** Vector formulas are clipped from an untouched original, not reconstructed text. */
+export async function writeReflowPdf(
+	original: Uint8Array,
+	redacted: Uint8Array,
+	ir: ReflowDocument,
+	translations: ReadonlyMap<string, string>,
+	cjkFont: Uint8Array | ReflowFontBytes,
+	dual = false,
+	formulaPdfs: ReadonlyMap<string, Uint8Array> = new Map(),
+): Promise<ReflowOutput> {
+	const pdf = await PDFDocument.load(redacted);
+	const source = await PDFDocument.load(original);
+	const fonts = await embedReflowFonts(pdf, cjkFont);
+	const pages = layoutReflowDocument(ir, translations, fonts);
+	for (const page of pages) {
+		const target = pdf.getPage(page.index);
+		if (target.getRotation().angle !== 0)
+			throw new Error("Rotated pages require normalized page coordinates");
+		const sourcePage = ir.pages.find((p) => p.index === page.index);
+		if (sourcePage) relocateReflowLinks(target, sourcePage, page);
+		const crop = target.getCropBox();
+		if (crop.x !== 0 || crop.y !== 0)
+			throw new Error("Offset crop boxes require normalized page coordinates");
+		for (const paragraph of page.paragraphs) {
+			if (!paragraph.fits)
+				throw new Error(`Translation does not fit: ${paragraph.id}`);
+			// Clear original formula strokes along with translated source. Original
+			// vector figures outside the source rectangle remain untouched.
+			const b = paragraph.sourceBox;
+			target.drawRectangle({
+				x: b.x,
+				y: page.height - b.y - b.h,
+				width: b.w,
+				height: b.h,
+				color: rgb(1, 1, 1),
+			});
+			for (const unit of paragraph.units) {
+				if (unit.formula) {
+					const f = unit.formula.box;
+					if (f.w <= 0 || f.h <= 0) continue;
+					const fragment = formulaPdfs.get(
+						`${paragraph.id}:${unit.formula.id}`,
+					);
+					if (!fragment)
+						throw new Error(`Missing formula fragment: ${paragraph.id}`);
+					const fragmentDoc = await PDFDocument.load(fragment);
+					const snippet = await pdf.embedPage(fragmentDoc.getPage(0), {
+						left: f.x,
+						bottom: page.height - f.y - f.h,
+						right: f.x + f.w,
+						top: page.height - f.y,
+					});
+					target.drawPage(snippet, {
+						x: unit.x,
+						y: page.height - unit.y,
+						width: unit.width,
+						height: unit.height,
+					});
+				} else {
+					target.drawText(unit.text, {
+						x: unit.x,
+						y: page.height - unit.y,
+						size: unit.fontSize,
+						font: fonts[unit.font],
+						color: rgb(
+							unit.color.r / 255,
+							unit.color.g / 255,
+							unit.color.b / 255,
+						),
+					});
+				}
+			}
+		}
+	}
+	if (dual) {
+		const originals = await copyOriginalPages(pdf, source);
+		originals.forEach((page, i) => {
+			pdf.insertPage(i * 2, page);
+		});
+	}
+	return { bytes: await pdf.save(), pages };
+}
+/** Work on an isolated PDFium document: never redact the open source viewer. */
+export async function buildReflowPdf(
+	engine: PdfEngine,
+	doc: PdfDocumentObject,
+	ir: ReflowDocument,
+	translations: ReadonlyMap<string, string>,
+	cjkFont: Uint8Array | ReflowFontBytes,
+	signal?: AbortSignal,
+): Promise<ReflowOutput> {
+	signal?.throwIfAborted();
+	const original = new Uint8Array(await engine.saveAsCopy(doc).toPromise());
+	const formulaPdfs = new Map<string, Uint8Array>();
+	for (const page of ir.pages) {
+		const formulas = page.paragraphs
+			.filter((p) => translations.has(p.id))
+			.flatMap((p) =>
+				p.formulas.map((f) => ({ key: `${p.id}:${f.id}`, formula: f })),
+			);
+		if (!formulas.length) continue;
+		const singlePage = await engine.extractPages(doc, [page.index]).toPromise();
+		for (const { key, formula } of formulas) {
+			signal?.throwIfAborted();
+			const fragment = await engine
+				.openDocumentBuffer({
+					id: `formula-${crypto.randomUUID()}`,
+					content: singlePage.slice(0),
+				})
+				.toPromise();
+			try {
+				const b = formula.box,
+					pad = 0.75;
+				const left = Math.max(0, b.x - pad),
+					top = Math.max(0, b.y - pad),
+					right = Math.min(page.width, b.x + b.w + pad),
+					bottom = Math.min(page.height, b.y + b.h + pad);
+				const outside = [
+					{ x: 0, y: 0, w: page.width, h: top },
+					{ x: 0, y: bottom, w: page.width, h: page.height - bottom },
+					{ x: 0, y: top, w: left, h: bottom - top },
+					{ x: right, y: top, w: page.width - right, h: bottom - top },
+				]
+					.filter((b) => b.w > 0 && b.h > 0)
+					.map((b) => ({
+						origin: { x: b.x, y: b.y },
+						size: { width: b.w, height: b.h },
+					}));
+				await engine
+					.redactTextInRects(fragment, fragment.pages[0], outside, {
+						recurseForms: true,
+						drawBlackBoxes: false,
+					})
+					.toPromise();
+				formulaPdfs.set(
+					key,
+					new Uint8Array(await engine.saveAsCopy(fragment).toPromise()),
+				);
+			} finally {
+				await engine.closeDocument(fragment).toPromise();
+			}
+		}
+	}
+	const clone = await engine
+		.openDocumentBuffer({
+			id: `reflow-${crypto.randomUUID()}`,
+			content: original.slice().buffer,
+		})
+		.toPromise();
+	try {
+		for (const page of ir.pages) {
+			signal?.throwIfAborted();
+			const rects = page.paragraphs
+				.filter((p) => translations.has(p.id))
+				.map((p) => ({
+					origin: { x: p.box.x, y: p.box.y },
+					size: { width: p.box.w, height: p.box.h },
+				}));
+			if (rects.length)
+				await engine
+					.redactTextInRects(clone, clone.pages[page.index], rects, {
+						recurseForms: true,
+						drawBlackBoxes: false,
+					})
+					.toPromise();
+		}
+		const redacted = new Uint8Array(await engine.saveAsCopy(clone).toPromise());
+		signal?.throwIfAborted();
+		return await writeReflowPdf(
+			original,
+			redacted,
+			ir,
+			translations,
+			cjkFont,
+			false,
+			formulaPdfs,
+		);
+	} finally {
+		await engine.closeDocument(clone).toPromise();
+	}
+}
+
+/** Interleave original/translated pages without rasterizing either document. */
+export async function interleaveReflowPdf(
+	original: Uint8Array,
+	translated: Uint8Array,
+): Promise<Uint8Array> {
+	const pdf = await PDFDocument.load(translated),
+		source = await PDFDocument.load(original);
+	if (pdf.getPageCount() !== source.getPageCount())
+		throw new Error("Bilingual PDF page counts differ");
+	const pages = await copyOriginalPages(pdf, source);
+	pages.forEach((page, index) => {
+		pdf.insertPage(index * 2, page);
+	});
+	return pdf.save();
+}
+
+/** copyPages can leave GoTo destinations pointing at detached copies of pages. */
+async function copyOriginalPages(
+	pdf: PDFDocument,
+	source: PDFDocument,
+): Promise<PDFPage[]> {
+	const pages = await pdf.copyPages(source, source.getPageIndices());
+	const originals = source.getPages();
+	const pageIndex = new Map(
+		originals.map((page, i) => [page.ref.toString(), i]),
+	);
+	const destination = (annotation: PDFDict) => {
+		const action = annotation.lookupMaybe(PDFName.of("A"), PDFDict);
+		return (
+			annotation.get(PDFName.of("Dest")) ??
+			(action?.get(PDFName.of("S"))?.toString() === "/GoTo"
+				? action.get(PDFName.of("D"))
+				: undefined)
+		);
+	};
+	pages.forEach((page, index) => {
+		const annotations = page.node.Annots(),
+			originalAnnotations = originals[index].node.Annots();
+		if (!annotations || !originalAnnotations) return;
+		for (let i = 0; i < annotations.size(); i++) {
+			const oldDest = destination(originalAnnotations.lookup(i, PDFDict));
+			const newDest = destination(annotations.lookup(i, PDFDict));
+			const oldArray = oldDest ? source.context.lookup(oldDest) : undefined;
+			const newArray = newDest ? pdf.context.lookup(newDest) : undefined;
+			if (!(oldArray instanceof PDFArray) || !(newArray instanceof PDFArray))
+				continue;
+			const target = pageIndex.get(oldArray.get(0).toString());
+			if (target !== undefined) newArray.set(0, pages[target].ref);
+		}
+	});
+	return pages;
+}

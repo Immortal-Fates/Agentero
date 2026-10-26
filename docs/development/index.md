@@ -31,7 +31,7 @@
 | [arxiv-source-lifecycle-audit.md](arxiv-source-lifecycle-audit.md) | arXiv 源码与正文生命周期审计（2026-10-24）：各导入入口、TeX / OCR 路由、补资源与在途竞态、正文消费、版本一致性；含隔离复现与修复对应关系；源码补全、竞态和聊天读取已修复 |
 | [zhihu.md](zhihu.md) | 知乎开放平台集成：统一 CLI 后端（探测/一键安装/Keychain 凭证）+ 知乎虚拟 Agent（builtin ACP 适配 + 直答大脑）+ 广场知乎面板 + 论文找讨论 / 划词插引用。设计稿，实施未开始 |
 | [A2A.md](A2A.md) | 本机桌面与远端 headless 之间的薄 A2A 任务层：Agent Card + Task，把算力和数据留在服务器。设计草稿，实施未开始 |
-| [pdf-babeldoc-parity.md](pdf-babeldoc-parity.md) | BabelDOC 固定版本逐阶段算法对照；源样式、完整性与句子锚点修复；字形/公式 IR、重排和 PDF 导出仍未实现 |
+| [pdf-babeldoc-parity.md](pdf-babeldoc-parity.md) | BabelDOC 固定版本算法对照；字符级 IR、公式保护、重排与 PDF 导出已接通；真实论文验证与未关闭差异/后续任务 |
 | [translate-sentence-anchor.md](translate-sentence-anchor.md) | 全文译文划选按句锚回英文。**已落地**（见 [../frontend/translate.md](../frontend/translate.md)、[../frontend/wiki.md](../frontend/wiki.md)），保留为设计记录。侧栏译文面板不给英文高亮加淡底 |
 
 macOS 签名与公证（已实现流程说明）在 [`../test/macos-signing.md`](../test/macos-signing.md)。

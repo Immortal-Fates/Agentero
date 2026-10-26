@@ -34,6 +34,7 @@ function placeholderFor(index: number): string {
 }
 
 const MASK_PATTERNS: RegExp[] = [
+	/⟪(?:F|\/?S)\d+⟫/gu,
 	// Display / inline TeX math (present when the source came from LaTeX).
 	/\$\$[^$]{1,400}\$\$/g,
 	/\$[^$\n]{1,200}\$/g,
