@@ -5,6 +5,7 @@
 
 import { lazy, Suspense, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useStore } from "zustand";
 import {
 	useLibraryStore,
 	useSettings,
@@ -16,6 +17,7 @@ import { cn } from "@/lib/core/utils";
 import { openSettingsWindow } from "@/lib/shell/settings-window";
 import { setRightSidebarTab } from "@/lib/shell/ui-store";
 import { openCitation } from "@/lib/workspace/actions";
+import { writingStore } from "@/lib/writing/store";
 
 // The Agent panel is lazy-loaded: it isn't mounted until the agent sidebar is
 // opened, so its (large) bundle stays out of the initial chunk.
@@ -45,13 +47,23 @@ export function RightSidebar() {
 	const vaultPaperPaths = useVaultStore((s) => s.vaultPaperPaths);
 	const paperMetaByRelPath = useLibraryStore((s) => s.paperMetaByRelPath);
 	const paperTreeLabelMode = useSettings((s) => s.paperTreeLabelMode);
-	const selectedPath = useWorkspaceStore(
+	const workspacePath = useWorkspaceStore(
 		(s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.path ?? null,
 	);
-	const selectedPaperTitle = useWorkspaceStore(
+	const workspaceTitle = useWorkspaceStore(
 		(s) =>
 			s.tabs.find((tab) => tab.id === s.activeTabId)?.paperMeta?.title ?? null,
 	);
+	const writingActive = useStore(
+		writingStore,
+		(state) => state.surface === "writing" && !state.showTrash,
+	);
+	const writingFile = useStore(
+		writingStore,
+		(state) => state.activeFile ?? state.activeRoot,
+	);
+	const selectedPath = writingActive ? writingFile : workspacePath;
+	const selectedPaperTitle = writingActive ? null : workspaceTitle;
 
 	// Annotations tab was removed; migrate any persisted "annotations" state to
 	// "agent" so the right rail does not open empty.

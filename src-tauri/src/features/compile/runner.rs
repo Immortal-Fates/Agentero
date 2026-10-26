@@ -1,6 +1,8 @@
+#[cfg(not(windows))]
+use super::forward_lines;
 use super::{
     diagnostics::{parse_diagnostics, read_fls},
-    forward_lines, latexmk_engine_flag, line_milestone, resolve_engine,
+    latexmk_engine_flag, line_milestone, resolve_engine,
     tools::prepare_command,
     types::{
         artifacts, compiler_kind, expand, is_latexmk, tool_directory, tool_option, CompilerKind,
@@ -15,6 +17,9 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
+
+#[cfg(windows)]
+use std::io::{Read, Seek, SeekFrom};
 use tauri::Emitter;
 
 fn environment_value<'a>(environment: &'a BTreeMap<String, String>, name: &str) -> Option<&'a str> {
@@ -217,6 +222,138 @@ fn tool_arguments(
     extra
 }
 
+/// One captured stream. Bytes stay in `carry` until a newline arrives.
+#[cfg(windows)]
+struct LogCursor {
+    pos: u64,
+    carry: String,
+}
+
+#[cfg(windows)]
+impl LogCursor {
+    fn new() -> Self {
+        Self {
+            pos: 0,
+            carry: String::new(),
+        }
+    }
+
+    fn pull(&mut self, path: &Path, flush: bool) -> Vec<String> {
+        let mut file = match std::fs::OpenOptions::new().read(true).open(path) {
+            Ok(file) => file,
+            Err(_) => return Vec::new(),
+        };
+        let end = file.seek(SeekFrom::End(0)).unwrap_or(self.pos);
+        if end < self.pos {
+            self.pos = 0;
+        }
+        if end > self.pos && file.seek(SeekFrom::Start(self.pos)).is_ok() {
+            let mut buf = vec![0_u8; (end - self.pos) as usize];
+            if let Ok(read) = file.read(&mut buf) {
+                if read > 0 {
+                    self.pos += read as u64;
+                    self.carry.push_str(&String::from_utf8_lossy(&buf[..read]));
+                }
+            }
+        }
+        let mut lines = Vec::new();
+        while let Some(index) = self.carry.find('\n') {
+            let mut line: String = self.carry.drain(..=index).collect();
+            line.pop();
+            if line.ends_with('\r') {
+                line.pop();
+            }
+            lines.push(line);
+        }
+        if flush && !self.carry.is_empty() {
+            lines.push(std::mem::take(&mut self.carry));
+        }
+        lines
+    }
+}
+
+/// stdout/stderr files for one tool. Dropped after the process exits.
+#[cfg(windows)]
+struct CaptureLogs {
+    stdout_path: PathBuf,
+    stderr_path: PathBuf,
+}
+
+#[cfg(windows)]
+impl CaptureLogs {
+    fn create(index: usize) -> std::io::Result<(Self, std::fs::File, std::fs::File)> {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        let stem = format!("agentero-tex-{}-{index}-{nonce}", std::process::id());
+        let dir = std::env::temp_dir();
+        let stdout_path = dir.join(format!("{stem}.out"));
+        let stderr_path = dir.join(format!("{stem}.err"));
+        let stdout = std::fs::File::create(&stdout_path)?;
+        let stderr = match std::fs::File::create(&stderr_path) {
+            Ok(file) => file,
+            Err(error) => {
+                let _ = std::fs::remove_file(&stdout_path);
+                return Err(error);
+            }
+        };
+        Ok((
+            Self {
+                stdout_path,
+                stderr_path,
+            },
+            stdout,
+            stderr,
+        ))
+    }
+}
+
+#[cfg(windows)]
+impl Drop for CaptureLogs {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.stdout_path);
+        let _ = std::fs::remove_file(&self.stderr_path);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn note_compile_line(
+    line: &str,
+    logfile: &mut std::fs::File,
+    output: &mut String,
+    tail: &mut std::collections::VecDeque<String>,
+    app: &tauri::AppHandle,
+    job_id: &str,
+    root_path: &str,
+    progress: &mut CompileProgress,
+    index: usize,
+    total: usize,
+    center: &JobCenter,
+) {
+    let _ = writeln!(logfile, "{line}");
+    output.push_str(line);
+    output.push('\n');
+    if tail.len() == ERROR_TAIL_LINES {
+        tail.pop_front();
+    }
+    tail.push_back(line.to_string());
+    let _ = app.emit(
+        "compile:log",
+        serde_json::json!({"jobId": job_id, "rootPath": root_path, "line": line}),
+    );
+    if let Some((value, phase)) = line_milestone(line)
+        .and_then(|(value, phase)| progress.advance((index as f32 + value) / total as f32, phase))
+    {
+        if let Some(snapshot) = center
+            .job_report(job_id, Some(value), Some(phase), None, None)
+            .await
+        {
+            emit_job_changed(app, snapshot);
+        }
+    }
+}
+
 async fn wait_or_cancel(
     child: &mut tokio::process::Child,
     token: &tokio_util::sync::CancellationToken,
@@ -362,9 +499,26 @@ pub(super) async fn run_latexmk(
         command
             .args(&args)
             .current_dir(tool_dir)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdin(Stdio::null());
+        // pdfTeX's fflush returns EINVAL when stdout is a pipe on Windows
+        // (no console, and latexmk switches the console code page). A file
+        // flushes. The live log is tailed from that file.
+        #[cfg(windows)]
+        let (captured, stdout_file, stderr_file) = match CaptureLogs::create(index) {
+            Ok(value) => value,
+            Err(error) => {
+                outcome = RunOutcome::Failed(Some(format!(
+                    "cannot capture {command_name} output: {error}"
+                )));
+                break;
+            }
+        };
+        #[cfg(windows)]
+        command
+            .stdout(Stdio::from(stdout_file))
+            .stderr(Stdio::from(stderr_file));
+        #[cfg(not(windows))]
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
         command.envs(environment);
         let description = format!(
             "[{} / {total}] {command_name} {}",
@@ -380,27 +534,83 @@ pub(super) async fn run_latexmk(
                 break;
             }
         };
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        if let Some(stdout) = child.stdout.take() {
-            tokio::spawn(forward_lines(stdout, tx.clone()));
-        }
-        if let Some(stderr) = child.stderr.take() {
-            tokio::spawn(forward_lines(stderr, tx.clone()));
-        }
-        drop(tx);
         let mut cancelled = false;
-        loop {
-            tokio::select! {
-                biased;
-                _=started.cancel_token.cancelled()=>{cancelled=true;break;}
-                line=rx.recv()=>{
-                    let Some(line)=line else{break};
-                    let _ = writeln!(logfile,"{line}");
-                    output.push_str(&line);output.push('\n');
-                    if tail.len()==ERROR_TAIL_LINES {tail.pop_front();} tail.push_back(line.clone());
-                    let _=app.emit("compile:log",serde_json::json!({"jobId":started.snapshot.id,"rootPath":params.tex_path,"line":line}));
-                    if let Some((value,phase))=line_milestone(&line).and_then(|(value,phase)|progress.advance((index as f32+value)/total as f32,phase)) {
-                        if let Some(snapshot)=center.job_report(&started.snapshot.id,Some(value),Some(phase),None,None).await {emit_job_changed(app,snapshot);}
+        #[cfg(not(windows))]
+        {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            if let Some(stdout) = child.stdout.take() {
+                tokio::spawn(forward_lines(stdout, tx.clone()));
+            }
+            if let Some(stderr) = child.stderr.take() {
+                tokio::spawn(forward_lines(stderr, tx.clone()));
+            }
+            drop(tx);
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = started.cancel_token.cancelled() => {
+                        cancelled = true;
+                        break;
+                    }
+                    line = rx.recv() => {
+                        let Some(line) = line else { break };
+                        note_compile_line(
+                            &line,
+                            &mut logfile,
+                            &mut output,
+                            &mut tail,
+                            app,
+                            &started.snapshot.id,
+                            &params.tex_path,
+                            &mut progress,
+                            index,
+                            total,
+                            center,
+                        )
+                        .await;
+                    }
+                }
+            }
+        }
+        #[cfg(windows)]
+        {
+            let mut stdout_cursor = LogCursor::new();
+            let mut stderr_cursor = LogCursor::new();
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = started.cancel_token.cancelled() => {
+                        cancelled = true;
+                        break;
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                        let mut batch = Vec::new();
+                        batch.extend(stdout_cursor.pull(&captured.stdout_path, false));
+                        batch.extend(stderr_cursor.pull(&captured.stderr_path, false));
+                        let finished = matches!(child.try_wait(), Ok(Some(_)));
+                        if finished {
+                            batch.extend(stdout_cursor.pull(&captured.stdout_path, true));
+                            batch.extend(stderr_cursor.pull(&captured.stderr_path, true));
+                        }
+                        for line in batch {
+                            note_compile_line(
+                                &line,
+                                &mut logfile,
+                                &mut output,
+                                &mut tail,
+                                app,
+                                &started.snapshot.id,
+                                &params.tex_path,
+                                &mut progress,
+                                index,
+                                total,
+                                center,
+                            )
+                            .await;
+                        }
+                        if finished {
+                            break;
+                        }
                     }
                 }
             }

@@ -19,6 +19,7 @@ export function usePdfSyncTex(options: {
 	tabId: string;
 	pdfPath?: string | null;
 	rootPath?: string | null;
+	scope?: "writing";
 	isActive: boolean;
 	hostRef: RefObject<HTMLDivElement | null>;
 	navigate(region: PdfNavigationRegion): void;
@@ -38,6 +39,7 @@ export function usePdfSyncTex(options: {
 			unregister = registerTexPdfViewer(pdfPath, {
 				tabId: latest.current.tabId,
 				documentId: docId,
+				scope: latest.current.scope,
 				isActive: () => latest.current.isActive,
 				navigate: (location) => {
 					const { navigate, docCapRef } = latest.current;

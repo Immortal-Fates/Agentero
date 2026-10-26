@@ -26,6 +26,7 @@ import { toVaultRelative } from "@/lib/wiki";
 import {
 	isVirtualTreePath,
 	pathKey,
+	vaultRootFace,
 	visibleTreeChildren,
 } from "../tree-helpers";
 import type { FlatRow, TreeCreateDraft } from "../types";
@@ -106,7 +107,7 @@ export function useTreeIndex({
 			paperTreeLabelMode,
 		);
 		return finishAgentTreeDisplay(
-			sorted,
+			sorted.filter((node) => vaultRootFace(vaultPath, node.path) !== "thesis"),
 			vaultPath,
 			skillLabels ?? EMPTY_SKILL_LABELS,
 		);

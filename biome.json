@@ -14,6 +14,8 @@
 			"!dist",
 			"!tmp",
 			"!target",
+			"!agentero",
+			"!src/lib/writing/templates/vendor",
 			"!src/lib/core/bindings.ts"
 		]
 	},

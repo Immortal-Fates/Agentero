@@ -4,7 +4,14 @@
  * tree updates no longer re-render the whole App.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { registerFileTreeHandle } from "@/components/shell/file-tree-registry";
 import {
@@ -12,16 +19,18 @@ import {
 	type FileTreeHandle,
 	VaultSidebarHeader,
 } from "@/components/sidebar/file-tree";
-import { LatexPanel } from "@/components/sidebar/latex-panel";
 import { PaperInfoPanel } from "@/components/sidebar/paper-info-panel";
-import { useTexProject } from "@/components/sidebar/use-tex-project";
+import { WorkspaceModeSwitch } from "@/components/writing/workspace-mode-switch";
+import { WritingRail } from "@/components/writing/writing-rail";
 import {
 	useLibraryStore,
 	useSettings,
 	useUiStore,
 	useVaultStore,
 	useWorkspaceStore,
+	useWritingStore,
 } from "@/hooks/use-app-stores";
+import { cn } from "@/lib/core/utils";
 import type { PaperTag } from "@/lib/paper";
 import {
 	isPaperDirectory,
@@ -80,6 +89,7 @@ import {
 	selectLibrary,
 	selectTrash,
 } from "@/lib/workspace/actions";
+import { bindWritingVault, setWritingSurface } from "@/lib/writing/store";
 
 // Stable callbacks so the memoized header / tree bail out on unrelated renders.
 const onLookupSubmit = (texts: string[]) => lookupSubmit(texts);
@@ -147,13 +157,10 @@ export function VaultSidebar() {
 		(s) => s.tabs.find((tab) => tab.id === s.activeTabId) ?? null,
 	);
 	const paperMeta = activeTab?.paperMeta ?? null;
-	// Any file inside a TeX project (the PDF, a chapter, a figure) keeps
-	// the LaTeX panel. Library hover does not override it.
-	const texProjectPath = useTexProject(
-		vaultPath,
-		activeTab?.path ?? null,
-		activeTab?.texRoot,
-	);
+	const writingSurface = useWritingStore((s) => s.surface);
+	useLayoutEffect(() => {
+		bindWritingVault(vaultPath);
+	}, [vaultPath]);
 
 	// While a paper / note tab hydrates, its own `paperMeta` is still null.
 	// Resolve the owning paper from the tree/path so Paper Info does not
@@ -271,66 +278,76 @@ export function VaultSidebar() {
 					onSyncZotero={onSyncZotero}
 				/>
 			</div>
-			<div className="flex min-h-0 flex-1 flex-col pl-1">
-				<FileTree
-					ref={fileTreeRef}
-					nodes={tree}
-					loading={treeLoading}
-					selectedPath={treeSelectedPath}
-					vaultPath={vaultPath}
-					createDraft={createDraft}
-					onConfirmCreate={onConfirmCreate}
-					onCancelCreate={cancelCreate}
-					renameDraft={renameDraft}
-					onStartRename={startRenamePath}
-					onConfirmRename={onConfirmRename}
-					onCancelRename={onCancelRename}
-					onDeletePath={onDeletePath}
-					onDeletePaths={onDeletePaths}
-					onMoveTo={onMoveTo}
-					onDropMove={onDropMove}
-					onCutPaths={cutSelectedPaths}
-					onPasteInto={onPasteInto}
-					onSelectionChange={setTreeSelectionCount}
-					cutPaths={cutPaths}
-					onDropLocalPdfs={dropLocalPdfs}
-					onSelectFile={selectFileNode}
-					onSelectLibrary={selectLibrary}
-					onSelectTrash={selectTrash}
-					onSelectPlazaSource={openPlazaSource}
-					zoteroCollectionPapers={papers}
-					onOpenZoteroCollectionPaper={onOpenZoteroCollectionPaper}
-					onEmptyTrash={onEmptyTrash}
-					onExportLibrary={onExportLibrary}
-					libraryExportBusy={ioBusy === "export"}
-					onDiscoverCiting={onDiscoverCiting}
-					citingScanBusy={ioBusy !== null}
-					onStartCreate={startCreate}
-					onDownloadPaperAssets={downloadPaperAssetsAction}
-					onDownloadAllMissingAssets={downloadAllMissingAssets}
-					paperMetaByRelPath={paperMetaByRelPath}
-					paperTreeLabelMode={paperTreeLabelMode}
-					paperTreeSortMode={paperTreeSortMode}
-					onReadPaper={readPaper}
-					onOpenPaperNotes={openPaperNotes}
-					onEditPaperMeta={
-						vaultPath && !isRemoteVaultHandle(vaultPath)
-							? editPaperMetaFromTree
-							: undefined
-					}
-					onLoadDirChildren={loadDirChildren}
-				/>
+			<div className="flex min-h-0 flex-1 flex-col">
+				<div className="shrink-0 px-2 py-1.5">
+					<WorkspaceModeSwitch
+						value={writingSurface}
+						onChange={setWritingSurface}
+					/>
+				</div>
+				<div
+					className={cn(
+						"flex min-h-0 flex-1 flex-col pl-1",
+						writingSurface === "writing" && "hidden",
+					)}
+				>
+					<FileTree
+						ref={fileTreeRef}
+						nodes={tree}
+						loading={treeLoading}
+						selectedPath={treeSelectedPath}
+						vaultPath={vaultPath}
+						createDraft={createDraft}
+						onConfirmCreate={onConfirmCreate}
+						onCancelCreate={cancelCreate}
+						renameDraft={renameDraft}
+						onStartRename={startRenamePath}
+						onConfirmRename={onConfirmRename}
+						onCancelRename={onCancelRename}
+						onDeletePath={onDeletePath}
+						onDeletePaths={onDeletePaths}
+						onMoveTo={onMoveTo}
+						onDropMove={onDropMove}
+						onCutPaths={cutSelectedPaths}
+						onPasteInto={onPasteInto}
+						onSelectionChange={setTreeSelectionCount}
+						cutPaths={cutPaths}
+						onDropLocalPdfs={dropLocalPdfs}
+						onSelectFile={selectFileNode}
+						onSelectLibrary={selectLibrary}
+						onSelectTrash={selectTrash}
+						onSelectPlazaSource={openPlazaSource}
+						zoteroCollectionPapers={papers}
+						onOpenZoteroCollectionPaper={onOpenZoteroCollectionPaper}
+						onEmptyTrash={onEmptyTrash}
+						onExportLibrary={onExportLibrary}
+						libraryExportBusy={ioBusy === "export"}
+						onDiscoverCiting={onDiscoverCiting}
+						citingScanBusy={ioBusy !== null}
+						onStartCreate={startCreate}
+						onDownloadPaperAssets={downloadPaperAssetsAction}
+						onDownloadAllMissingAssets={downloadAllMissingAssets}
+						paperMetaByRelPath={paperMetaByRelPath}
+						paperTreeLabelMode={paperTreeLabelMode}
+						paperTreeSortMode={paperTreeSortMode}
+						onReadPaper={readPaper}
+						onOpenPaperNotes={openPaperNotes}
+						onEditPaperMeta={
+							vaultPath && !isRemoteVaultHandle(vaultPath)
+								? editPaperMetaFromTree
+								: undefined
+						}
+						onLoadDirChildren={loadDirChildren}
+					/>
+				</div>
+				{writingSurface === "writing" ? <WritingRail /> : null}
 			</div>
-			{/* Paper info is a resizable, unboxed section below the file tree.
-			    A TeX project uses the same slot for compile + outline. */}
-			{texProjectPath ? (
-				<LatexPanel texPath={texProjectPath} />
-			) : displayedPaperMeta ? (
+			{writingSurface === "writing" || !displayedPaperMeta ? null : (
 				<PaperInfoPanel
 					meta={displayedPaperMeta}
 					onTagsChange={onPaperTagsChange}
 				/>
-			) : null}
+			)}
 		</>
 	);
 }

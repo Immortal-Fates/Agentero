@@ -18,13 +18,20 @@ import { tabIdForPath } from "@/lib/workspace/tabs";
 type TexPdfPeer = {
 	tabId?: string;
 	documentId?: string;
+	/** Writing preview, so a jump does not land on a hidden reading tab. */
+	scope?: "writing";
 	navigate(location: SyncTexLocation): void;
 	isActive(): boolean;
 };
 const viewers = new Map<string, Set<TexPdfPeer>>();
 const pending = new Map<
 	string,
-	{ location: SyncTexLocation; documentId?: string; tabId?: string }
+	{
+		location: SyncTexLocation;
+		documentId?: string;
+		tabId?: string;
+		scope?: "writing";
+	}
 >();
 let forwardRequest = 0;
 
@@ -40,6 +47,7 @@ export function registerTexPdfViewer(
 	const target = pending.get(key);
 	if (
 		target &&
+		(!target.scope || target.scope === peer.scope) &&
 		(!target.documentId || target.documentId === peer.documentId) &&
 		(!target.tabId || target.tabId === peer.tabId)
 	) {
@@ -58,17 +66,19 @@ function deliver(
 	queue: boolean,
 	documentId?: string,
 	tabId?: string,
+	scope?: "writing",
 ): void {
 	const key = normalizePath(pdfPath);
 	const peers = [...(viewers.get(key) ?? [])].filter(
 		(peer) =>
+			(!scope || peer.scope === scope) &&
 			(!documentId || peer.documentId === documentId) &&
 			(!tabId || peer.tabId === tabId),
 	);
 	const peer = peers.find((entry) => entry.isActive()) ?? peers.at(-1);
 	if (peer) peer.navigate(location);
 	else if (queue) {
-		pending.set(key, { location, documentId, tabId });
+		pending.set(key, { location, documentId, tabId, scope });
 		if (pending.size > 32)
 			pending.delete(pending.keys().next().value as string);
 	}
@@ -78,9 +88,12 @@ export async function syncTexToPdf(
 	sourcePath: string,
 	line: number,
 	column = 1,
-	options?: { activate?: boolean },
+	options?: { activate?: boolean; scope?: "writing" },
 ): Promise<void> {
 	const request = ++forwardRequest;
+	const report = options?.activate !== false || options?.scope === "writing";
+	const placeInDock =
+		options?.scope !== "writing" && options?.activate !== false;
 	try {
 		const { resolveTexRoot } = await import("@/lib/workspace/tex-compile");
 		const root = await resolveTexRoot(sourcePath);
@@ -93,12 +106,12 @@ export async function syncTexToPdf(
 		if (request !== forwardRequest) return;
 		const target = matches.find(validSyncTexLocation);
 		if (!target) {
-			if (options?.activate !== false) notifyError(i18n.t("latexPdf:noMatch"));
+			if (report) notifyError(i18n.t("latexPdf:noMatch"));
 			return;
 		}
 		let targetTabId: string | undefined;
 		let targetDocumentId: string | undefined;
-		if (options?.activate !== false) {
+		if (placeInDock) {
 			// A live preview can occupy this same tab without having loaded the
 			// on-disk PDF. Load its compiled bytes before leaving live mode.
 			const liveTab = tabs.find(
@@ -139,12 +152,13 @@ export async function syncTexToPdf(
 		deliver(
 			pdfPath,
 			target,
-			options?.activate !== false,
+			report,
 			targetDocumentId,
 			targetTabId,
+			options?.scope,
 		);
 	} catch (error) {
-		if (request === forwardRequest && options?.activate !== false)
+		if (request === forwardRequest && report)
 			notifyError(errorText(error) || i18n.t("latexPdf:syncFailed"));
 	}
 }

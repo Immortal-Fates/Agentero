@@ -1,12 +1,24 @@
+/**
+ * Project settings for one TeX root, laid out as settings rows.
+ */
+
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import {
-	Dialog,
-	DialogContent,
-	DialogTitle,
-	DialogTrigger,
-} from "@/components/ui/dialog";
+	SettingsGroup,
+	SettingsRow,
+} from "@/components/settings/settings-layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { notifyError } from "@/lib/core/notify";
 import { basenameOf } from "@/lib/core/path";
 import { trackTexProject } from "@/lib/tex/auto-build";
@@ -21,251 +33,217 @@ import {
 } from "@/lib/tex/config";
 import { inspectLatexProject } from "@/lib/tex/host";
 import { vaultStore } from "@/lib/vault/store";
+import { inspectTexEngine } from "@/lib/workspace/tex-compile";
 
-const fieldClass =
-	"min-h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const AUTO_ROOT = "auto";
+
+const RECIPE_EXAMPLE = [
+	{
+		name: "PDFLaTeX + latexmk",
+		tools: [
+			{
+				command: "latexmk",
+				args: [
+					"-pdf",
+					"-synctex=1",
+					"-file-line-error",
+					"-recorder",
+					"-interaction=nonstopmode",
+					"-outdir=%OUTDIR%",
+					"%DOC%",
+				],
+			},
+		],
+	},
+];
 
 export function LatexProjectSettings({
 	texPath,
-	rootPath,
-	onChanged,
+	vaultPath = null,
 }: {
 	texPath: string;
-	rootPath: string;
-	onChanged: () => void;
+	vaultPath?: string | null;
 }) {
 	const { t } = useTranslation("latexBuild");
 	const id = useId();
-	const [open, setOpen] = useState(false);
+	const vault = vaultPath ?? vaultStore.getState().vaultPath ?? "";
 	const [draft, setDraft] = useState<TexProjectSettings>(() =>
-		getTexProjectSettings(rootPath),
+		getTexProjectSettings(texPath),
 	);
-	const [root, setRoot] = useState("");
-	const [candidates, setCandidates] = useState<string[]>([rootPath]);
+	const [root, setRoot] = useState(AUTO_ROOT);
+	const [detectedRoot, setDetectedRoot] = useState(texPath);
+	const [candidates, setCandidates] = useState<string[]>([]);
 	const [recipes, setRecipes] = useState("[]");
-	const [saving, setSaving] = useState(false);
+
 	useEffect(() => {
-		if (!open) return;
-		const settings = getTexProjectSettings(rootPath);
-		setDraft(settings);
-		setRoot(explicitTexRoot(texPath) ?? "");
-		setRecipes(JSON.stringify(settings.recipes, null, 2));
 		let cancelled = false;
-		void inspectLatexProject(texPath, vaultStore.getState().vaultPath ?? "")
-			.then((project) => {
-				if (!cancelled)
-					setCandidates([
-						...new Set([rootPath, texPath, ...project.candidates]),
-					]);
+		void inspectTexEngine(texPath)
+			.then(async (choice) => {
+				if (cancelled) return;
+				const settings = getTexProjectSettings(choice.rootPath);
+				const chosen = explicitTexRoot(texPath) ?? "";
+				setDraft(settings);
+				setRecipes(JSON.stringify(settings.recipes, null, 2));
+				setDetectedRoot(choice.rootPath);
+				setRoot(chosen || AUTO_ROOT);
+				const project = await inspectLatexProject(texPath, vault);
+				if (cancelled) return;
+				setCandidates([
+					...new Set(
+						[chosen, choice.rootPath, texPath, ...project.candidates].filter(
+							(path) => path.length > 0,
+						),
+					),
+				]);
 			})
 			.catch(() => undefined);
 		return () => {
 			cancelled = true;
 		};
-	}, [open, texPath, rootPath]);
+	}, [texPath, vault]);
 
-	const save = async () => {
-		setSaving(true);
+	async function persist(
+		next: TexProjectSettings,
+		recipesText: string,
+		rootValue: string,
+	) {
 		try {
-			const parsed = JSON.parse(recipes) as unknown;
-			const next = validateTexSettings({
-				...draft,
+			const parsed = JSON.parse(recipesText) as unknown;
+			const selected =
+				Array.isArray(parsed) &&
+				parsed.some(
+					(recipe) =>
+						!!recipe &&
+						typeof recipe === "object" &&
+						"name" in recipe &&
+						recipe.name === next.selectedRecipe,
+				)
+					? next.selectedRecipe
+					: null;
+			const validated = validateTexSettings({
+				...next,
 				recipes: parsed,
 				recipe: null,
-				selectedRecipe:
-					Array.isArray(parsed) &&
-					parsed.some((recipe) => recipe?.name === draft.selectedRecipe)
-						? draft.selectedRecipe
-						: null,
+				selectedRecipe: selected,
 			});
-			const project = await inspectLatexProject(
-				texPath,
-				vaultStore.getState().vaultPath ?? "",
-				root || null,
-			);
-			const targetRoot = project.rootPath;
-			setTexProjectRoot(texPath, root);
-			setTexProjectSettings(targetRoot, next);
-			await trackTexProject(targetRoot);
-			onChanged();
-			setOpen(false);
+			const chosen = rootValue === AUTO_ROOT ? "" : rootValue;
+			const project = await inspectLatexProject(texPath, vault, chosen || null);
+			setTexProjectRoot(texPath, chosen);
+			setTexProjectSettings(project.rootPath, validated);
+			await trackTexProject(project.rootPath);
 		} catch (error) {
 			notifyError(
 				error instanceof SyntaxError ? t("invalidJson") : t("invalidSettings"),
 			);
-		} finally {
-			setSaving(false);
 		}
-	};
+	}
+
+	function commit(
+		next: TexProjectSettings = draft,
+		recipesText: string = recipes,
+		rootValue: string = root,
+	) {
+		void persist(next, recipesText, rootValue);
+	}
 
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger asChild>
+		<SettingsGroup>
+			<SettingsRow label={t("rootFile")} htmlFor={`${id}-root`}>
+				<Select
+					value={root}
+					onValueChange={(value) => {
+						setRoot(value);
+						commit(draft, recipes, value);
+					}}
+				>
+					<SelectTrigger id={`${id}-root`} size="sm" className="w-56">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value={AUTO_ROOT}>
+							{t("automaticRoot", {
+								name: basenameOf(detectedRoot),
+							})}
+						</SelectItem>
+						{candidates.map((path) => (
+							<SelectItem key={path} value={path} title={path}>
+								{basenameOf(path)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</SettingsRow>
+			<SettingsRow label={t("autoBuild")} htmlFor={`${id}-auto`}>
+				<Select
+					value={draft.autoBuild}
+					onValueChange={(value) => {
+						const next = { ...draft, autoBuild: value as TexAutoBuild };
+						setDraft(next);
+						commit(next);
+					}}
+				>
+					<SelectTrigger id={`${id}-auto`} size="sm" className="w-56">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="never">{t("manual")}</SelectItem>
+						<SelectItem value="onSave">{t("onSave")}</SelectItem>
+						<SelectItem value="onFileChange">{t("onFileChange")}</SelectItem>
+					</SelectContent>
+				</Select>
+			</SettingsRow>
+			<SettingsRow label={t("syncAfterBuild")} htmlFor={`${id}-sync`}>
+				<Switch
+					id={`${id}-sync`}
+					checked={draft.syncAfterBuild}
+					onCheckedChange={(checked) => {
+						const next = { ...draft, syncAfterBuild: checked };
+						setDraft(next);
+						commit(next);
+					}}
+				/>
+			</SettingsRow>
+			{(["outDir", "auxDir", "jobname"] as const).map((key) => (
+				<SettingsRow key={key} label={t(key)} htmlFor={`${id}-${key}`}>
+					<Input
+						id={`${id}-${key}`}
+						className="w-40"
+						value={draft[key]}
+						placeholder={key === "jobname" ? undefined : "."}
+						onChange={(event) =>
+							setDraft({ ...draft, [key]: event.target.value })
+						}
+						onBlur={() => commit()}
+					/>
+				</SettingsRow>
+			))}
+			<div className="grid gap-2 px-3.5 py-2.5">
+				<Label htmlFor={`${id}-recipes`} className="font-normal text-sm">
+					{t("recipes")}
+				</Label>
+				<textarea
+					id={`${id}-recipes`}
+					spellCheck={false}
+					className="border-input bg-transparent min-h-32 w-full rounded-md border px-2 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+					value={recipes}
+					aria-label={t("recipeJson")}
+					onChange={(event) => setRecipes(event.target.value)}
+					onBlur={() => commit(draft, recipes)}
+				/>
 				<Button
 					type="button"
 					variant="ghost"
-					className="w-full justify-start px-2 text-sm"
-				>
-					{t("projectSettings")}
-				</Button>
-			</DialogTrigger>
-			<DialogContent
-				className="max-h-[85vh] overflow-y-auto sm:max-w-xl"
-				aria-describedby={undefined}
-			>
-				<DialogTitle>{t("projectSettings")}</DialogTitle>
-				<form
-					className="grid gap-3"
-					onSubmit={(event) => {
-						event.preventDefault();
-						void save();
+					size="sm"
+					className="justify-self-start"
+					onClick={() => {
+						const text = JSON.stringify(RECIPE_EXAMPLE, null, 2);
+						setRecipes(text);
+						commit(draft, text);
 					}}
 				>
-					<label className="grid gap-1 text-xs" htmlFor={`${id}-root`}>
-						{t("rootFile")}
-						<select
-							id={`${id}-root`}
-							className={fieldClass}
-							value={root}
-							onChange={(event) => setRoot(event.target.value)}
-						>
-							<option value="">
-								{t("automaticRoot", { name: basenameOf(rootPath) })}
-							</option>
-							{candidates.map((path) => (
-								<option key={path} value={path}>
-									{path}
-								</option>
-							))}
-						</select>
-					</label>
-					<label className="grid gap-1 text-xs" htmlFor={`${id}-auto`}>
-						{t("autoBuild")}
-						<select
-							id={`${id}-auto`}
-							className={fieldClass}
-							value={draft.autoBuild}
-							onChange={(event) =>
-								setDraft({
-									...draft,
-									autoBuild: event.target.value as TexAutoBuild,
-								})
-							}
-						>
-							<option value="never">{t("manual")}</option>
-							<option value="onSave">{t("onSave")}</option>
-							<option value="onFileChange">{t("onFileChange")}</option>
-						</select>
-					</label>
-					<label
-						className="flex min-h-8 items-center gap-2 text-sm"
-						htmlFor={`${id}-sync`}
-					>
-						<input
-							id={`${id}-sync`}
-							type="checkbox"
-							checked={draft.syncAfterBuild}
-							onChange={(event) =>
-								setDraft({ ...draft, syncAfterBuild: event.target.checked })
-							}
-						/>
-						{t("syncAfterBuild")}
-					</label>
-					<div className="grid grid-cols-2 gap-3">
-						{(["outDir", "auxDir"] as const).map((key) => (
-							<label
-								key={key}
-								className="grid gap-1 text-xs"
-								htmlFor={`${id}-${key}`}
-							>
-								{t(key)}
-								<input
-									id={`${id}-${key}`}
-									className={fieldClass}
-									value={draft[key]}
-									placeholder="."
-									onChange={(event) =>
-										setDraft({ ...draft, [key]: event.target.value })
-									}
-								/>
-							</label>
-						))}
-					</div>
-					<label className="grid gap-1 text-xs" htmlFor={`${id}-jobname`}>
-						{t("jobname")}
-						<input
-							id={`${id}-jobname`}
-							className={fieldClass}
-							value={draft.jobname}
-							onChange={(event) =>
-								setDraft({ ...draft, jobname: event.target.value })
-							}
-						/>
-					</label>
-					<details className="rounded-md border border-border p-2">
-						<summary className="text-sm">{t("recipes")}</summary>
-						<label
-							className="mt-2 grid gap-1 text-xs"
-							htmlFor={`${id}-recipes`}
-						>
-							{t("recipeJson")}
-							<textarea
-								id={`${id}-recipes`}
-								spellCheck={false}
-								className={`${fieldClass} min-h-40 font-mono text-xs`}
-								value={recipes}
-								onChange={(event) => setRecipes(event.target.value)}
-							/>
-						</label>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							onClick={() => {
-								setRecipes(
-									JSON.stringify(
-										[
-											{
-												name: "PDFLaTeX + latexmk",
-												tools: [
-													{
-														command: "latexmk",
-														args: [
-															"-pdf",
-															"-synctex=1",
-															"-file-line-error",
-															"-recorder",
-															"-interaction=nonstopmode",
-															"-outdir=%OUTDIR%",
-															"%DOC%",
-														],
-													},
-												],
-											},
-										],
-										null,
-										2,
-									),
-								);
-							}}
-						>
-							{t("recipeExample")}
-						</Button>
-					</details>
-					<div className="flex justify-end gap-2">
-						<Button
-							type="button"
-							variant="ghost"
-							onClick={() => setOpen(false)}
-						>
-							{t("cancel")}
-						</Button>
-						<Button type="submit" disabled={saving}>
-							{t("save")}
-						</Button>
-					</div>
-				</form>
-			</DialogContent>
-		</Dialog>
+					{t("recipeExample")}
+				</Button>
+			</div>
+		</SettingsGroup>
 	);
 }

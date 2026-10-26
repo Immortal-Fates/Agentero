@@ -54,9 +54,15 @@ AGENTERO_UPDATE_BINDINGS=1 cargo test -p agentero export_typescript_bindings
 
 `latex_project_inspect(texPath, vaultPath, rootPath?, build?)` 返回主文件、候选根、TeX 文件、BibTeX 文件和实际依赖。显式 root 可用于 standalone subfiles；build 参数决定读取哪份 `.fls`。普通 include 优先按项目编译目录解析，再尝试声明文件目录。
 
-SyncTeX command 调用本机 `synctex`，返回页码、PDF 点坐标或源码文件 / 行 / 列；前端负责缩放与旋转转换，保持与 EmbedPDF 的坐标体系一致。
+SyncTeX command 调用本机 `synctex`，返回页码、PDF 点坐标或源码文件 / 行 / 列；前端负责缩放与旋转转换，保持与 EmbedPDF 的坐标体系一致。Windows 上路径含非 ASCII 时，`synctex` 的标准输出可能是 UTF-16 或系统 ANSI（中文环境常见 GBK）。`tools.rs` 先识别 UTF-16，再按 UTF-8、GBK 解码，解析失败时才退回有损 UTF-8，避免非 UTF-8 直接报错。
 
 本地 TeX 工具由用户安装。正式构建与 SyncTeX 属于本机桌面能力，不提供远程编译服务。
+
+## 写作项目同步
+
+`writing_sync_project(thesisDir, remote, branch)` 在用户点击上传，或按设置在编译后、定时运行。`thesisDir` 必须是名为 `thesis` 的写作目录。`remote` 只接受 `github.com` 上的仓库，并规范成 `https://github.com/<owner>/<repo>.git`。没有 `.git` 时先 `git init`，再补上忽略编译产物和 `*.pdf` 的 `.gitignore`（已有规则不覆盖），把 `origin` 设成这个地址，然后 `git add -A` 并提交。提交说明写的是这次改动的文件名。已配置 `user.name` 时沿用；否则只给这个仓库写本地身份，不改全局 Git 配置。接着 `git fetch`，远端已有提交时把本地改动变基上去；冲突会中止变基，不覆盖任何一边。最后 `git push -u origin HEAD:<branch>`。拉取和推送允许系统弹出 GitHub 登录窗口，应用不保存密码。桌面进程的 PATH 里没有 `git` 时，还会查找常见的 Git for Windows 安装位置。每次调用都带 `safe.directory=*`，避免文稿在 OneDrive 目录下时被 Git 拒绝。没有 Git 时返回 `git_missing`，不报成崩溃。
+
+`writing_git_log(thesisDir)` 列出最近的上传，每条带上改过的文件和增删行数；工作区里还没上传的修改放在最前面。`writing_git_diff(thesisDir, commit)` 返回这一次的文本差异，`commit` 为 `pending` 时是尚未上传的修改。没有本地快照目录。
 
 ## 验证
 

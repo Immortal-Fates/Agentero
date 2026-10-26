@@ -174,6 +174,7 @@ import {
 	translateHighlightsByPage as translateHighlightsByPageOf,
 	translateHighlightsFingerprint,
 } from "@/lib/pdf/translate/highlights";
+import { writingPdfChromeStore } from "@/lib/pdf/writing-chrome";
 import { PDF_ZOOM_MAX, PDF_ZOOM_MIN } from "@/lib/pdf/zoom";
 import { loadSettings } from "@/lib/settings";
 import type { MenuContext } from "@/lib/shell/commands/menu-contributions";
@@ -476,6 +477,7 @@ function PdfViewerInner({
 	translationOnly = false,
 	texRootPath = null,
 	pdfPath = null,
+	syncTexScope,
 	reloadPositionRef,
 	importIdentifier,
 	onOpenSettings,
@@ -767,6 +769,7 @@ function PdfViewerInner({
 		tabId: baseDocId,
 		rootPath: texRootPath,
 		pdfPath,
+		scope: syncTexScope,
 		isActive,
 		hostRef,
 		navigate: goToRegion,
@@ -2136,7 +2139,7 @@ function PdfViewerInner({
 	const contributionPaperId = paperMeta?.id?.trim() || undefined;
 	const cardSelectionMenu = useMemo(
 		() => ({
-			state: plainViewer ? null : selectionMenu,
+			state: selectionMenu,
 			onHighlight: handleHighlight,
 			onAsk: handleMenuAsk,
 			onAddToChat: handleMenuAddToChat,
@@ -2263,6 +2266,48 @@ function PdfViewerInner({
 	const handleZoomSliderChange = useCallback((next: number) => {
 		zoomCapRef.current?.requestZoom(next);
 	}, []);
+
+	useEffect(() => {
+		if (!plainViewer) {
+			writingPdfChromeStore.setState({ current: null });
+			return;
+		}
+		writingPdfChromeStore.setState({
+			current: {
+				totalPages,
+				pageField,
+				onPageFieldChange: setPageField,
+				pageFocusedRef,
+				onCommitPageField: handleCommitPageField,
+				currentPage,
+				onGoToPage: handleGoToPage,
+				pdfTone,
+				onSetPdfTone: setPdfTone,
+				zoomLevel,
+				onZoomChange: handleZoomSliderChange,
+			},
+		});
+	}, [
+		plainViewer,
+		totalPages,
+		pageField,
+		setPageField,
+		pageFocusedRef,
+		handleCommitPageField,
+		currentPage,
+		handleGoToPage,
+		pdfTone,
+		setPdfTone,
+		zoomLevel,
+		handleZoomSliderChange,
+	]);
+
+	useEffect(() => {
+		if (!plainViewer) return;
+		return () => {
+			writingPdfChromeStore.setState({ current: null });
+		};
+	}, [plainViewer]);
 
 	return (
 		<div
@@ -2393,7 +2438,7 @@ function PdfViewerInner({
 				/>
 			)}
 
-			{!translationOnly && (
+			{!translationOnly && !plainViewer && (
 				<PdfBottomBar
 					totalPages={totalPages}
 					pageField={pageField}

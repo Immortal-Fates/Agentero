@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { chooseTexEngine, parseTexProgram } from "@/lib/tex/engine";
+import {
+	chooseTexEngine,
+	inferRequiredEngine,
+	parseTexProgram,
+} from "@/lib/tex/engine";
 
 const ALL = ["pdflatex", "xelatex", "lualatex"];
 
@@ -20,11 +24,12 @@ describe("parseTexProgram", () => {
 });
 
 describe("chooseTexEngine", () => {
-	it("prefers the root file, then the remembered choice, then XeLaTeX", () => {
+	it("prefers the root file, then a saved choice, then what the template requires", () => {
 		expect(
 			chooseTexEngine({
 				magic: "lualatex",
 				remembered: "pdflatex",
+				required: "pdflatex",
 				available: ALL,
 			}),
 		).toBe("lualatex");
@@ -32,11 +37,25 @@ describe("chooseTexEngine", () => {
 			chooseTexEngine({
 				magic: null,
 				remembered: "pdflatex",
+				required: "xelatex",
 				available: ALL,
 			}),
 		).toBe("pdflatex");
 		expect(
-			chooseTexEngine({ magic: null, remembered: null, available: ALL }),
+			chooseTexEngine({
+				magic: null,
+				remembered: null,
+				required: "pdflatex",
+				available: ALL,
+			}),
+		).toBe("pdflatex");
+		expect(
+			chooseTexEngine({
+				magic: null,
+				remembered: null,
+				required: null,
+				available: ALL,
+			}),
 		).toBe("xelatex");
 	});
 
@@ -45,6 +64,7 @@ describe("chooseTexEngine", () => {
 			chooseTexEngine({
 				magic: "xelatex",
 				remembered: null,
+				required: null,
 				available: ["pdflatex", "lualatex"],
 			}),
 		).toBe("pdflatex");
@@ -52,11 +72,46 @@ describe("chooseTexEngine", () => {
 			chooseTexEngine({
 				magic: null,
 				remembered: null,
+				required: null,
 				available: ["pdflatex"],
 			}),
 		).toBe("pdflatex");
 		expect(
-			chooseTexEngine({ magic: null, remembered: null, available: [] }),
+			chooseTexEngine({
+				magic: null,
+				remembered: null,
+				required: null,
+				available: [],
+			}),
 		).toBeNull();
+	});
+});
+
+describe("inferRequiredEngine", () => {
+	it("uses pdfLaTeX for conference kits and not for a commented package", () => {
+		expect(
+			inferRequiredEngine(
+				"% \\usepackage{cvpr}\n\\usepackage[review]{cvpr}\n\\begin{document}",
+			),
+		).toBe("pdflatex");
+		expect(inferRequiredEngine("\\usepackage{iclr2027_conference,times}")).toBe(
+			"pdflatex",
+		);
+		expect(inferRequiredEngine("\\documentclass[runningheads]{llncs}")).toBe(
+			"pdflatex",
+		);
+		expect(inferRequiredEngine("\\usepackage{neurips_2026}")).toBe("pdflatex");
+		expect(inferRequiredEngine("\\usepackage{icml2026}")).toBe("pdflatex");
+		expect(
+			inferRequiredEngine("% \\usepackage{cvpr}\n\\documentclass{article}"),
+		).toBeNull();
+	});
+
+	it("uses LuaLaTeX or XeLaTeX when the preamble needs those fonts", () => {
+		expect(inferRequiredEngine("\\babelfont{rm}{TeXGyreTermesX}")).toBe(
+			"lualatex",
+		);
+		expect(inferRequiredEngine("\\usepackage{fontspec}")).toBe("xelatex");
+		expect(inferRequiredEngine("\\documentclass{ctexart}")).toBe("xelatex");
 	});
 });

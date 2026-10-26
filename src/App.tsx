@@ -26,10 +26,15 @@ import {
 } from "@/components/ui/resizable";
 import { resolveActivePdfHandle } from "@/components/viewer";
 import { WorkspaceHost } from "@/components/workspace/workspace-host";
+import { WritingDesk } from "@/components/writing/writing-desk";
 import { useAgentCatalogPrefetch } from "@/hooks/use-agent-catalog-prefetch";
 import { useAppBootstrap } from "@/hooks/use-app-bootstrap";
 import { useAppShortcuts } from "@/hooks/use-app-shortcuts";
-import { useUiStore, useVaultStore } from "@/hooks/use-app-stores";
+import {
+	useUiStore,
+	useVaultStore,
+	useWritingStore,
+} from "@/hooks/use-app-stores";
 import { useConfigReminders } from "@/hooks/use-config-reminders";
 import { useConnectorSync } from "@/hooks/use-connector-sync";
 import { useExternalFileDrop } from "@/hooks/use-external-file-drop";
@@ -223,6 +228,14 @@ export default function App() {
 	// Low-frequency config reminders (#658): startup layout-model hint.
 	useConfigReminders();
 	const vaultPath = useVaultStore((s) => s.vaultPath);
+	const writing = useWritingStore((s) => s.surface === "writing");
+	useEffect(() => {
+		if (writing) return;
+		const id = requestAnimationFrame(() => {
+			window.dispatchEvent(new Event("resize"));
+		});
+		return () => cancelAnimationFrame(id);
+	}, [writing]);
 	const {
 		sidebarPanelRef,
 		rightSidebarPanelRef,
@@ -530,8 +543,15 @@ export default function App() {
 								{!vaultPath ? (
 									<WelcomeCenter />
 								) : (
-									<div className="relative min-h-0 flex-1 overflow-hidden">
-										<WorkspaceHost />
+									<div className="relative h-full min-h-0 flex-1 overflow-hidden">
+										<div className={writing ? "hidden" : "h-full min-h-0"}>
+											<WorkspaceHost />
+										</div>
+										{writing ? (
+											<div className="absolute inset-0 z-20 bg-background">
+												<WritingDesk />
+											</div>
+										) : null}
 									</div>
 								)}
 							</div>
