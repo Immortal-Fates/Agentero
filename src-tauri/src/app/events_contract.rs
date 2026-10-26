@@ -460,6 +460,7 @@ fn registered_event_names() -> BTreeSet<String> {
         WindowClosedEvent::NAME,
         VaultFileChangedEvent::NAME,
         SettingsChangedEvent::NAME,
+        WordChangedEvent::NAME,
         JobProgressEvent::NAME,
         LayoutRemoteProgressEvent::NAME,
         AgentLifecycleProgressEvent::NAME,
