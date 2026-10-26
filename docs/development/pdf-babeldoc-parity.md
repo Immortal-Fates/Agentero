@@ -254,7 +254,7 @@ pnpm exec vitest run test/pdf-reflow-real.test.ts
 
 同一 Google gtx en→zh-CN 服务通过本机 HTTP adapter 供两边调用，缓存请求/译文。
 Agentero 使用真实生产的可靠性包装、batching、token 校验、提取、排版和写出；仅 Host 网络传输被替换。
-BabelDOC 使用本文件开头固定 commit 的原生非 LLM ILTranslator 路径，开启 `--translate-table-text`、
+BabelDOC 使用本文件开头固定 commit 的原生非 LLM ILTranslator 路径，传入 `--translate-table-text`（该固定版本已忽略此选项，见下方源码复核）、
 `--min-text-length 1`、`--no-auto-extract-glossary`，只替换翻译 adapter，不注入匹配段落、不替换其 IR。
 未验证 LLM prompt、术语、不同翻译 provider 或原生保存对话框；不能用这轮结果代表这些能力。
 
@@ -299,3 +299,34 @@ pnpm exec vitest run test/pdf-reflow-real.test.ts
 独立保存的差异报告包含27页逐页记录、原件和输出 SHA-256、四份 PDF、实验 adapter、MT 缓存、IR/布局/状态及渲染接触表。
 本轮全文用例2项通过；全量单测2340项通过后新增标题污染回归，相关52项通过；TypeScript 通过。
 **结论：全文运行验收通过，完全等价验收不通过。** 本轮不能关闭 BabelDOC 等价目标。
+
+
+## 全文差异的源码复核（2026-10-26）
+
+复核本地固定 commit，且逐字节核对实际运行 venv 中的 translation_config、paragraph_finder、
+styles_and_formulas、typesetting、il_translator、layout_helper 与参考 checkout 一致。
+以下路径以上游 `babeldoc/format/pdf/` 为起点，比较对象为本项目 `86308f452`。
+
+**纠正表格实验描述：** `translation_config.py:326` 无条件将 `table_model` 置空；
+`docvision/table_detection/rapidocr.py` 为返回空框的兼容 stub。实际运行日志也报告 deprecated and ignored。
+故传入 `--translate-table-text` 不代表启用了 RapidOCR，不能据此宣称上游具有完整合并单元格拓扑。
+此前“开启表格检测”的表述不准确；PDF 对照产物仍有效，但应按实际生效路径解释。
+
+| 环节 | 实际源码差异 | 对效果的因果关系 |
+|---|---|---|
+| 全页覆盖 | 上游 `document_il/midend/layout_parser.py:178` 从整页字符生成 fallback_line；`utils/layout_helper.py:650` 按标签优先级、交叠比例分配字符，允许 figure_text/table_cell/fallback_line。我们 `extract.ts:322` 从 selected items 入手，仅另扫 table | 未入选文字框、又不在表格内的图内标签不会被翻译；done=100% 的分母不含这些字符。上游也不保证所有图内文字都译 |
+| IR | 上游 `il_version_1.py:627/982` 保存 xobj_id、vertical、advance、render_order，公式拥有字符/曲线/Form；我们 `types.ts` 只有字符索引/两种bbox/字体与颜色，公式是字符索引和矩形 | 缺少对象归属及绘制状态时，只能用几何猜测；不能等价处理局部坐标、背景或穿过公式框的非公式曲线 |
+| 段落 | 上游 paragraph_finder 按 layout/XObject 分组，并用扫描碰撞直方图分行；我们中心入框、claimed先到先得、基准字聚行再附角标 | 两边的词序、段落边界和上下文不同，翻译输入在送模型前已不相同 |
+| 表格 | 上游实际以布局/字符fallback和段落流程处理；我们在 `extract.ts:425` 按行及相邻字间距0.7em拆格，以文字紧框为固定排版框 | 字形占用范围不等于单元格可用范围；长中文被迫缩小。不能把此差异概括成“上游有完整表格结构、我们没有” |
+| 公式 | 上游 styles_and_formulas 的字符状态机、邻字角标比例、逗号拆分、重叠合并、偏移及曲线/Form收集；我们按字体正则/Unicode/段落字号阈值及邻接传播 | 公式岛边界、baseline和占位数量不同。裁剪片段可保留样子，但没有真正恢复对象归属；扩大裁剪框也可能带入无关内容 |
+| 翻译 | 上游 il_translator 按 composition 组装公式/样式占位并解析回结构；我们批次编号及额外别名/分段回退 | 同一服务面对不同文本及标记会产生不同输出；结构校验通过只证明标记契约，不证明人名、术语、句子全部正确 |
+| 局部排版 | 上游 typesetting:1300 以排版单元高度众数定初始Y，首行缩进为4个半中文空格；我们 layout:121 从regular字体ascent起排，使用提取缩进并限制到框宽30% | 字号相同也会基线、缩进不同，后续行高差逐行累积 |
+| 扩框与缩放 | 两边都离散缩放，但上游扩框后有重置/重试逻辑；我们只在65%/60%尝试下/右扩框，fixedBox禁止扩框 | 类似策略不等于相同搜索顺序；表格易缩小，部分段落多换一行便触发下一档缩放 |
+| 全文缩放 | 上游 typesetting:865 对所有段落按排版单元数加公式字符数加权，并列众数取最小；我们 layout:350 排除heading及<100字符段，按源字符数加权，并列取最大 | 标题、小段落、正文的最终字号可以系统性不同，不能仅通过调整一个行距参数对齐 |
+| 导出 | 上游对字符/曲线/Form重定位并写内容流、字体子集；我们PDFium删字+局部覆盖+pdf-lib嵌入公式片段，CJK完整嵌入 | 文件体积、复杂背景、对象层级及可选择文本不保证一致 |
+
+LLM 标题上下文/术语路径存在于上游源码，但本轮运行的是非 LLM 路径，不能拿未启用能力解释这轮实测差异。
+关于上游表3少数数值缺失的现象，当前没有定位到首个丢失阶段，不将其武断归因于 MT 或表格检测。
+
+后续应先补全页字符覆盖账本（每个字符明确归为翻译、数学保留、图形保留或未处理），再补充对象/坐标表示、表格可用空间和公式归属。
+随后用固定译文隔离排版差异，再做真实翻译测评；否则版面、翻译、排版三类变量同时变化，难以判断修复是否对因。
