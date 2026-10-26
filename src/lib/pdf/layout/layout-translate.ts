@@ -907,10 +907,14 @@ export async function runLayoutRegionTranslate(options: {
 		)
 			return restored.text;
 		if (signal?.aborted) return "";
-		const retry = restoreInlineTokens(
-			await translateText(unit.source, pageOf(unit)),
-			tokens,
-		);
+		// A structural failure may recur with the same token spelling. Change
+		// the spelling immediately instead of repeating the same request.
+		const retry = structural
+			? restored
+			: restoreInlineTokens(
+					await translateText(unit.source, pageOf(unit)),
+					tokens,
+				);
 		if (
 			retry.missing ||
 			retry.invalid ||
@@ -939,20 +943,30 @@ export async function runLayoutRegionTranslate(options: {
 				// Last resort: keep structural boundaries in source order and translate
 				// only their intervening prose. This trades sentence fluency for an
 				// intact formula/style contract, and is exposed for acceptance audits.
-				const protectedParts: string[] = [];
-				for (const part of unit.source.split(/(⟦\d+⟧)/u)) {
+				const protectedParts = unit.source.split(/(⟦\d+⟧)/u);
+				const prose = protectedParts.flatMap((part, index) => {
 					if (!part.trim() || /^⟦\d+⟧$/u.test(part) || !/\p{L}/u.test(part))
-						protectedParts.push(part);
-					else {
-						// A fragment may start with the previous reference's sentence
-						// punctuation. Keep it outside the MT request: otherwise some
-						// engines echo the entire fragment unchanged.
-						const leading =
-							part.match(/^[\s.,;:!?。；，：！？)\]]*/u)?.[0] ?? "";
-						protectedParts.push(
-							leading +
-								(await translateText(part.slice(leading.length), pageOf(unit))),
-						);
+						return [];
+					// Keep leading punctuation outside MT, which may otherwise echo
+					// an entire fragment unchanged.
+					const leading = part.match(/^[\s.,;:!?。；，：！？)\]]*/u)?.[0] ?? "";
+					return [{ index, leading, source: part.slice(leading.length) }];
+				});
+				// Reuse the normal payload budget and strict marker parser. Most
+				// paragraphs need one request, not one round trip per style span.
+				for (const batch of buildTranslateBatches(prose)) {
+					if (signal?.aborted) return "";
+					const result = await translateText(
+						buildNumberedPayload(batch),
+						pageOf(unit),
+					);
+					const segments = parseNumberedTranslation(result, batch.length);
+					for (const [index, part] of batch.entries()) {
+						if (signal?.aborted) return "";
+						protectedParts[part.index] =
+							part.leading +
+							(segments?.[index] ??
+								(await translateText(part.source, pageOf(unit))));
 					}
 				}
 				const segmented = restoreInlineTokens(protectedParts.join(" "), tokens);

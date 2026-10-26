@@ -232,7 +232,6 @@ it("retries structural formulas with nonnumeric placeholders when MT interprets 
 	];
 	runTranslate
 		.mockResolvedValueOnce("倍数 0")
-		.mockResolvedValueOnce("倍数 0")
 		.mockImplementation(async (task) =>
 			(task as { text: string }).text.replace("Factor", "倍数"),
 		);
@@ -242,11 +241,14 @@ it("retries structural formulas with nonnumeric placeholders when MT interprets 
 	});
 	expect(out[0].status).toBe("done");
 	expect(out[0].translated).toContain("⟪F0⟫");
-	expect(runTranslate.mock.calls[2]?.[0]).toMatchObject({
+	expect(runTranslate.mock.calls[1]?.[0]).toMatchObject({
 		text: "Factor ZXQAQXZ",
 	});
 });
-it("retains style order through an audited prose-only fallback", async () => {
+it.each([
+	false,
+	true,
+])("retains style order when prose batch markers are damaged: %s", async (damaged) => {
 	runTranslate.mockReset();
 	const reflow = paragraphFromCharacters(
 		"p",
@@ -262,16 +264,19 @@ it("retains style order through an audited prose-only fallback", async () => {
 	runTranslate
 		.mockResolvedValueOnce("坏结果")
 		.mockResolvedValueOnce("坏结果")
-		.mockResolvedValueOnce("坏结果")
-		.mockImplementation(async (task) =>
-			(task as { text: string }).text.trim() === "A" ? "一个" : "词",
-		);
+		.mockResolvedValueOnce(damaged ? "一个词" : "[[1]] 一个\n\n[[2]] 词")
+		.mockResolvedValueOnce("一个")
+		.mockResolvedValueOnce("词");
 	const out = await runLayoutRegionTranslate({
 		items: [{ ...item("p", reflow.protectedText, 0), reflow }],
 		onUpdate: () => {},
 	});
 	expect(out[0].status).toBe("done");
 	expect(out[0].reflowFallback).toBe("protected-spans");
+	expect(runTranslate).toHaveBeenCalledTimes(damaged ? 5 : 3);
+	expect(runTranslate.mock.calls[2]?.[0]).toMatchObject({
+		text: "[[1]] A \n\n[[2]] word",
+	});
 	expect(out[0].translated).toContain(". 一个");
 	expect(out[0].translated).toContain("⟪S0⟫ 词 ⟪/S0⟫");
 });

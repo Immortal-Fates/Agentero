@@ -395,3 +395,11 @@ ResNet weight layer 完整提取、独立图标签不跨空间合并、隐藏/�
 对照材料存于本机 Downloads/agentero-pdf-full-validation/main-comparison：27张双栏对照、两张全文联系表、Attention 第4页切换 GIF、main DOM 审计及复现脚本。媒体不提交仓库，仅上传 PR 评论。完整新版 PDF 位于同级 round-4 目录。main 本身没有相应译文 PDF 导出，因此未把截图包装成 main 导出 PDF。
 
 合并 main 后验证：TypeScript 通过，全量测试 2372通过/7跳过；桌面应用编译并启动。依赖分层检查失败于 `src/lib/tex/editor-lint-bridge.ts → src/components/viewer/text-editor-lint-footer.tsx`，在独立 main 工作树运行相同 depcruise 也得到同一错误，属于基线已有问题。本轮未改动翻译算法，仅补充 main 对照记录。
+
+
+## 延迟跟进（2026-10-27）
+
+- 已优化结构回退请求：跳过相同占位重试，保护边界间文字按现有预算组批；结构校验和编号失败的逐片段回退保留。
+- 确定性回归：两个文字片段的回退从 5 次调用降为 3 次；编号损坏时为 5 次。没有真实服务的端到端提速结论。
+- TODO：补同文档/同服务的提取、翻译、重排、预览分阶段计时；调查回退命中率、按页预览与逐公式 PDF 克隆开销。
+- 此项不改变上述覆盖与算法等价路线，也不把已有整篇验证用时当成用户真实服务延迟。
