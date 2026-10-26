@@ -18,6 +18,10 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { WritingProblems } from "@/components/writing/writing-problems";
@@ -25,6 +29,12 @@ import { normalizePath } from "@/lib/core/path";
 import { cancelTask } from "@/lib/core/tasks";
 import { cn } from "@/lib/core/utils";
 import { ensureTexBuildEvents, texBuildStore } from "@/lib/tex/build-state";
+import {
+	getTexProjectSettings,
+	setTexProjectSettings,
+	type TexAutoBuild,
+	texSettingsStore,
+} from "@/lib/tex/config";
 import { getVaultPath } from "@/lib/vault/store";
 import { compileTexProject } from "@/lib/workspace/actions";
 import {
@@ -62,6 +72,10 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 		(state) => state.compilingPath,
 	);
 	const snapshot = useStore(texBuildStore, (state) => state.byRoot[key]);
+	const autoBuild = useStore(
+		texSettingsStore,
+		(state) => state.projects[key]?.autoBuild ?? "never",
+	);
 	const compiling = compilingPath != null || snapshot?.status === "running";
 	const ready = enginesLoading || engines.length > 0;
 	const vault = getVaultPath();
@@ -180,7 +194,7 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 							<ChevronDown aria-hidden />
 						</Button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="start">
+					<DropdownMenuContent align="start" className="min-w-56">
 						<DropdownMenuItem
 							disabled={compiling}
 							onSelect={() => {
@@ -205,6 +219,27 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 						>
 							{t("fileTree.cleanAux")}
 						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuLabel>{t("latexBuild:autoBuild")}</DropdownMenuLabel>
+						<DropdownMenuRadioGroup
+							value={autoBuild}
+							onValueChange={(value) => {
+								setTexProjectSettings(rootFile, {
+									...getTexProjectSettings(rootFile),
+									autoBuild: value as TexAutoBuild,
+								});
+							}}
+						>
+							<DropdownMenuRadioItem value="never">
+								{t("latexBuild:manual")}
+							</DropdownMenuRadioItem>
+							<DropdownMenuRadioItem value="onSave">
+								{t("latexBuild:onSave")}
+							</DropdownMenuRadioItem>
+							<DropdownMenuRadioItem value="onFileChange">
+								{t("latexBuild:onFileChange")}
+							</DropdownMenuRadioItem>
+						</DropdownMenuRadioGroup>
 						{snapshot?.status === "running" && snapshot.jobId ? (
 							<DropdownMenuItem
 								onSelect={() => {
