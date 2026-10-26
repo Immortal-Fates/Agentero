@@ -294,6 +294,7 @@ async fn prepare(app: &AppHandle, command: String) -> Result<(), String> {
         }
     });
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
