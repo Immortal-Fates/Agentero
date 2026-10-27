@@ -35,7 +35,6 @@ import type {
 	AiResponseLanguage,
 	AppSettings,
 } from "@/lib/settings";
-import { GITHUB_MIRROR_PRESETS } from "@/lib/settings/defaults";
 import type { ProbeStatus } from "@/lib/ui/probe-status";
 import { SettingsRow } from "./settings-layout";
 
@@ -86,54 +85,6 @@ export function NetworkProxyRow({
 					checked={proxyEnabled}
 					disabled={!isTauri()}
 					onCheckedChange={(v) => onToggleProxy(v)}
-				/>
-			</div>
-		</SettingsRow>
-	);
-}
-
-/** GitHub mirror selector: pick from a built-in preset list, plus enable switch. */
-export function GitHubMirrorRow({
-	htmlFor,
-	label,
-	description,
-	value,
-	enabled,
-	onValueChange,
-	onToggle,
-}: {
-	htmlFor: string;
-	label: string;
-	description?: string;
-	value: string;
-	enabled: boolean;
-	onValueChange: (url: string) => void;
-	onToggle: (enabled: boolean) => void;
-}) {
-	return (
-		<SettingsRow label={label} description={description} htmlFor={htmlFor}>
-			<div className="flex items-center gap-2">
-				<Select
-					value={value}
-					disabled={!enabled || !isTauri()}
-					onValueChange={(v) => onValueChange(v)}
-				>
-					<SelectTrigger id={htmlFor} size="sm" className="h-8 w-48 text-xs">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{GITHUB_MIRROR_PRESETS.map((url) => (
-							<SelectItem key={url} value={url} className="text-xs">
-								{url}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-				<Switch
-					aria-label={label}
-					checked={enabled}
-					disabled={!isTauri()}
-					onCheckedChange={(v) => onToggle(v)}
 				/>
 			</div>
 		</SettingsRow>

@@ -277,7 +277,7 @@
 		},
 		"networkProxy": {
 			"title": "Network request failed",
-			"description": "If access is restricted, configure a proxy or GitHub mirror in settings and try again.",
+			"description": "If access is restricted, configure a proxy in settings and try again.",
 			"openSettings": "Open network settings"
 		}
 	},

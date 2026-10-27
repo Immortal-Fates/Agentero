@@ -24,14 +24,6 @@ pub const DEFAULT_TRANSLATOR_BASE_URL: &str = "https://translation-server.agente
 pub const DEFAULT_NETWORK_PROXY_URL: &str = "http://127.0.0.1:7890";
 /// Default System One endpoint (TypeSafe jEV). Clef/OpenAI presets override it.
 pub const DEFAULT_DECISION_BASE_URL: &str = "https://api.typesafe.ai/v1/systemone";
-/// Built-in URL-prefix GitHub mirrors. The user picks from this list instead of
-/// typing a custom URL. All entries must support `{base}/{canonical_github_url}`.
-pub const GITHUB_MIRROR_PRESETS: &[&str] = &[
-    "https://gh.llkk.cc",
-    "https://mirror.ghproxy.com",
-    "https://ghproxy.net",
-    "https://github.moeyy.xyz",
-];
 /// Default Zotero Connector port (must match the official extension default).
 /// Owned here because the persisted `connectorPort` default must exist at
 /// deserialize time; `features::connector` re-exports it.
@@ -84,12 +76,6 @@ pub struct AppSettings {
     pub network_proxy_enabled: bool,
     #[serde(default = "default_network_proxy_url")]
     pub network_proxy_url: String,
-    /// URL-prefix GitHub mirror for Skill import fallback when GitHub is unreachable.
-    #[serde(default)]
-    pub github_mirror_enabled: bool,
-    /// e.g. `https://gh.llkk.cc` — requests become `{base}/https://codeload.github.com/...`.
-    #[serde(default)]
-    pub github_mirror_base_url: String,
     /// EZProxy/WebVPN prefix for paywalled PDF fallback, e.g.
     /// `https://webvpn.example.edu/login?url=`. Empty disables the layer.
     #[serde(default)]
@@ -430,8 +416,6 @@ impl Default for AppSettings {
             easy_scholar_key: String::new(),
             network_proxy_enabled: false,
             network_proxy_url: default_network_proxy_url(),
-            github_mirror_enabled: false,
-            github_mirror_base_url: GITHUB_MIRROR_PRESETS[0].to_string(),
             institution_proxy_prefix: String::new(),
             institution_proxy_cookie: String::new(),
             institution_proxy_type: "ezproxy".to_string(),
@@ -1227,12 +1211,6 @@ fn normalize(s: &mut AppSettings) {
     if s.network_proxy_url.is_empty() {
         s.network_proxy_url = default_network_proxy_url();
     }
-    let mirror = s.github_mirror_base_url.trim().trim_end_matches('/');
-    s.github_mirror_base_url = if GITHUB_MIRROR_PRESETS.contains(&mirror) {
-        mirror.to_string()
-    } else {
-        GITHUB_MIRROR_PRESETS[0].to_string()
-    };
     s.institution_proxy_prefix = s
         .institution_proxy_prefix
         .trim()

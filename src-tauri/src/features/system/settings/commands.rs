@@ -220,12 +220,6 @@ pub fn settings_set(
     ) {
         return map_err(e);
     }
-    if let Err(e) = crate::core::http::configure_github_mirror(
-        settings.github_mirror_enabled,
-        &settings.github_mirror_base_url,
-    ) {
-        return map_err(e);
-    }
     match store.set(settings) {
         Ok(s) => {
             // Keep every window's settings cache fresh (settings window, main windows).

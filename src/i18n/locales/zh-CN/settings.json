@@ -134,9 +134,6 @@
 			"label": "网络代理",
 			"systemDetected": "检测到系统代理（{{url}}）——开关关闭时将自动使用。"
 		},
-		"githubMirror": {
-			"label": "GitHub 镜像"
-		},
 		"institutionProxy": {
 			"label": "机构代理",
 			"cookieLabel": "代理 Cookie",

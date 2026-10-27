@@ -347,10 +347,6 @@ pub fn run() {
             settings.network_proxy_enabled,
             &settings.network_proxy_url,
         )?;
-        crate::core::http::configure_github_mirror(
-            settings.github_mirror_enabled,
-            &settings.github_mirror_base_url,
-        )?;
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         crate::features::paper::import::refresh_parser_config(&settings_store);
         let _ = agents.set_proxy(

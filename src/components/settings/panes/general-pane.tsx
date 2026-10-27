@@ -2,7 +2,6 @@ import { Copy, ExternalLink, LoaderCircle, Power } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-	GitHubMirrorRow,
 	type InstitutionProxyPresetOption,
 	InstitutionProxyRow,
 	NetworkProxyRow,
@@ -510,19 +509,10 @@ export function GeneralPane({
 						patch({ networkProxyEnabled })
 					}
 				/>
-				<GitHubMirrorRow
-					htmlFor="github-mirror-enabled"
-					label={t("general.githubMirror.label")}
-					value={settings.githubMirrorBaseUrl}
-					enabled={settings.githubMirrorEnabled}
-					onValueChange={(githubMirrorBaseUrl) =>
-						patch({ githubMirrorBaseUrl })
-					}
-					onToggle={(githubMirrorEnabled) => patch({ githubMirrorEnabled })}
-				/>
 				<SettingsRow
 					label={t("general.institutionProxy.typeLabel")}
 					htmlFor="institution-proxy-type"
+					className="mb-3"
 				>
 					<Select
 						value={settings.institutionProxyType}

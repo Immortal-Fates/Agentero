@@ -74,18 +74,6 @@ export const DEFAULT_TRANSLATOR_BASE_URL =
 	"https://translation-server.agentero.app";
 export const DEFAULT_NETWORK_PROXY_URL = "http://127.0.0.1:7890";
 
-/**
- * Built-in URL-prefix GitHub mirrors. The user picks from this list instead of
- * typing a custom URL. All entries must support `{base}/{canonical_github_url}`.
- * Availability of public mirrors varies, so this list is maintained in-code.
- */
-export const GITHUB_MIRROR_PRESETS = [
-	"https://gh.llkk.cc",
-	"https://mirror.ghproxy.com",
-	"https://ghproxy.net",
-	"https://github.moeyy.xyz",
-] as const;
-
 /** Gateway flavour for the institution proxy (`institutionProxyType`). */
 export type InstitutionProxyKind = "ezproxy" | "wengine";
 
@@ -175,8 +163,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
 	institutionProxyType: "ezproxy",
 	networkProxyEnabled: false,
 	networkProxyUrl: DEFAULT_NETWORK_PROXY_URL,
-	githubMirrorEnabled: false,
-	githubMirrorBaseUrl: GITHUB_MIRROR_PRESETS[0],
 	paperTreeLabelMode: "title-author",
 	paperTreeSortMode: "folder",
 	autoUpdateInternalLinks: "ask",

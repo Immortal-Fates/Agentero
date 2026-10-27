@@ -1552,10 +1552,6 @@ export type AppSettings_Deserialize = {
 	easyScholarKey?: string,
 	networkProxyEnabled?: boolean,
 	networkProxyUrl?: string,
-	/**  URL-prefix GitHub mirror for Skill import fallback when GitHub is unreachable. */
-	githubMirrorEnabled?: boolean,
-	/**  e.g. `https://gh.llkk.cc` — requests become `{base}/https://codeload.github.com/...`. */
-	githubMirrorBaseUrl?: string,
 	/**
 	 *  EZProxy/WebVPN prefix for paywalled PDF fallback, e.g.
 	 *  `https://webvpn.example.edu/login?url=`. Empty disables the layer.
@@ -1684,10 +1680,6 @@ export type AppSettings_Serialize = {
 	easyScholarKey: string,
 	networkProxyEnabled: boolean,
 	networkProxyUrl: string,
-	/**  URL-prefix GitHub mirror for Skill import fallback when GitHub is unreachable. */
-	githubMirrorEnabled: boolean,
-	/**  e.g. `https://gh.llkk.cc` — requests become `{base}/https://codeload.github.com/...`. */
-	githubMirrorBaseUrl: string,
 	/**
 	 *  EZProxy/WebVPN prefix for paywalled PDF fallback, e.g.
 	 *  `https://webvpn.example.edu/login?url=`. Empty disables the layer.
