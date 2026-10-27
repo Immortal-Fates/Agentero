@@ -1175,6 +1175,26 @@ function McpTunnelRows({
 
 	return (
 		<>
+			<SettingsRow label={t("general.mcp.tunnel.label")}>
+				<div className="flex items-center gap-2">
+					<StatusDot tone={tunnelPhaseTone(phase)} label={phaseLabel} />
+					<Button
+						type="button"
+						size="sm"
+						disabled={disabled || busy || binaryMissing || !mcpListening}
+						onClick={() => void (running ? stop() : start())}
+					>
+						{busy ? (
+							<LoaderCircle className="mr-1.5 size-4 animate-spin" />
+						) : (
+							<Power className="mr-1.5 size-4" />
+						)}
+						{running
+							? t("general.mcp.tunnel.stop")
+							: t("general.mcp.tunnel.start")}
+					</Button>
+				</div>
+			</SettingsRow>
 			<SettingsRow
 				label={t("general.mcp.tunnel.apiKeyLabel")}
 				htmlFor="mcp-tunnel-key"
@@ -1255,26 +1275,6 @@ function McpTunnelRows({
 							{t("general.mcp.tunnel.openTunnels")}
 						</TooltipContent>
 					</Tooltip>
-				</div>
-			</SettingsRow>
-			<SettingsRow label={t("general.mcp.tunnel.label")}>
-				<div className="flex items-center gap-2">
-					<StatusDot tone={tunnelPhaseTone(phase)} label={phaseLabel} />
-					<Button
-						type="button"
-						size="sm"
-						disabled={disabled || busy || binaryMissing || !mcpListening}
-						onClick={() => void (running ? stop() : start())}
-					>
-						{busy ? (
-							<LoaderCircle className="mr-1.5 size-4 animate-spin" />
-						) : (
-							<Power className="mr-1.5 size-4" />
-						)}
-						{running
-							? t("general.mcp.tunnel.stop")
-							: t("general.mcp.tunnel.start")}
-					</Button>
 				</div>
 			</SettingsRow>
 			{binaryMissing && (
