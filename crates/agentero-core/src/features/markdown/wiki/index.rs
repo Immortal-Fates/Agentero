@@ -1,8 +1,8 @@
 //! In-memory wikilink graph index (rebuildable from Vault Markdown).
 
 use crate::features::wiki::cache::{
-    discard_snapshot, fingerprint_files, load_snapshot, store_snapshot, wiki_cache_path,
-    WikiCacheLoad, WikiCacheSnapshot, WikiFileFingerprint, WikiSnapshotWrite,
+    discard_snapshot, fingerprint_file, fingerprint_files, load_snapshot, store_snapshot,
+    wiki_cache_path, WikiCacheLoad, WikiCacheSnapshot, WikiFileFingerprint, WikiSnapshotWrite,
 };
 use crate::features::wiki::embed::project_markdown;
 use crate::features::wiki::extract::extract_document;
@@ -177,6 +177,63 @@ fn walk_wiki_targets(
     Ok(())
 }
 
+/// Result of [`WikiIndex::apply_known_paths`]. `NeedsRebuild` means the caller
+/// should run the existing full-vault rebuild; the index was left unchanged.
+#[derive(Debug)]
+pub enum WikiPathApply {
+    Applied(RebuildResult),
+    NeedsRebuild,
+}
+
+fn vault_rel_of(vault_root: &Path, raw: &str) -> Option<String> {
+    let normalized = raw.replace('\\', "/");
+    let rel = if Path::new(raw).is_absolute() || normalized.starts_with('/') {
+        let relative = Path::new(raw).strip_prefix(vault_root).ok()?;
+        normalize_rel_lexical(&relative.to_string_lossy())
+    } else {
+        normalize_rel_lexical(&normalized)
+    };
+    if rel.split('/').any(|part| part == "..") {
+        return None;
+    }
+    Some(rel)
+}
+
+fn remap_rel_path(path: &str, from_rel: &str, to_rel: &str) -> String {
+    if path == from_rel {
+        return to_rel.to_string();
+    }
+    let prefix = format!("{from_rel}/");
+    if let Some(rest) = path.strip_prefix(&prefix) {
+        if to_rel.is_empty() {
+            return rest.to_string();
+        }
+        return format!("{to_rel}/{rest}");
+    }
+    path.to_string()
+}
+
+fn is_paper_leaf(dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        entry.path().is_file()
+            && entry
+                .file_name()
+                .to_str()
+                .is_some_and(crate::features::paper::identity::is_paper_marker_file)
+    })
+}
+
+fn list_wiki_targets(vault_root: &Path, dir: &Path) -> Result<Vec<String>, String> {
+    let mut listed = Vec::new();
+    walk_wiki_targets(vault_root, dir, 0, &mut listed).map_err(|error| error.to_string())?;
+    listed.sort();
+    listed.dedup();
+    Ok(listed)
+}
+
 fn to_vault_rel(vault_root: &Path, path: &str) -> String {
     let p = PathBuf::from(path);
     if let Ok(rel) = p.strip_prefix(vault_root) {
@@ -255,7 +312,10 @@ impl WikiIndex {
 
         let files = collect_wiki_target_files(&root).map_err(|e| e.to_string())?;
         if cfg!(test) {
-            return self.rebuild_from(vault_path, &root, files, Vec::new(), None, None);
+            // Tests skip the on-disk cache, but they still keep stat fingerprints
+            // so a warm index can apply path updates without another vault walk.
+            let fingerprints = fingerprint_files(&root, &files).unwrap_or_default();
+            return self.rebuild_from(vault_path, &root, files, fingerprints, None, None);
         }
         let cache_path = wiki_cache_path(&root);
         self.rebuild_with_cache_path(vault_path, &root, files, &cache_path, true)
@@ -589,6 +649,407 @@ impl WikiIndex {
         self.last_result = Some(result.clone());
 
         result
+    }
+
+    /// True when this index already describes `vault_path` and has a file
+    /// inventory. Callers can then update known paths without walking the vault.
+    pub fn is_warm_for(&self, vault_path: &str) -> bool {
+        self.vault_path.as_deref() == Some(vault_path) && !self.fingerprints.is_empty()
+    }
+
+    /// Update documents for caller-supplied paths, then resolve every link in
+    /// memory. A cold index, an empty path list, a path outside this vault, or
+    /// a directory that is not one paper folder returns [`WikiPathApply::NeedsRebuild`]
+    /// without touching the index. Disk work is the stat and read of those
+    /// paths (and, for a paper folder, a listing of that folder only).
+    pub fn apply_known_paths(
+        &mut self,
+        vault_path: &str,
+        changed_paths: &[String],
+    ) -> Result<WikiPathApply, String> {
+        if changed_paths.is_empty() || !self.is_warm_for(vault_path) {
+            return Ok(WikiPathApply::NeedsRebuild);
+        }
+        let root = crate::fs::resolve_vault(vault_path).map_err(|error| error.to_string())?;
+        let mut refresh = BTreeSet::new();
+        let mut remove = BTreeSet::new();
+        for raw in changed_paths {
+            let rel = match vault_rel_of(&root, raw) {
+                Some(rel) if !rel.is_empty() => rel,
+                _ => return Ok(WikiPathApply::NeedsRebuild),
+            };
+            let absolute = root.join(&rel);
+            if absolute.is_dir() {
+                if !is_paper_leaf(&absolute) {
+                    return Ok(WikiPathApply::NeedsRebuild);
+                }
+                let listed = list_wiki_targets(&root, &absolute)?;
+                let listed_set: HashSet<&str> = listed.iter().map(String::as_str).collect();
+                let prefix = format!("{rel}/");
+                for existing in &self.files {
+                    if (existing == &rel || existing.starts_with(&prefix))
+                        && !listed_set.contains(existing.as_str())
+                    {
+                        remove.insert(existing.clone());
+                    }
+                }
+                refresh.extend(listed);
+            } else if absolute.is_file() {
+                if is_wiki_target(&absolute) {
+                    refresh.insert(rel);
+                }
+            } else {
+                let prefix = format!("{rel}/");
+                for existing in &self.files {
+                    if existing == &rel || existing.starts_with(&prefix) {
+                        remove.insert(existing.clone());
+                    }
+                }
+            }
+        }
+        if refresh.is_empty() && remove.is_empty() {
+            if let Some(result) = self.last_result.clone() {
+                return Ok(WikiPathApply::Applied(result));
+            }
+            return Ok(WikiPathApply::NeedsRebuild);
+        }
+        let result = self.reindex_touched(
+            vault_path,
+            &root,
+            &refresh,
+            &remove,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )?;
+        Ok(WikiPathApply::Applied(result))
+    }
+
+    /// After a committed local move: retarget the in-memory inventory from
+    /// `from_rel` to `to_rel`, list only the destination, and re-read Markdown
+    /// whose bytes the transaction changed. A cold index falls back to one
+    /// full rebuild of the post-move vault.
+    pub fn refresh_after_move(
+        &mut self,
+        vault_path: &str,
+        from_rel: &str,
+        to_rel: &str,
+        updated_sources: &[String],
+    ) -> Result<RebuildResult, String> {
+        if !self.is_warm_for(vault_path) {
+            return self.rebuild(vault_path);
+        }
+        let root = crate::fs::resolve_vault(vault_path).map_err(|error| error.to_string())?;
+        let from_rel = normalize_rel_lexical(from_rel);
+        let to_rel = normalize_rel_lexical(to_rel);
+        let (removed_paths, moved_paths) = self.remap_prefix(&from_rel, &to_rel);
+        match self.try_refresh_moved_tree(
+            vault_path,
+            &root,
+            &to_rel,
+            updated_sources,
+            &removed_paths,
+            &moved_paths,
+        ) {
+            Ok(result) => Ok(result),
+            Err(error) => {
+                log::warn!(
+                    target: "agentero::wiki",
+                    "incremental wiki update after move failed, rebuilding: {error}"
+                );
+                self.rebuild(vault_path)
+            }
+        }
+    }
+
+    fn try_refresh_moved_tree(
+        &mut self,
+        vault_path: &str,
+        root: &Path,
+        to_rel: &str,
+        updated_sources: &[String],
+        removed_paths: &BTreeSet<String>,
+        moved_paths: &BTreeSet<String>,
+    ) -> Result<RebuildResult, String> {
+        let mut refresh = BTreeSet::new();
+        let mut remove = BTreeSet::new();
+        let destination = root.join(to_rel);
+        if destination.is_dir() {
+            let listed = list_wiki_targets(root, &destination)?;
+            let listed_set: HashSet<&str> = listed.iter().map(String::as_str).collect();
+            let prefix = format!("{to_rel}/");
+            for existing in &self.files {
+                if (existing == to_rel || existing.starts_with(&prefix))
+                    && !listed_set.contains(existing.as_str())
+                {
+                    remove.insert(existing.clone());
+                }
+            }
+            refresh.extend(listed);
+        } else if destination.is_file() && is_wiki_target(&destination) {
+            refresh.insert(to_rel.to_string());
+        }
+        for source in updated_sources {
+            let Some(rel) = vault_rel_of(root, source) else {
+                continue;
+            };
+            if is_wiki_target(Path::new(&rel)) {
+                refresh.insert(rel);
+            }
+        }
+        self.reindex_touched(
+            vault_path,
+            root,
+            &refresh,
+            &remove,
+            removed_paths,
+            moved_paths,
+        )
+    }
+
+    /// Rewrite indexed paths that are `from` or live under it. Returns the
+    /// old paths (cache deletes) and the new paths (cache upserts).
+    fn remap_prefix(
+        &mut self,
+        from_rel: &str,
+        to_rel: &str,
+    ) -> (BTreeSet<String>, BTreeSet<String>) {
+        let mut removed = BTreeSet::new();
+        let mut moved = BTreeSet::new();
+        if from_rel.is_empty() || from_rel == to_rel {
+            return (removed, moved);
+        }
+        let rewrite = |path: &str| -> String { remap_rel_path(path, from_rel, to_rel) };
+        for file in &mut self.files {
+            let next = rewrite(file);
+            if next != *file {
+                removed.insert(std::mem::replace(file, next.clone()));
+                moved.insert(next);
+            }
+        }
+        self.files.sort();
+        self.files.dedup();
+        for document in &mut self.documents {
+            let next = rewrite(&document.path);
+            if next != document.path {
+                removed.insert(std::mem::replace(&mut document.path, next.clone()));
+                moved.insert(next);
+            }
+        }
+        for fingerprint in &mut self.fingerprints {
+            let next = rewrite(&fingerprint.relative_path);
+            if next != fingerprint.relative_path {
+                removed.insert(std::mem::replace(
+                    &mut fingerprint.relative_path,
+                    next.clone(),
+                ));
+                moved.insert(next);
+            }
+        }
+        for edge in &mut self.edges {
+            let next = rewrite(&edge.occurrence.source);
+            if next != edge.occurrence.source {
+                removed.insert(std::mem::replace(&mut edge.occurrence.source, next.clone()));
+                moved.insert(next);
+            }
+            if let Some(target) = edge.target_path.as_mut() {
+                *target = rewrite(target);
+            }
+            for candidate in &mut edge.candidates {
+                *candidate = rewrite(candidate);
+            }
+        }
+        (removed, moved)
+    }
+
+    /// Stat and maybe re-read `refresh`, drop `remove`, then resolve every
+    /// kept occurrence against the full document set. `cache_removed` /
+    /// `cache_moved` are paths already rewritten in memory by a prefix remap;
+    /// the on-disk snapshot still has the old keys.
+    fn reindex_touched(
+        &mut self,
+        vault_path: &str,
+        root: &Path,
+        refresh: &BTreeSet<String>,
+        remove: &BTreeSet<String>,
+        cache_removed: &BTreeSet<String>,
+        cache_moved: &BTreeSet<String>,
+    ) -> Result<RebuildResult, String> {
+        let mut documents: HashMap<String, WikiDocument> = self
+            .documents
+            .iter()
+            .cloned()
+            .map(|document| (document.path.clone(), document))
+            .collect();
+        let mut occurrences: HashMap<String, Vec<InternalLinkOccurrence>> = HashMap::new();
+        for edge in &self.edges {
+            occurrences
+                .entry(edge.occurrence.source.clone())
+                .or_default()
+                .push(edge.occurrence.clone());
+        }
+        let mut fingerprints: HashMap<String, WikiFileFingerprint> = self
+            .fingerprints
+            .iter()
+            .cloned()
+            .map(|fingerprint| (fingerprint.relative_path.clone(), fingerprint))
+            .collect();
+        let mut files: BTreeSet<String> = self.files.iter().cloned().collect();
+
+        let mut cache_changed: BTreeSet<String> = cache_moved
+            .iter()
+            .filter(|path| files.contains(*path) || refresh.contains(*path))
+            .cloned()
+            .collect();
+        let mut cache_removed = cache_removed.clone();
+
+        for path in remove {
+            if files.remove(path) {
+                cache_removed.insert(path.clone());
+            }
+            documents.remove(path);
+            occurrences.remove(path);
+            fingerprints.remove(path);
+            cache_changed.remove(path);
+        }
+
+        let mut failed_reads = false;
+        for rel in refresh {
+            if remove.contains(rel) {
+                continue;
+            }
+            let absolute = root.join(rel);
+            if !absolute.is_file() || !is_wiki_target(&absolute) {
+                if files.remove(rel) {
+                    cache_removed.insert(rel.clone());
+                }
+                documents.remove(rel);
+                occurrences.remove(rel);
+                fingerprints.remove(rel);
+                cache_changed.remove(rel);
+                continue;
+            }
+            let fingerprint =
+                fingerprint_file(rel, &absolute).map_err(|error| error.to_string())?;
+            let unchanged =
+                fingerprints.get(rel) == Some(&fingerprint) && documents.contains_key(rel);
+            files.insert(rel.clone());
+            if unchanged {
+                cache_changed.insert(rel.clone());
+                continue;
+            }
+            cache_changed.insert(rel.clone());
+            fingerprints.insert(rel.clone(), fingerprint);
+            if !is_markdown(Path::new(rel)) {
+                documents.insert(
+                    rel.clone(),
+                    WikiDocument {
+                        path: rel.clone(),
+                        aliases: Vec::new(),
+                        headings: Vec::new(),
+                        blocks: Vec::new(),
+                    },
+                );
+                occurrences.remove(rel);
+                continue;
+            }
+            let bytes = match fs::read(&absolute) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    failed_reads = true;
+                    files.remove(rel);
+                    documents.remove(rel);
+                    occurrences.remove(rel);
+                    fingerprints.remove(rel);
+                    cache_changed.remove(rel);
+                    cache_removed.insert(rel.clone());
+                    continue;
+                }
+            };
+            let Ok(content) = String::from_utf8(bytes) else {
+                files.remove(rel);
+                documents.remove(rel);
+                occurrences.remove(rel);
+                fingerprints.remove(rel);
+                cache_changed.remove(rel);
+                cache_removed.insert(rel.clone());
+                continue;
+            };
+            let (document, parsed) = extract_document(rel, &content);
+            documents.insert(rel.clone(), document);
+            if is_wiki_source(Path::new(rel)) {
+                occurrences.insert(rel.clone(), parsed);
+            } else {
+                occurrences.remove(rel);
+            }
+        }
+
+        let file_list: Vec<String> = files.into_iter().collect();
+        let mut kept_documents = Vec::with_capacity(file_list.len());
+        let mut kept_occurrences = Vec::new();
+        let mut kept_fingerprints = Vec::with_capacity(file_list.len());
+        for rel in &file_list {
+            let Some(document) = documents.remove(rel) else {
+                continue;
+            };
+            let Some(fingerprint) = fingerprints.remove(rel) else {
+                continue;
+            };
+            if is_wiki_source(Path::new(rel)) {
+                kept_occurrences.extend(occurrences.remove(rel).unwrap_or_default());
+            }
+            kept_documents.push(document);
+            kept_fingerprints.push(fingerprint);
+        }
+        let kept_files: Vec<String> = kept_fingerprints
+            .iter()
+            .map(|fingerprint| fingerprint.relative_path.clone())
+            .collect();
+
+        let edges: Vec<ResolvedLink> = {
+            let lookup = DocumentLookup::new(&kept_documents);
+            kept_occurrences
+                .into_iter()
+                .map(|occurrence| resolve_occurrence_with(occurrence, &lookup))
+                .collect()
+        };
+        let incremental_store = self.cache_synced && !failed_reads;
+        let result = self.install_snapshot(
+            vault_path,
+            kept_files,
+            kept_documents,
+            edges,
+            kept_fingerprints,
+        );
+        self.cache_synced = false;
+        if !failed_reads && !cfg!(test) {
+            let cache_path = wiki_cache_path(root);
+            let write = if incremental_store {
+                WikiSnapshotWrite::Incremental {
+                    changed: cache_changed,
+                    removed: cache_removed,
+                }
+            } else {
+                WikiSnapshotWrite::Full
+            };
+            match store_snapshot(
+                &cache_path,
+                root,
+                &self.fingerprints,
+                &self.documents,
+                &self.edges,
+                &write,
+            ) {
+                Ok(()) => self.cache_synced = true,
+                Err(error) => {
+                    log::warn!(
+                        target: "agentero::wiki",
+                        "could not persist Wiki cache {}: {error}",
+                        cache_path.display()
+                    );
+                }
+            }
+        }
+        Ok(result)
     }
 
     pub fn ensure_vault(&mut self, vault_path: &str) -> Result<(), String> {
@@ -1923,5 +2384,75 @@ mod tests {
         );
 
         cleanup_cache_fixture(&root, &cache_path);
+    }
+
+    #[test]
+    fn apply_known_paths_indexes_one_paper_and_reresolves_aliases() {
+        let root = test_vault();
+        fs::write(
+            root.join("notes/Source.md"),
+            "[[Attention Is All You Need]]\n",
+        )
+        .expect("write source");
+        let vault = root.to_string_lossy().to_string();
+        let mut index = WikiIndex::default();
+        index.rebuild(&vault).expect("seed index");
+        assert!(index.is_warm_for(&vault));
+        let before = index
+            .check_links(&vault, Some("notes/Source.md"))
+            .counts
+            .missing;
+        assert_eq!(before, 1);
+
+        let paper = root.join("papers/attn");
+        fs::create_dir_all(&paper).expect("create paper");
+        fs::write(
+            paper.join("NOTES.md"),
+            "---\naliases:\n  - \"Attention Is All You Need\"\n---\n# Attention\n",
+        )
+        .expect("write notes");
+        fs::write(paper.join("attn.pdf"), b"%PDF-1.4").expect("write pdf");
+
+        let applied = index
+            .apply_known_paths(&vault, &[paper.to_string_lossy().to_string()])
+            .expect("apply paper folder");
+        let WikiPathApply::Applied(_) = applied else {
+            panic!("paper folder should update in place");
+        };
+        let after = index.check_links(&vault, Some("notes/Source.md"));
+        assert_eq!(after.counts.resolved, 1);
+        assert_eq!(after.counts.missing, 0);
+        assert!(index.document("papers/attn/NOTES.md").is_some());
+        assert!(index.document("papers/attn/attn.pdf").is_some());
+        assert!(index
+            .get_outgoing(&vault, "papers/attn/attn.pdf")
+            .outgoing
+            .is_empty());
+
+        fs::remove_file(paper.join("attn.pdf")).expect("delete pdf");
+        let removed = index
+            .apply_known_paths(
+                &vault,
+                &[paper.join("attn.pdf").to_string_lossy().to_string()],
+            )
+            .expect("apply deleted pdf");
+        assert!(matches!(removed, WikiPathApply::Applied(_)));
+        assert!(index.document("papers/attn/attn.pdf").is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_known_paths_rejects_a_wide_directory() {
+        let root = test_vault();
+        fs::write(root.join("notes/Source.md"), "hello\n").expect("write source");
+        let vault = root.to_string_lossy().to_string();
+        let mut index = WikiIndex::default();
+        index.rebuild(&vault).expect("seed index");
+        let notes = root.join("notes");
+        let outcome = index
+            .apply_known_paths(&vault, &[notes.to_string_lossy().to_string()])
+            .expect("classify directory");
+        assert!(matches!(outcome, WikiPathApply::NeedsRebuild));
+        let _ = fs::remove_dir_all(root);
     }
 }
