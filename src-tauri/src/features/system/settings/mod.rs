@@ -1006,6 +1006,36 @@ impl AppSettingsStore {
         ))
     }
 
+    /// Persist cookies captured after an interactive gateway login without
+    /// overwriting unrelated settings changed by another window meanwhile.
+    pub fn update_institution_proxy_cookie(
+        &self,
+        prefix: &str,
+        cookie: String,
+    ) -> Result<Option<AppSettings>, AppError> {
+        let redacted = {
+            let mut guard = self
+                .inner
+                .lock()
+                .map_err(|_| AppError::message("settings lock poisoned"))?;
+            if guard.institution_proxy_prefix.trim() != prefix.trim() {
+                return Ok(None);
+            }
+            let mut next = guard.clone();
+            next.institution_proxy_cookie = cookie;
+            persist(&self.path, &next)?;
+            *guard = next.clone();
+            redact_secrets(next)
+        };
+        if let Some((kind, prefix, cookie)) = self.institution_proxy() {
+            agentero_core::features::paper::import::download::set_institution_proxy(
+                kind, &prefix, &cookie,
+            );
+        }
+        self.notify(&redacted);
+        Ok(Some(redacted))
+    }
+
     /// Resolve the configured EasyScholar key. Returns None when unset or when
     /// the stored value is a UI mask (`*`-only), so probes never send masks.
     pub fn easy_scholar_key(&self) -> Option<String> {
@@ -1505,6 +1535,31 @@ fn normalize_translate_provider_configs(configs: &mut HashMap<String, TranslateP
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn captured_proxy_cookie_updates_only_matching_gateway() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AppSettingsStore {
+            inner: Mutex::new(AppSettings {
+                institution_proxy_prefix: "https://vpn.example.edu".into(),
+                institution_proxy_cookie: "old=1".into(),
+                theme: "dark".into(),
+                ..AppSettings::default()
+            }),
+            path: dir.path().join("settings.json"),
+            listeners: Mutex::new(Vec::new()),
+        };
+        assert!(store
+            .update_institution_proxy_cookie("https://other.example.edu", "wrong=1".into())
+            .unwrap()
+            .is_none());
+        store
+            .update_institution_proxy_cookie("https://vpn.example.edu", "fresh=1".into())
+            .unwrap();
+        let (saved, _) = read_file(&store.path);
+        assert_eq!(saved.institution_proxy_cookie, "fresh=1");
+        assert_eq!(saved.theme, "dark");
+    }
 
     #[test]
     fn roundtrip_defaults() {

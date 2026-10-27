@@ -49,7 +49,69 @@ pub async fn institution_proxy_login_open(app: AppHandle, prefix: String) -> Res
             .build()
             .map_err(|e| e.to_string())?;
     }
+    let monitor_app = app.clone();
+    let monitor_prefix = prefix.trim().to_string();
+    tauri::async_runtime::spawn(async move {
+        monitor_institution_login(monitor_app, monitor_prefix).await;
+    });
     Ok(())
+}
+
+async fn monitor_institution_login(app: AppHandle, prefix: String) {
+    use agentero_core::features::paper::import::download::probe_institution_proxy;
+    use std::time::Duration;
+
+    let gateway_url = match proxy_gateway_url(&prefix) {
+        Ok(url) => url,
+        Err(_) => return,
+    };
+    let mut last_cookie = app
+        .state::<AppSettingsStore>()
+        .institution_proxy()
+        .map(|(_, _, cookie)| cookie)
+        .unwrap_or_default();
+    let mut interval = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        interval.tick().await;
+        let Some(window) = app.get_webview_window(PROXY_LOGIN_WINDOW) else {
+            return;
+        };
+        let url = gateway_url.clone();
+        let cookie =
+            match tauri::async_runtime::spawn_blocking(move || window.cookies_for_url(url)).await {
+                Ok(Ok(cookies)) => cookies
+                    .into_iter()
+                    .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                _ => continue,
+            };
+        if cookie.is_empty() || cookie == last_cookie {
+            continue;
+        }
+        let store = app.state::<AppSettingsStore>();
+        let Some((kind, saved_prefix, _)) = store.institution_proxy() else {
+            continue;
+        };
+        if saved_prefix != prefix {
+            continue;
+        }
+        last_cookie = cookie.clone();
+        if probe_institution_proxy(kind, &prefix, &cookie)
+            .await
+            .is_err()
+        {
+            continue;
+        }
+        let Ok(Some(settings)) = store.update_institution_proxy_cookie(&prefix, cookie) else {
+            continue;
+        };
+        let _ = app.emit("settings:changed", settings);
+        if let Some(window) = app.get_webview_window(PROXY_LOGIN_WINDOW) {
+            let _ = window.close();
+        }
+        return;
+    }
 }
 
 /// Read only the configured gateway's cookies, including HttpOnly cookies.
