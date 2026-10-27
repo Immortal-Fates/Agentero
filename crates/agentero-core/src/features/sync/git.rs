@@ -257,7 +257,7 @@ impl Git {
             command.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
         }
         crate::process::hide_console_window_tokio(&mut command);
-        match tokio::time::timeout(timeout, command.output()).await {
+        match tokio::time::timeout(timeout, crate::process::command_output(&mut command)).await {
             Ok(Ok(output)) => Ok(output),
             Ok(Err(error)) => Err(AppError::domain(
                 "git_unavailable",
