@@ -65,6 +65,7 @@ export function WritingDesk() {
 	const discovering = useWritingStore((s) => s.discovering);
 	const historyActive = useWritingStore((s) => s.historyActive);
 	const syncActive = useWritingStore((s) => s.syncActive);
+	const [splitPosition, setSplitPosition] = useState(58);
 	const [liveRoot, setLiveRoot] = useState<string | null>(null);
 	const livePreview = activeRoot != null && liveRoot === activeRoot;
 	const fallbackRoot =
@@ -88,65 +89,73 @@ export function WritingDesk() {
 	}
 
 	return (
-		<ResizableGroup orientation="horizontal" className="h-full min-h-0">
-			<ResizablePanel
-				id="writing-editor"
-				defaultSize="58"
-				minSize="24"
-				className="min-h-0 min-w-0"
+		<div className="relative h-full min-h-0">
+			<ResizableGroup
+				orientation="horizontal"
+				className="h-full min-h-0"
+				onLayoutChange={(layout) =>
+					setSplitPosition(layout["writing-editor"] ?? 58)
+				}
 			>
-				<div className="flex h-full min-h-0 min-w-0 flex-col">
-					<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
-						<WritingFileTabs />
+				<ResizablePanel
+					id="writing-editor"
+					defaultSize="58"
+					minSize="24"
+					className="min-h-0 min-w-0"
+				>
+					<div className="flex h-full min-h-0 min-w-0 flex-col">
+						<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
+							<WritingFileTabs />
+						</div>
+						<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+							{historyActive ? (
+								<WritingHistory />
+							) : syncActive ? (
+								<WritingSyncTab vaultPath={vaultPath} />
+							) : activeFile ? (
+								<Suspense
+									fallback={
+										<p className="text-muted-foreground px-3 py-2 text-sm">
+											{t("writing.loadingFiles")}
+										</p>
+									}
+								>
+									<ProjectEditor path={activeFile} />
+								</Suspense>
+							) : null}
+						</div>
 					</div>
-					<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-						{historyActive ? (
-							<WritingHistory />
-						) : syncActive ? (
-							<WritingSyncTab vaultPath={vaultPath} />
-						) : activeFile ? (
-							<Suspense
-								fallback={
-									<p className="text-muted-foreground px-3 py-2 text-sm">
-										{t("writing.loadingFiles")}
-									</p>
+				</ResizablePanel>
+				<ResizableHandle className="z-30" />
+				<ResizablePanel
+					id="writing-pdf"
+					defaultSize="42"
+					minSize="20"
+					className="min-h-0 min-w-0"
+				>
+					<div className="flex h-full min-h-0 min-w-0 flex-col">
+						<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
+							<WritingPdfBar
+								rootFile={compileRoot ?? activeRoot}
+								livePreview={livePreview}
+								onLivePreviewChange={(live) =>
+									setLiveRoot(live ? activeRoot : null)
 								}
-							>
-								<ProjectEditor path={activeFile} />
-							</Suspense>
-						) : null}
+							/>
+						</div>
+						<div className="min-h-0 flex-1">
+							<ProjectPdf
+								rootFile={compileRoot ?? activeRoot}
+								vaultPath={vaultPath}
+								livePreview={livePreview}
+							/>
+						</div>
 					</div>
-				</div>
-			</ResizablePanel>
-			<ResizableHandle className="z-30">
-				<WritingSyncButtons activeFile={activeFile} />
-			</ResizableHandle>
-			<ResizablePanel
-				id="writing-pdf"
-				defaultSize="42"
-				minSize="20"
-				className="min-h-0 min-w-0"
-			>
-				<div className="flex h-full min-h-0 min-w-0 flex-col">
-					<div className="flex h-9 shrink-0 items-stretch border-b border-border bg-muted/70">
-						<WritingPdfBar
-							rootFile={compileRoot ?? activeRoot}
-							livePreview={livePreview}
-							onLivePreviewChange={(live) =>
-								setLiveRoot(live ? activeRoot : null)
-							}
-						/>
-					</div>
-					<div className="min-h-0 flex-1">
-						<ProjectPdf
-							rootFile={compileRoot ?? activeRoot}
-							vaultPath={vaultPath}
-							livePreview={livePreview}
-						/>
-					</div>
-				</div>
-			</ResizablePanel>
-		</ResizableGroup>
+				</ResizablePanel>
+			</ResizableGroup>
+			{/* Keep controls outside the resize group so its document-level hit testing ignores them. */}
+			<WritingSyncButtons activeFile={activeFile} position={splitPosition} />
+		</div>
 	);
 }
 
