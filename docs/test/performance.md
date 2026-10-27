@@ -62,6 +62,8 @@ Host 与界面会对同一个名字各写一行：`vault_tree_build`、`paper_li
 
 只等实际出现的阅读器。配置在页面脚本之前注入为 `globalThis.__AGENTERO_PERF__`，启动代码不用再发一次 IPC。
 
+桌面一次性性能运行由 `src/lib/shell/perf-run.ts` 编排 Vault 打开与工作区就绪；基础层 `src/lib/core/perf.ts` 只提供采样、标记与输出能力，不反向依赖 Vault 或 workspace。
+
 ## 限制与后续
 
 未做语料生成、CI 回归门槛，也没有滚动、打字、分隔条的帧测试。这些不放进 Roadmap 条目；需要时再单独做。`docs/development/` 没有另一份待办清单。

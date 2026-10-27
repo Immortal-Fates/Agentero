@@ -16,7 +16,6 @@ import { applyLocale } from "@/i18n";
 import { startActivityTracking } from "@/lib/activity";
 import { commands } from "@/lib/core/bindings";
 import { perfActive } from "@/lib/core/perf";
-import { startPerfRun } from "@/lib/core/perf-run";
 import { startTaskRuntime } from "@/lib/core/tasks";
 import { isTauri } from "@/lib/core/tauri";
 import { initLifecycleBridge, lifecycle } from "@/lib/lifecycle";
@@ -31,6 +30,7 @@ import { refreshLibrary } from "@/lib/paper/library-store";
 import { registerLibraryTaskExecutors } from "@/lib/paper/library-tasks";
 import { startDevelopmentPlugins } from "@/lib/plugins/development";
 import { pluginsSurfaceEnabled } from "@/lib/plugins/visibility";
+import { startPerfRun } from "@/lib/shell/perf-run";
 // Side-effect: register catalog title lookup for JobCenter task subjects.
 import "@/lib/paper/task-label";
 import { registerLayoutTaskExecutor } from "@/lib/pdf/layout/enqueue-paper-layout";
