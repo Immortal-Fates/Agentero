@@ -122,6 +122,15 @@ where
                 format!("could not build pre-move wiki snapshot: {error}"),
             )
         })?;
+    } else {
+        // Saved notes are not a vault walk: only paths recorded since the last
+        // index update are re-read, then link rewrite is planned from that.
+        index.refresh_pending_sources(vault_path).map_err(|error| {
+            WikiRenameError::new(
+                WikiRenameErrorCode::IndexStale,
+                format!("could not refresh saved wiki sources: {error}"),
+            )
+        })?;
     }
     let transaction = WikiRenameTransaction::plan(vault_root, index, from, to)?;
     transaction.reject_dirty_paths(dirty_paths)?;
@@ -292,6 +301,48 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["papers/new/NOTES.md"]
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn warm_rename_rewrites_a_link_saved_after_the_index_was_built() {
+        let root = temp_vault();
+        write(&root, "notes/Source.md", "before\n");
+        write(&root, "notes/Target.md", "# Overview\n");
+        let mut index = snapshot(&root);
+        let saved = root.join("notes/Source.md");
+        fs::write(&saved, "[[notes/Target]]\n").unwrap();
+        index.note_saved_source(root.to_str().unwrap(), &saved.to_string_lossy());
+        run_local_rename_transaction(
+            &root,
+            &mut index,
+            "notes/Target.md",
+            "archive/Renamed.md",
+            &[],
+            || Ok(()),
+        )
+        .expect("rename sees the saved link");
+        assert_eq!(fs::read_to_string(saved).unwrap(), "[[archive/Renamed]]\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rename_plan_accepts_a_canonical_spelling_of_the_same_vault() {
+        let root = temp_vault();
+        write(&root, "notes/Target.md", "# Overview\n");
+        let index = snapshot(&root);
+        let canonical = crate::fs::canonicalize_best_effort(&root);
+        let canonical_text = canonical.to_str().expect("utf8 canonical vault");
+        assert!(index.describes_vault(canonical_text));
+        if canonical != root {
+            WikiRenameTransaction::plan(
+                &canonical,
+                &index,
+                "notes/Target.md",
+                "archive/Renamed.md",
+            )
+            .expect("canonical vault spelling still describes this index");
+        }
         let _ = fs::remove_dir_all(root);
     }
 }

@@ -185,6 +185,14 @@ pub enum WikiPathApply {
     NeedsRebuild,
 }
 
+fn vault_paths_match(stored: &str, vault_path: &str) -> bool {
+    if stored == vault_path {
+        return true;
+    }
+    crate::fs::canonicalize_best_effort(Path::new(stored))
+        == crate::fs::canonicalize_best_effort(Path::new(vault_path))
+}
+
 fn vault_rel_of(vault_root: &Path, raw: &str) -> Option<String> {
     let normalized = raw.replace('\\', "/");
     let rel = if Path::new(raw).is_absolute() || normalized.starts_with('/') {
@@ -265,6 +273,9 @@ pub struct WikiIndex {
     /// Result of the last install, returned verbatim by the fingerprint-equal
     /// fast path.
     last_result: Option<RebuildResult>,
+    /// Markdown sources written since the last index update. A warm index is
+    /// not fresh until these are re-read; rename planning consumes the set.
+    pending_sources: BTreeSet<String>,
 }
 
 /// Reusable parse products from the previous build (in-memory or on-disk).
@@ -653,20 +664,50 @@ impl WikiIndex {
 
     /// True when this index already describes `vault_path` and has a file
     /// inventory. Callers can then update known paths without walking the vault.
+    /// True when `vault_path` is the vault this index was built for, including
+    /// canonical spellings (`\\?\`, `/var` vs `/private/var`).
+    pub fn describes_vault(&self, vault_path: &str) -> bool {
+        self.vault_path
+            .as_deref()
+            .is_some_and(|stored| vault_paths_match(stored, vault_path))
+    }
+
     pub fn is_warm_for(&self, vault_path: &str) -> bool {
+        self.describes_vault(vault_path) && !self.fingerprints.is_empty()
+    }
+
+    /// Remember a Markdown file written after the index was built. Rename
+    /// planning re-reads the set instead of walking the vault.
+    pub fn note_saved_source(&mut self, vault_path: &str, path: &str) {
+        if !self.describes_vault(vault_path) {
+            return;
+        }
         let Some(stored) = self.vault_path.as_deref() else {
-            return false;
+            return;
         };
-        if self.fingerprints.is_empty() {
-            return false;
+        let rel = vault_rel_of(Path::new(vault_path), path)
+            .or_else(|| vault_rel_of(Path::new(stored), path));
+        let Some(rel) = rel else {
+            return;
+        };
+        if rel.is_empty() || !is_wiki_source(Path::new(&rel)) {
+            return;
         }
-        if stored == vault_path {
-            return true;
+        self.pending_sources.insert(rel);
+    }
+
+    /// Fold Markdown saved since the last update into the warm index.
+    pub fn refresh_pending_sources(&mut self, vault_path: &str) -> Result<(), String> {
+        if self.pending_sources.is_empty() {
+            return Ok(());
         }
-        // Job runners canonicalize the vault (Windows `\\?\`, macOS `/var` vs
-        // `/private/var`). The index stays warm across those spellings.
-        crate::fs::canonicalize_best_effort(Path::new(stored))
-            == crate::fs::canonicalize_best_effort(Path::new(vault_path))
+        let paths: Vec<String> = std::mem::take(&mut self.pending_sources)
+            .into_iter()
+            .collect();
+        match self.apply_known_paths(vault_path, &paths)? {
+            WikiPathApply::Applied(_) => Ok(()),
+            WikiPathApply::NeedsRebuild => self.rebuild(vault_path).map(|_| ()),
+        }
     }
 
     /// Update documents for caller-supplied paths, then resolve every link in
