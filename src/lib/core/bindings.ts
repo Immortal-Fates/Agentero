@@ -1376,6 +1376,11 @@ export type AgentTemplate = "opencode" |
  */
 "qoder-cli" | 
 /**
+ *  Qoder CN CLI (mainland build) with native ACP (`qodercn --acp`).
+ *  Docs: https://docs.qoder.cn/cli/acp
+ */
+"qoder-cn" | 
+/**
  *  Grok Build native ACP (`grok agent stdio`).
  *  Docs: https://zed.dev/acp/agent/grok-build
  */
@@ -1411,12 +1416,7 @@ export type AgentTemplate = "opencode" |
  *  Xiaomi MiMo Code CLI (an OpenCode fork) with native ACP (`mimo acp`).
  *  Docs: https://mimo.xiaomi.com · npm package `mimocode`
  */
-"mimo-code" |
-/**
- *  Qoder CN CLI (mainland build) with native ACP (`qodercn --acp`).
- *  Docs: https://docs.qoder.cn/cli/acp
- */
-"qoder-cn" | "custom";
+"mimo-code" | "custom";
 
 /**  ACP tool call create/update for UI (`Tool` element). */
 export type AgentToolEvent = AgentToolEvent_Serialize | AgentToolEvent_Deserialize;
