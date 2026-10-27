@@ -56,7 +56,11 @@ parentPort.on("message", (message) => {
 				result: await ops[message.op](message.args),
 			});
 		} catch (error) {
-			parentPort.postMessage({ id: message.id, ok: false, error: String(error) });
+			parentPort.postMessage({
+				id: message.id,
+				ok: false,
+				error: String(error),
+			});
 		}
 	});
 });
