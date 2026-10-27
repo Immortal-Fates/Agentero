@@ -1,9 +1,15 @@
 import { MarkdownPlugin } from "@platejs/markdown";
 import { createSlateEditor, createSlatePlugin, KEYS } from "platejs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/components/editor/nodes/inline/wikilink-node", () => ({
+	WikiLinkElement: () => null,
+}));
 
 import { MarkdownKit } from "@/components/editor/plugins/markdown-kit";
 import { WikiLinkPlugin } from "@/components/editor/plugins/wikilink-plugin";
+import { findWikiCompletionTrigger } from "@/lib/wiki/completion";
+import { normalizeWikiTrigger } from "@/lib/wiki/normalize-wiki-trigger";
 import {
 	parseWikiLinkMarkdown,
 	type WikiSlateNode,
@@ -35,6 +41,98 @@ function serializeMd(editor: ReturnType<typeof createWikiEditor>): string {
  * between the two representations must never change the document.
  */
 describe("wikilink projection markdown invariance", () => {
+	it.each([
+		"【",
+		"［",
+	])("normalizes repeated %s into a completion trigger", (bracket) => {
+		const editor = createWikiEditor([{ text: "正文 !" }]);
+		editor.tf.select({ path: [0, 0], offset: 4 });
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe(`正文 !${bracket}`);
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe("正文 ![[");
+		expect(editor.selection?.anchor.offset).toBe(6);
+		expect(findWikiCompletionTrigger(editor.api.string([0]), 6)).toMatchObject({
+			raw: "",
+			embed: true,
+		});
+	});
+
+	it.each([
+		"【",
+		"［",
+	])("normalizes a fullwidth bang with repeated %s into an embed trigger", (bracket) => {
+		const editor = createWikiEditor([{ text: "前" }]);
+		editor.tf.select({ path: [0, 0], offset: 1 });
+		editor.tf.insertText("！");
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe(`前！${bracket}`);
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe("前![[");
+		expect(editor.selection?.anchor.offset).toBe(4);
+		expect(findWikiCompletionTrigger(editor.api.string([0]), 4)).toEqual({
+			start: 1,
+			raw: "",
+			embed: true,
+		});
+	});
+
+	it("normalizes an IME committed embed prefix without rewriting surrounding text", () => {
+		const editor = createWikiEditor([{ text: "前！【【后" }]);
+		editor.tf.select({ path: [0, 0], offset: 4 });
+		expect(normalizeWikiTrigger(editor)).toBe(true);
+		expect(editor.api.string([0])).toBe("前![[后");
+		expect(editor.selection?.anchor.offset).toBe(4);
+		expect(findWikiCompletionTrigger(editor.api.string([0]), 4)?.embed).toBe(
+			true,
+		);
+	});
+
+	it("preserves a fullwidth embed prefix in inline code", () => {
+		const editor = createWikiEditor([{ text: "", code: true }]);
+		editor.tf.select({ path: [0, 0], offset: 0 });
+		editor.tf.insertText("！【【");
+		expect(editor.api.string([0])).toBe("！【【");
+	});
+
+	it("normalizes an IME committed pair without rewriting surrounding text", () => {
+		const editor = createWikiEditor([{ text: "前【【后" }]);
+		editor.tf.select({ path: [0, 0], offset: 3 });
+		expect(normalizeWikiTrigger(editor)).toBe(true);
+		expect(editor.api.string([0])).toBe("前[[后");
+		expect(editor.selection?.anchor.offset).toBe(3);
+	});
+
+	it("preserves brackets in inline code", () => {
+		const editor = createWikiEditor([{ text: "【", code: true }]);
+		editor.tf.select({ path: [0, 0], offset: 1 });
+		editor.tf.insertText("【");
+		expect(editor.api.string([0])).toBe("【【");
+	});
+
+	it("preserves brackets in code blocks", () => {
+		const editor = createSlateEditor({
+			plugins: [
+				WikiLinkPlugin,
+				createSlatePlugin({ key: KEYS.codeBlock, node: { isElement: true } }),
+			],
+			value: [{ type: KEYS.codeBlock, children: [{ text: "［" }] }],
+		});
+		editor.tf.select({ path: [0, 0], offset: 1 });
+		editor.tf.insertText("［");
+		expect(editor.api.string([0])).toBe("［［");
+	});
+	it.each([
+		0, 9,
+	])("does not duplicate a link when breaking at source offset %i", (offset) => {
+		const link = parseWikiLinkMarkdown("[[notes]]");
+		if (!link) throw new Error("expected link");
+		const editor = createWikiEditor([{ text: "" }, link, { text: "" }]);
+		editor.tf.select({ path: [0, 1, 0], offset });
+		editor.tf.insertBreak();
+		expect(serializeMd(editor).match(/\[\[notes\]\]/g)).toHaveLength(1);
+		expect(editor.children).toHaveLength(2);
+	});
 	it("expanding a display node's source child keeps the markdown identical", () => {
 		// Display node with an empty text child (as produced by template
 		// insertion): expandWikiLinkAt writes the raw source into the child.

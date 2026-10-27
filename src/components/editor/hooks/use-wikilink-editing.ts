@@ -11,6 +11,7 @@ import {
 	useRef,
 } from "react";
 import { wikiLinkArrowDirection } from "@/lib/wiki/completion";
+import { normalizeWikiTrigger } from "@/lib/wiki/normalize-wiki-trigger";
 import {
 	isWikiLinkDraftEditingOffset,
 	isWikiLinkDraftText,
@@ -707,8 +708,12 @@ export function useWikilinkEditing({
 
 	const handleWikiLinkCompositionEnd = useCallback(() => {
 		composingWikiLinkDraftRef.current = false;
+		// Native IME edits can bypass insertText; wait for Slate to commit them.
+		window.requestAnimationFrame(() => {
+			if (!composingWikiLinkDraftRef.current) normalizeWikiTrigger(editor);
+		});
 		scheduleWikiLinkPresentationSync();
-	}, [scheduleWikiLinkPresentationSync]);
+	}, [editor, scheduleWikiLinkPresentationSync]);
 
 	const consumePresentationChange = useCallback(() => {
 		const pending = presentationChangePendingRef.current;
