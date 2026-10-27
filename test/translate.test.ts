@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import {
 	buildTranslateMessages,
 	buildTranslatePrompt,
@@ -11,11 +12,9 @@ import {
 	isCommercialTranslateProvider,
 	isFreeMtProvider,
 	isShortColloquialPrompt,
-	isTranslateApiKeyMask,
 	isTranslateProviderId,
 	langsFromSettings,
 	listSelectableProviders,
-	maskTranslateApiKey,
 	resolveTargetLangCode,
 	resolveTargetLangName,
 	resolveTranslateAgent,
@@ -104,10 +103,10 @@ describe("translate services registry", () => {
 	});
 
 	it("treats same-length host API key mask as configured", () => {
-		const masked = maskTranslateApiKey("sk-secret-key");
+		const masked = maskSecret("sk-secret-key");
 		expect(masked).toBe("*************");
-		expect(isTranslateApiKeyMask(masked)).toBe(true);
-		expect(isTranslateApiKeyMask("sk-secret")).toBe(false);
+		expect(isSecretMask(masked)).toBe(true);
+		expect(isSecretMask("sk-secret")).toBe(false);
 		expect(
 			isCommercialProviderConfigured("deepl", {
 				apiKey: masked,

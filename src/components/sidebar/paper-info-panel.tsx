@@ -5,6 +5,7 @@ import {
 	ExternalLink,
 	FileText,
 	Library,
+	Loader2,
 	Pencil,
 	Tag,
 	Users,
@@ -19,7 +20,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { SiArxiv, SiGithub, SiModelscope } from "react-icons/si";
+import { SiArxiv, SiGithub, SiModelscope, SiZhihu } from "react-icons/si";
 import { EditablePaperTag } from "@/components/library/editable-paper-tag";
 import { PaperTagRemoveButton } from "@/components/library/paper-tag-chip";
 import { TagColorPalette } from "@/components/library/tag-color-palette";
@@ -36,6 +37,9 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { copyTextToClipboard } from "@/lib/core/clipboard";
+import { errorText } from "@/lib/core/error";
+import { notifyError } from "@/lib/core/notify";
+import { openExternalUrl } from "@/lib/core/open-external";
 import { readJsonStorage, writeJsonStorage } from "@/lib/core/storage";
 import { cn } from "@/lib/core/utils";
 import type { PaperMetadata } from "@/lib/paper";
@@ -54,6 +58,7 @@ import { venueInfo } from "@/lib/paper/venue-info";
 import { type TagColorId, tagSwatchStyle } from "@/lib/ui/tag-colors";
 import { isRemoteVaultHandle } from "@/lib/vault/remote/remote-vault";
 import { getVaultPath } from "@/lib/vault/store";
+import { buildZhihuQuestionDraft, ZHIHU_HOME_URL } from "@/lib/zhihu";
 
 type PaperInfoPanelProps = {
 	meta: PaperMetadata | null;
@@ -61,6 +66,9 @@ type PaperInfoPanelProps = {
 	/** Persist tags to catalog. Required for editing. */
 	onTagsChange?: (tags: PaperTag[]) => Promise<void> | void;
 };
+
+/** Host-built Zhihu question draft (mirrors `ZhihuQuestionDraft`). */
+type ZhihuDraft = { title: string; body: string };
 
 function MetaRow({
 	icon: Icon,
@@ -409,6 +417,11 @@ export function PaperInfoPanel({
 	const [contentHeight, setContentHeight] = useState(loadStoredHeight);
 	/** Disable height transition while the user is dragging the resize handle. */
 	const [isDragging, setIsDragging] = useState(false);
+	/** Building the Zhihu question draft (Host round trip + optional translation). */
+	const [zhihuBusy, setZhihuBusy] = useState(false);
+	/** Last generated draft, shown in a popover so the user can inspect it. */
+	const [zhihuDraft, setZhihuDraft] = useState<ZhihuDraft | null>(null);
+	const [zhihuDraftOpen, setZhihuDraftOpen] = useState(false);
 	const dragRef = useRef<{
 		startY: number;
 		startHeight: number;
@@ -503,6 +516,45 @@ export function PaperInfoPanel({
 				id: "paper-info-copied",
 			},
 		});
+	};
+
+	/**
+	 * "去知乎提问": build a question draft from the current paper (title
+	 * translated via Zhida when a secret is set), show it, copy it, then open
+	 * Zhihu. A desktop app cannot fill Zhihu's ask modal, so the draft lands on
+	 * the clipboard for the user to paste.
+	 */
+	const copyZhihuDraft = async (draft: ZhihuDraft) => {
+		await copyTextToClipboard(`${draft.title}\n\n${draft.body}`, {
+			successMessage: t("paperInfo.zhihuAskCopied"),
+			errorMessage: t("paperInfo.copyFailed"),
+			successNotify: { duration: 5000, id: "zhihu-ask-copied" },
+		});
+	};
+
+	const askOnZhihu = async () => {
+		if (!meta || zhihuBusy) return;
+		setZhihuBusy(true);
+		try {
+			const draft = await buildZhihuQuestionDraft({
+				title: meta.title ?? "",
+				authors: meta.authors ?? [],
+				venue: meta.publication ?? "",
+				year: meta.year != null ? String(meta.year) : "",
+				doi: meta.doi ?? "",
+				arxivId: meta.arxiv_id ?? "",
+				url: meta.html_url ?? meta.source_url ?? "",
+				abstractText: meta.abstract ?? "",
+			});
+			setZhihuDraft(draft);
+			setZhihuDraftOpen(true);
+			await copyZhihuDraft(draft);
+			openExternalUrl(ZHIHU_HOME_URL);
+		} catch (e) {
+			notifyError(errorText(e));
+		} finally {
+			setZhihuBusy(false);
+		}
 	};
 
 	return (
@@ -729,6 +781,79 @@ export function PaperInfoPanel({
 									) : null}
 								</div>
 							) : null}
+							<div className="px-3 pt-2">
+								<Popover
+									open={zhihuDraftOpen && Boolean(zhihuDraft)}
+									onOpenChange={setZhihuDraftOpen}
+								>
+									<PopoverTrigger asChild>
+										<button
+											type="button"
+											onClick={() => void askOnZhihu()}
+											disabled={zhihuBusy}
+											title={t("paperInfo.zhihuAskHint")}
+											aria-label={t("paperInfo.zhihuAsk")}
+											className={cn(
+												"flex h-7 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border bg-background px-2",
+												"text-xs leading-none text-muted-foreground transition-colors",
+												"hover:bg-muted hover:text-foreground",
+												"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+												"disabled:pointer-events-none disabled:opacity-60",
+											)}
+										>
+											{zhihuBusy ? (
+												<Loader2
+													className="size-3.5 shrink-0 animate-spin"
+													aria-hidden
+												/>
+											) : (
+												<SiZhihu
+													className="size-3.5 shrink-0 text-[#0084FF]"
+													aria-hidden
+												/>
+											)}
+											<span className="truncate">
+												{t("paperInfo.zhihuAsk")}
+											</span>
+										</button>
+									</PopoverTrigger>
+									<PopoverContent
+										side="top"
+										align="start"
+										className="w-80 gap-2 p-3"
+									>
+										{zhihuDraft ? (
+											<div className="flex flex-col gap-2">
+												<div className="text-xs font-medium text-muted-foreground">
+													{t("paperInfo.zhihuDraftHeading")}
+												</div>
+												<div className="rounded-md border bg-muted/40 p-2">
+													<div className="break-words font-medium text-foreground text-xs">
+														{zhihuDraft.title}
+													</div>
+													<div className="agentero-scroll mt-1.5 max-h-52 overflow-y-auto whitespace-pre-wrap break-words text-caption text-muted-foreground">
+														{zhihuDraft.body}
+													</div>
+												</div>
+												<div>
+													<button
+														type="button"
+														onClick={() => void copyZhihuDraft(zhihuDraft)}
+														className={cn(
+															"flex h-6 cursor-pointer items-center justify-center gap-1.5 rounded-md border bg-background px-2",
+															"text-caption leading-none text-muted-foreground transition-colors",
+															"hover:bg-muted hover:text-foreground",
+															"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+														)}
+													>
+														{t("paperInfo.zhihuDraftCopy")}
+													</button>
+												</div>
+											</div>
+										) : null}
+									</PopoverContent>
+								</Popover>
+							</div>
 							{canEditMeta ? (
 								<div className="px-3 pt-2">
 									<button

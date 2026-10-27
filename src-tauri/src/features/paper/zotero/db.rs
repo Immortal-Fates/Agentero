@@ -669,25 +669,7 @@ fn relocate_paper(vault: &Path, existing: &str, new_rel: &str) -> Result<(), App
     Ok(())
 }
 
-/// Append Markdown blocks not already present in NOTES.md (idempotent by content).
-/// Returns true when it added something.
-pub(crate) fn append_markdown_blocks(notes_md: &Path, blocks: &[String]) -> bool {
-    let existing = fs::read_to_string(notes_md).unwrap_or_default();
-    let to_add: Vec<&str> = blocks
-        .iter()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty() && !existing.contains(*s))
-        .collect();
-    if to_add.is_empty() {
-        return false;
-    }
-    let block = to_add.join("\n\n---\n\n");
-    use std::io::Write;
-    match fs::OpenOptions::new().append(true).open(notes_md) {
-        Ok(mut f) => write!(f, "\n---\n\n{block}\n").is_ok(),
-        Err(_) => false,
-    }
-}
+pub(crate) use agentero_core::features::markdown::append::append_markdown_blocks;
 
 /// Markdown blocks to migrate into NOTES.md: converted child notes + PDF annotations.
 fn note_blocks(item: &ReadItem, migrate_notes: bool, migrate_annotations: bool) -> Vec<String> {

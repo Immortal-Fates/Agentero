@@ -117,9 +117,10 @@
 			"always": "始终（安全时）"
 		},
 		"pdfScrollStrategy": {
-			"label": "PDF 滚动方向",
+			"label": "PDF 翻页模式",
 			"vertical": "纵向",
-			"horizontal": "横向"
+			"horizontal": "横向",
+			"paginated": "逐页切换"
 		},
 		"pdfSpreadMode": {
 			"label": "PDF 页面版式",
@@ -287,6 +288,17 @@
 	},
 	"agent": {
 		"title": "Agent",
+		"zhihu": {
+			"section": "知乎",
+			"keyLabel": "Access Secret",
+			"placeholder": "粘贴知乎开放平台 Access Secret",
+			"confirm": "保存",
+			"openKeyPage": "打开知乎开放平台个人中心",
+			"probeIdle": "未配置",
+			"probeProbing": "检测中…",
+			"probeOk": "可用",
+			"probeFail": "不可用"
+		},
 		"userAgent": {
 			"section": "中转站兼容",
 			"label": "User-Agent",

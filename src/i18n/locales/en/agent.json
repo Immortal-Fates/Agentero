@@ -62,6 +62,14 @@
 		"placeholder": "How can I help you today?",
 		"queueLabel": "Queued",
 		"queueRemove": "Remove from queue",
+		"paperContext": {
+			"heading": "Current paper (for reference):",
+			"title": "Title",
+			"authors": "Authors",
+			"venue": "Venue",
+			"year": "Year",
+			"abstract": "Abstract"
+		},
 		"plazaContextInstruction": "Plaza entries referenced with @ (not yet in the Vault):",
 		"plazaEntryUnavailable": "Entry metadata is unavailable (no longer in the Plaza cache). Ask the user to re-reference it from the Plaza tab.",
 		"plazaScratchInstruction": "Full texts are provided as read-only scratch copies outside the Vault. Read the listed files directly; do not download papers or write anything into the Vault unless the user explicitly asks to import a paper.",
@@ -118,6 +126,18 @@
 		"description": "Messages go to your ACP agent. Click the agent name above to switch backends.",
 		"writingDescription": "The open manuscript is attached. Select a passage in the source or the PDF to ask about it.",
 		"waiting": "Waiting for agent…"
+	},
+	"zhihuDiscussions": {
+		"noPaper": "Open a paper to see what Zhihu is saying about it.",
+		"noSecret": "No Zhihu Access Secret yet. Add one in Settings → Agent → Zhihu.",
+		"loading": "Searching Zhihu…",
+		"empty": "No related discussions found on Zhihu.",
+		"note": "Title search on Zhihu — results may be unrelated.",
+		"retry": "Retry",
+		"refresh": "Refresh",
+		"answer": "Answer",
+		"article": "Article",
+		"votes": "{{votes}} upvotes"
 	},
 	"thinking": "Thinking…",
 	"working": "Working…",

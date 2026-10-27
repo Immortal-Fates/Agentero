@@ -91,12 +91,13 @@ export const AUTO_UPDATE_INTERNAL_LINKS: AutoUpdateInternalLinks[] = [
 	"always",
 ];
 
-/** PDF continuous-scroll direction (EmbedPDF scroll strategy). */
-export type PdfScrollStrategy = "vertical" | "horizontal";
+/** PDF navigation mode; paginated keeps the vertical coordinate system. */
+export type PdfScrollStrategy = "vertical" | "horizontal" | "paginated";
 
 export const PDF_SCROLL_STRATEGIES: readonly PdfScrollStrategy[] = [
 	"vertical",
 	"horizontal",
+	"paginated",
 ] as const;
 
 export function isPdfScrollStrategy(v: unknown): v is PdfScrollStrategy {
@@ -156,6 +157,8 @@ export type AppSettings = {
 	translatorBaseUrl: string;
 	/** EasyScholar key for journal ranking and impact-factor lookups. */
 	easyScholarKey: string;
+	/** 知乎开放平台 Access Secret（内置「知乎」Agent 的直答 / 检索凭证）。 */
+	zhihuAccessSecret: string;
 	/** EZProxy/WebVPN prefix for paywalled PDF fallback ("" disables). */
 	institutionProxyPrefix: string;
 	/** Session cookie for institution proxy requests. */
@@ -178,8 +181,8 @@ export type AppSettings = {
 	/** Default `ask`: external local renames are previewed before Markdown writes. */
 	autoUpdateInternalLinks: AutoUpdateInternalLinks;
 	/**
-	 * PDF reader continuous-scroll direction. `vertical` (default) stacks pages
-	 * in a column; `horizontal` lays them in a row.
+	 * PDF reader navigation: vertical/horizontal continuous scrolling or
+	 * one page at a time (`paginated`).
 	 */
 	pdfScrollStrategy: PdfScrollStrategy;
 	/**

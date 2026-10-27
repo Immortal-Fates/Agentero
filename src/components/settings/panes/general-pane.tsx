@@ -45,12 +45,10 @@ import { errorText } from "@/lib/core/error";
 import { callApi, callResult } from "@/lib/core/ipc";
 import { notifyError, notifySuccess } from "@/lib/core/notify";
 import { openExternalUrl } from "@/lib/core/open-external";
+import { hasSecret, isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import { isTauri } from "@/lib/core/tauri";
 import {
 	type EasyScholarProbeStatus,
-	hasEasyScholarKey,
-	isEasyScholarKeyMask,
-	maskEasyScholarKey,
 	probeEasyScholarKey,
 } from "@/lib/easyscholar";
 import {
@@ -446,7 +444,12 @@ export function GeneralPane({
 				</SettingsRow>
 				<SettingsRow label={t("general.pdfSpreadMode.label")}>
 					<Select
-						value={settings.pdfSpreadMode}
+						disabled={settings.pdfScrollStrategy === "paginated"}
+						value={
+							settings.pdfScrollStrategy === "paginated"
+								? "none"
+								: settings.pdfSpreadMode
+						}
 						onValueChange={(value) =>
 							patch({ pdfSpreadMode: value as PdfSpreadMode })
 						}
@@ -608,7 +611,7 @@ function EasyScholarSettingsBlock({
 	const abortRef = useRef<AbortController | null>(null);
 
 	const runProbe = useCallback(async () => {
-		if (!hasEasyScholarKey(savedKey)) {
+		if (!hasSecret(savedKey)) {
 			setStatus("idle");
 			return;
 		}
@@ -660,7 +663,7 @@ function EasyScholarSettingsBlock({
 								<TooltipTrigger asChild>
 									<ProbeDot
 										status={status}
-										configured={hasEasyScholarKey(savedKey)}
+										configured={hasSecret(savedKey)}
 										label={statusLabel}
 									/>
 								</TooltipTrigger>
@@ -711,10 +714,10 @@ function EasyScholarSettingsBlock({
 							value={keyDraft}
 							onChange={(e) => {
 								const next = e.currentTarget.value;
-								const shownMask = hasEasyScholarKey(savedKey)
-									? isEasyScholarKeyMask(savedKey)
+								const shownMask = hasSecret(savedKey)
+									? isSecretMask(savedKey)
 										? savedKey
-										: maskEasyScholarKey(savedKey)
+										: maskSecret(savedKey)
 									: null;
 								if (
 									shownMask != null &&

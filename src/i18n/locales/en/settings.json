@@ -117,9 +117,10 @@
 			"always": "Always when safe"
 		},
 		"pdfScrollStrategy": {
-			"label": "PDF scroll direction",
+			"label": "PDF navigation mode",
 			"vertical": "Vertical",
-			"horizontal": "Horizontal"
+			"horizontal": "Horizontal",
+			"paginated": "Page by page"
 		},
 		"pdfSpreadMode": {
 			"label": "PDF page layout",
@@ -287,6 +288,17 @@
 	},
 	"agent": {
 		"title": "Agent",
+		"zhihu": {
+			"section": "Zhihu",
+			"keyLabel": "Access Secret",
+			"placeholder": "Paste the Zhihu Access Secret",
+			"confirm": "Save",
+			"openKeyPage": "Open Zhihu developer console",
+			"probeIdle": "Not configured",
+			"probeProbing": "Checking…",
+			"probeOk": "Ready",
+			"probeFail": "Unavailable"
+		},
 		"userAgent": {
 			"section": "Relay compatibility",
 			"label": "User-Agent",

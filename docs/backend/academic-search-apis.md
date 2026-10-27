@@ -25,7 +25,7 @@ Agentero Host 端（`src-tauri/src/features/`）在论文识别、入库、引�
 | **medRxiv** | `GET https://api.biorxiv.org/details/medrxiv/{doi}` | DOI → 医学预印本元数据 | `features/paper/scholar_api/sources/biorxiv.rs` |
 | **Zotero Recognizer** | `POST https://services.zotero.org/recognizer/recognize` | PDF 首页文字几何识别 | `features/paper/import/recognize/pdf_recognize.rs` |
 | **Translator Runtime** | `POST {base}/web`, `POST {base}/search`, `POST {base}/import` | 通用 URL/标识符/题录解析 | `features/import/mod.rs` |
-| **Cool Papers (papers.cool)** | `GET https://papers.cool/{branch}/search?query=...`, `GET https://papers.cool/{branch}/kimi?paper={id}` | Kimi 论文解析 / 广场导入 | `features/coolpapers/` |
+| **Cool Papers (papers.cool)** | `GET https://papers.cool/{branch}/search?query=...`, `GET https://papers.cool/{branch}/kimi?paper={id}` | Kimi 论文解析 / 广场导入 / CLI `paper notes fetch` | `crates/agentero-core/src/features/paper/discovery/coolpapers.rs`（桌面壳：`src-tauri/src/features/paper/discovery/coolpapers/`） |
 | **arXiv RSS** | `GET https://rss.arxiv.org/rss/{category}` | 推荐与订阅流 | `features/recommend/mod.rs`, `features/feeds/` |
 
 ## 2. 调用链路详解
@@ -133,12 +133,13 @@ UI 刷新（`paper_resolve_identifier`）对 DOI/arXiv/URL **先走标识符解�
 
 ### 2.9 Cool Papers (papers.cool)
 
-入口：`features/coolpapers/mod.rs`。
+入口：`crates/agentero-core/src/features/paper/discovery/coolpapers.rs`（CLI 与桌面共用）；桌面页面导入与广场代理在 `src-tauri/src/features/paper/discovery/coolpapers/`。
 
 - 解析论文 URL：`https://papers.cool/{arxiv|venue}/{id}`。
 - 按标题搜索：`GET https://papers.cool/{branch}/search?query=...`。
 - 获取 Kimi 解析：`GET https://papers.cool/{branch}/kimi?paper={id}`。
 - 这是一个人工整理的学术站点，不是开放 API；解析结果写入 NOTES.md。FAQ 问题写成 `## Qn`，保留答案内 `###` 小节；丢弃末尾「想要进一步了解论文」FAQ（跳转 Kimi 网页版的推广段）。
+- 桌面 NOTES 工具栏与 CLI `agentero paper notes fetch <ref>` 走同一函数；`/kimi` 串行（并发 1），避免消耗上游 LLM 配额。
 
 ### 2.10 PDF / TeX 资产下载
 

@@ -33,6 +33,7 @@ import { errorText } from "@/lib/core/error";
 import { callApiResult } from "@/lib/core/ipc";
 import { notifyError } from "@/lib/core/notify";
 import { openExternalUrl } from "@/lib/core/open-external";
+import { isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import { saveSettingsAsync } from "@/lib/settings";
 import {
 	DECISION_PROVIDER_PRESETS,
@@ -45,16 +46,6 @@ import {
 	type DecisionSettings,
 } from "@/lib/settings/types";
 import type { ProbeStatus } from "@/lib/ui/probe-status";
-
-/** Same convention the Host uses for redacted secrets: all `*`, same length. */
-function isMask(value: string): boolean {
-	const trimmed = value.trim();
-	return trimmed.length > 0 && trimmed.split("").every((c) => c === "*");
-}
-
-function maskKey(value: string): string {
-	return value ? "*".repeat(value.length) : "";
-}
 
 /** Provider-specific endpoint hint; the URL itself is not translated. */
 function baseUrlPlaceholder(provider: DecisionProviderId): string {
@@ -85,9 +76,9 @@ export function ExperimentalPane({
 		draft.apiKey !== undefined
 			? draft.apiKey
 			: decision.apiKey
-				? isMask(decision.apiKey)
+				? isSecretMask(decision.apiKey)
 					? decision.apiKey
-					: maskKey(decision.apiKey)
+					: maskSecret(decision.apiKey)
 				: "";
 
 	const displayBaseUrl =

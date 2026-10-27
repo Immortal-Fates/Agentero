@@ -113,7 +113,7 @@
 | `codemirror-lang-latex` | 0.6.1 | AGPL-3.0-or-later | https://texlyre.github.io/codemirror-lang-latex/ |
 | `dockview` | 7.0.4 | MIT | https://github.com/mathuo/dockview |
 | `dockview-react` | 7.0.4 | MIT | https://github.com/mathuo/dockview |
-| `dompurify` | 3.4.16 | MPL-2.0 OR Apache-2.0 | https://github.com/cure53/DOMPurify |
+| `dompurify` | 3.4.17 | MPL-2.0 OR Apache-2.0 | https://github.com/cure53/DOMPurify |
 | `driver.js` | 1.8.0 | MIT | https://driverjs.com |
 | `html-to-image` | 1.11.13 | MIT | https://github.com/bubkoo/html-to-image#readme |
 | `i18next` | 26.3.6 | MIT | https://www.i18next.com |
@@ -148,7 +148,7 @@
 | `tw-animate-css` | 1.4.0 | MIT | https://github.com/Wombosvideo/tw-animate-css#readme |
 | `use-stick-to-bottom` | 1.1.6 | MIT | https://use-stick-to-bottom.samdenty.io |
 | `vue` | 3.5.43 | MIT | https://vuejs.org/ |
-| `zod` | 3.25.76 | MIT | https://zod.dev |
+| `zod` | 4.6.7 | MIT | https://zod.dev |
 | `zustand` | 5.0.14 | MIT | https://github.com/pmndrs/zustand |
 
 ## 4. Rust 直接依赖
@@ -179,8 +179,8 @@
 | `hex` | 0.4.3 | MIT OR Apache-2.0 | https://github.com/KokaKiwi/rust-hex |
 | `htmd` | 0.5.5 | Apache-2.0 | https://github.com/letmutex/htmd |
 | `inquire` | 0.7.5 | MIT | https://github.com/mikaelmello/inquire |
-| `liteparse` | 2.13.1 | Apache-2.0 | https://github.com/run-llama/liteparse |
-| `liteparse-pdfium` | 1.7.0 | Apache-2.0 | https://github.com/run-llama/liteparse |
+| `liteparse` | 2.17.0 | Apache-2.0 | https://github.com/run-llama/liteparse |
+| `liteparse-pdfium` | 1.13.0 | Apache-2.0 | https://github.com/run-llama/liteparse |
 | `log` | 0.4.33 | MIT OR Apache-2.0 | https://github.com/rust-lang/log |
 | `notify-debouncer-full` | 0.3.2 | MIT OR Apache-2.0 | https://github.com/notify-rs/notify |
 | `openssh` | 0.11.6 | MIT OR Apache-2.0 | https://github.com/openssh-rust/openssh |

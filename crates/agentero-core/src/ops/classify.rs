@@ -158,6 +158,11 @@ const TABLE: &[OpClassification] = &[
         OpStability::Stable,
         OpPermission::VaultNotesWrite,
     ),
+    spec(
+        "paper.notes.fetch",
+        OpStability::Experimental,
+        OpPermission::VaultNotesWrite,
+    ),
     spec("file.list", OpStability::Stable, OpPermission::VaultRead),
     spec("file.read", OpStability::Stable, OpPermission::VaultRead),
     spec("file.write", OpStability::Stable, OpPermission::VaultWrite),

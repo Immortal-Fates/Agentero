@@ -20,7 +20,7 @@ Headless Vault / Catalog / Wiki 接口；**不含** BYOA / paper-reader。
 | `sync` | 云同步（S3/R2、WebDAV、Git）：configure / status / test / now / disconnect，与桌面端共用引擎（见下） |
 | `mcp serve` | 前台 Streamable HTTP MCP（loopback）。与桌面端共用工具面，不启动 GUI。见 [mcp.md](mcp.md) |
 | `describe` | Agent 自省：策展型 op 目录与单 op 的 input/output/errors/examples（机器契约真源） |
-| `paper` | list/get、tag list/set/add/rm、move、open、download/parse… |
+| `paper` | list/get、tag list/set/add/rm、move、open、download/parse、notes fetch… |
 | `import` | 标识符入库 |
 | `discover` | 查询式发现：按关键词/分类/提交日期窗口抓 arXiv 候选，确定性词法排序（headless、无 embedding key） |
 | `export` | 导出 |
@@ -257,6 +257,19 @@ agentero paper move papers/inbox/demo papers/new-shelf
 ```bash
 agentero paper move /path/to/src-vault/papers/inbox/demo /path/to/dst-vault/papers/archive
 ```
+
+### Cool Papers 笔记（`paper notes fetch`）
+
+把 papers.cool 上的 Kimi 解析追加到论文的 `NOTES.md`，与桌面 NOTES 工具栏的「获取 Cool Paper 笔记」共用 `agentero-core` 实现。追加按内容幂等：同一条解析已在 `NOTES.md` 中时不再重复写入，也不改写手写内容。
+
+```bash
+agentero paper notes fetch papers/demo --json
+agentero paper notes fetch 1706.03762 --json
+```
+
+解析顺序：catalog `sourceUrl`（papers.cool 链接）→ venue catalog id（如 `38818@AAAI`）→ arXiv id → 标题搜索。要求 `{paper}/NOTES.md` 已存在（由 `import` / paper-reader 生成）；未在 papers.cool 命中时返回 `found:false` 且不落盘。首次生成上游解析可能需要数十秒，CLI 同步等待（超时 180s）。
+
+输出 `found` / `appended` / `branch` / `paperId` / `url` / `matchedBy`，可用 `agentero describe paper.notes.fetch --json` 查看完整契约。
 
 ### 从命令行打开桌面 App / 工作区
 

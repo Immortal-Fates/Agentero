@@ -129,6 +129,7 @@ fn describe_lists_ops_and_resolves_one() {
     let ops = v["data"]["ops"].as_array().unwrap();
     assert!(ops.iter().any(|o| o["id"] == "paper.list"));
     assert!(ops.iter().any(|o| o["id"] == "layout.list"));
+    assert!(ops.iter().any(|o| o["id"] == "paper.notes.fetch"));
     assert!(ops.iter().any(|o| o["mcpTool"] == "paper_list"));
 
     let one = agentero()
@@ -203,6 +204,35 @@ fn paper_list_empty_and_set_read_not_found() {
         .assert()
         .failure()
         .stdout(predicate::str::contains("paper_not_found"));
+}
+
+#[test]
+fn paper_notes_fetch_requires_notes_md() {
+    let tmp = tempdir().unwrap();
+    let vault = tmp.path().join("v");
+    create_vault(&vault);
+    fs::create_dir_all(vault.join("papers").join("demo")).unwrap();
+    seed_paper(&vault, "papers/demo", "demo", "Demo Paper");
+
+    // No NOTES.md means no network: fetch_notes rejects before resolving.
+    let out = agentero()
+        .args([
+            "--vault",
+            vault.to_str().unwrap(),
+            "paper",
+            "notes",
+            "fetch",
+            "papers/demo",
+            "--json",
+        ])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let v: Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["ok"], false);
+    assert!(v["error"]["message"].as_str().unwrap().contains("NOTES.md"));
 }
 
 #[test]

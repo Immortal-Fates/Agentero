@@ -180,7 +180,7 @@ liteparse 在**运行时 `dlopen`** PDFium，而 `liteparse-pdfium-sys` 的 buil
 
 在 `papers/` 下直接新建文件夹并拖入 PDF（含外部文件管理器操作），应用会就地收录为论文条目，无需走导入对话框：
 
-- **触发**：vault FS watcher 收到 create/rename 批次且路径归属 `papers/` 直接子文件夹（`src-tauri/src/features/paper/ingest/`）；应用未运行期间创建的文件夹由前端 `vault:opened` 时 fire-and-forget 调 `paper_ingest_reconcile` 补扫。
+- **触发**：vault FS watcher 收到 create/rename 批次且路径为 `papers/` 根目录的独立 PDF、直接子文件夹或文件夹内文件（`src-tauri/src/features/paper/ingest/`）；根目录的 `index.md` 等非 PDF 文件不触发收录。应用未运行期间创建的文件夹和独立 PDF 由前端 `vault:opened` 时 fire-and-forget 调 `paper_ingest_reconcile` 补扫。
 - **稳定探测**：两次间隔 700ms 的 PDF 尺寸快照相等才算拷贝完成（上限 8s）；仍在写入则等下一批 watcher 事件重试，绝不收录半个 PDF。`.crdownload`/`.part` 等临时下载后缀不算 PDF。
 - **分类即护栏**：core 内核 `auto_ingest::classify_papers_subfolder` 依次判定——有 `metadata.json` sidecar 或 catalog 行（已托管）、有 NOTES.md/PAPER.md/内部子目录（已是论文单元）、含嵌套论文单元（组织夹）、裸 PDF 文件夹（可收录）；收录写入的 sidecar/NOTES.md 使分类自然翻转，杜绝循环。
 - **收录动作**（`adopt_paper_folder`，就地、零拷贝）：主 PDF（与 id 同名优先，否则取最大文件）改名为 `{id}.pdf`，其余 PDF 移入 `attachments/`，写 NOTES shell、upsert catalog（`meta_source=local`）、emit `paper:imported`，并 spawn 后台元数据识别（识别命中标识符后照常经 wiki rename 改名为规范 id）。占位 id 取文件夹名 slug（中文等非 ASCII 名回退首个 PDF 文件名 stem）。

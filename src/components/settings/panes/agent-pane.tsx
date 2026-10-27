@@ -17,6 +17,7 @@ import { AgentUserAgentBlock } from "@/components/settings/panes/agent/agent-use
 import { useAgentCatalog } from "@/components/settings/panes/agent/use-agent-catalog";
 import { useAgentRegistry } from "@/components/settings/panes/agent/use-agent-registry";
 import { useAgentUninstall } from "@/components/settings/panes/agent/use-agent-uninstall";
+import { ZhihuAgentRow } from "@/components/settings/panes/agent/zhihu-agent-row";
 import { catalogProbeKey } from "@/components/settings/panes/agent-catalog";
 import { AgentUninstallDialog } from "@/components/settings/panes/agent-uninstall-dialog";
 import {
@@ -210,6 +211,10 @@ export function AgentPane({
 					onLogin={openLoginTerminal}
 					onOpenCli={onOpenCli}
 					onEditCustom={handleAddCustom}
+				/>
+				<ZhihuAgentRow
+					savedSecret={settings.zhihuAccessSecret}
+					onCommit={(value) => patch({ zhihuAccessSecret: value })}
 				/>
 				<AgentCustomForm busy={loading} onSubmit={handleAddCustom} />
 			</SettingsGroup>

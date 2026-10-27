@@ -21,10 +21,10 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { isSecretMask } from "@/lib/core/secret-mask";
 import { cn } from "@/lib/core/utils";
 import { probeEmbedding } from "@/lib/recommend";
 import type { AppSettings, EmbeddingSettings } from "@/lib/settings";
-import { isTranslateApiKeyMask } from "@/lib/translate";
 
 export function AgentEmbeddingBlock({
 	settings,
@@ -84,7 +84,7 @@ export function AgentEmbeddingBlock({
 			const apiKey = embDraft.apiKey.trim();
 			await probeEmbedding({
 				baseUrl,
-				apiKey: apiKey && !isTranslateApiKeyMask(apiKey) ? apiKey : undefined,
+				apiKey: apiKey && !isSecretMask(apiKey) ? apiKey : undefined,
 				model,
 			});
 			setEmbProbeStatus("ok");
@@ -233,7 +233,7 @@ export function AgentEmbeddingBlock({
 								}
 								onFocus={(e) => {
 									// Select the mask so the next keystroke replaces it entirely.
-									if (isTranslateApiKeyMask(embDraft.apiKey)) {
+									if (isSecretMask(embDraft.apiKey)) {
 										e.currentTarget.select();
 									}
 								}}
