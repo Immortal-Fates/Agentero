@@ -103,6 +103,38 @@ it("uses the same PDF coordinates for a click + arrow and a modified click, even
 		});
 		expect(mocks.backward).toHaveBeenLastCalledWith("/main.pdf", 1, 120, 240);
 		expect(mocks.navigate).toHaveBeenCalledWith("/main.tex", 12, 1);
+		mocks.backward.mockClear();
+		await act(() => {
+			for (const type of ["click", "click", "dblclick"]) {
+				page.dispatchEvent(
+					new MouseEvent(type, {
+						bubbles: true,
+						clientX: 260,
+						clientY: 500,
+					}),
+				);
+			}
+		});
+		expect(mocks.backward).toHaveBeenCalledExactlyOnceWith(
+			"/main.pdf",
+			1,
+			150,
+			300,
+		);
+		await act(() => {
+			mocks.peer?.syncFromView();
+		});
+		expect(mocks.backward).toHaveBeenLastCalledWith("/main.pdf", 1, 150, 300);
+		mocks.backward.mockClear();
+		page.dispatchEvent(
+			new MouseEvent("dblclick", {
+				bubbles: true,
+				ctrlKey: true,
+				clientX: 260,
+				clientY: 500,
+			}),
+		);
+		expect(mocks.backward).not.toHaveBeenCalled();
 		await act(() => root.render(createElement(Fixture, { docId: "v2" })));
 		mocks.layout?.({ documentId: "v2" });
 		await act(() => {
