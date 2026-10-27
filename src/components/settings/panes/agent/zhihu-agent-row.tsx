@@ -11,16 +11,16 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { openExternalUrl } from "@/lib/core/open-external";
-import { hasSecret } from "@/lib/core/secret-mask";
+import { hasSecret, isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import { probeZhihuSecret, ZHIHU_DEVELOPER_PROFILE_URL } from "@/lib/zhihu";
 
 type ProbeStatus = "idle" | "probing" | "ok" | "fail";
 
 /**
  * Built-in Zhihu Agent as a common-agent row: brand + connectivity dot on the
- * left, write-only Access Secret editor on the right. The secret lives in durable
- * Host settings (developer.zhihu.com) and is redacted over IPC — the saved value
- * is never shown back to the WebView.
+ * left, Access Secret editor on the right. The secret lives in durable Host
+ * settings (developer.zhihu.com) and is redacted over IPC; a saved value is
+ * shown only as its `*`-mask.
  */
 export function ZhihuAgentRow({
 	savedSecret,
@@ -31,7 +31,7 @@ export function ZhihuAgentRow({
 	onCommit: (value: string) => void;
 }) {
 	const { t } = useTranslation("settings");
-	const [draft, setDraft] = useState("");
+	const [draft, setDraft] = useState<string | null>(null);
 	const [status, setStatus] = useState<ProbeStatus>("idle");
 	const abortRef = useRef<AbortController | null>(null);
 
@@ -56,11 +56,19 @@ export function ZhihuAgentRow({
 		};
 	}, [runProbe]);
 
-	const changed = draft.trim().length > 0;
+	const saved = hasSecret(savedSecret);
+	const shownMask = saved
+		? isSecretMask(savedSecret)
+			? savedSecret.trim()
+			: maskSecret(savedSecret)
+		: null;
+	const changed = draft !== null && draft.trim().length > 0;
+
 	const commit = () => {
-		if (!changed) return;
-		onCommit(draft.trim());
-		setDraft("");
+		const value = (draft ?? "").trim();
+		if (!value) return;
+		onCommit(value);
+		setDraft(null);
 	};
 
 	const statusLabel = t(
@@ -116,8 +124,26 @@ export function ZhihuAgentRow({
 					aria-label={t("agent.zhihu.keyLabel")}
 					placeholder={t("agent.zhihu.placeholder")}
 					className="h-8 w-56 max-w-[16rem] font-mono text-xs"
-					value={draft}
-					onChange={(e) => setDraft(e.currentTarget.value)}
+					value={draft ?? shownMask ?? ""}
+					onChange={(e) => {
+						const next = e.currentTarget.value;
+						// Typing over the mask starts a fresh draft, not mask + chars.
+						if (
+							draft === null &&
+							shownMask != null &&
+							(next === shownMask || next.startsWith(shownMask))
+						) {
+							setDraft(next.slice(shownMask.length));
+							return;
+						}
+						setDraft(next);
+					}}
+					onFocus={(e) => {
+						// Select the mask so the next keystroke replaces it entirely.
+						if (draft === null && shownMask != null) {
+							e.currentTarget.select();
+						}
+					}}
 					onKeyDown={(e) => {
 						if (e.key === "Enter") commit();
 					}}
