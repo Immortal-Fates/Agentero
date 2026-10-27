@@ -13,7 +13,7 @@
 		"experimental": "实验功能",
 		"doctor": "问题诊断",
 		"keyboard": "快捷键",
-		"remote-access": "远程访问",
+		"remote-access": "移动端访问",
 		"about": "关于",
 		"quickSetup": "快速配置向导",
 		"featureTour": "功能导引",
@@ -31,8 +31,8 @@
 		"saved": "已保存"
 	},
 	"remoteAccess": {
-		"title": "远程访问",
-		"localVaultRequired": "请打开本地 Vault 后再提供远程访问。",
+		"title": "移动端访问",
+		"localVaultRequired": "请打开本地 Vault 后再提供移动端访问。",
 		"hostName": {
 			"label": "电脑名称"
 		},
@@ -40,8 +40,8 @@
 			"online": "在线",
 			"offline": "离线"
 		},
-		"start": "开启远程访问",
-		"stop": "关闭远程访问",
+		"start": "开启移动端访问",
+		"stop": "关闭移动端访问",
 		"qrAlt": "配对二维码",
 		"pairing": {
 			"title": "配对 iPhone 或 iPad"

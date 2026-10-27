@@ -13,7 +13,7 @@
 		"experimental": "Experimental",
 		"doctor": "Doctor",
 		"keyboard": "Keyboard",
-		"remote-access": "Remote access",
+		"remote-access": "Mobile access",
 		"about": "About",
 		"quickSetup": "Quick setup wizard",
 		"featureTour": "Feature tour",
@@ -31,8 +31,8 @@
 		"saved": "Saved"
 	},
 	"remoteAccess": {
-		"title": "Remote access",
-		"localVaultRequired": "Open a local Vault to provide remote access.",
+		"title": "Mobile access",
+		"localVaultRequired": "Open a local Vault to provide mobile access.",
 		"hostName": {
 			"label": "Computer name"
 		},
@@ -40,8 +40,8 @@
 			"online": "Online",
 			"offline": "Offline"
 		},
-		"start": "Enable remote access",
-		"stop": "Disable remote access",
+		"start": "Enable mobile access",
+		"stop": "Disable mobile access",
 		"qrAlt": "Pairing QR code",
 		"pairing": {
 			"title": "Pair an iPhone or iPad"
