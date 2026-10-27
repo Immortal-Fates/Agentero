@@ -1,6 +1,24 @@
 pub mod discover;
+#[cfg(windows)]
+mod windows_job;
 
 pub use discover::{path_entries, probe_command, resolve_command, resolve_command_in_paths};
+
+/// Capture a prepared command's output, owning its Windows process tree until
+/// completion. Dropping the future (timeout or cancellation) kills descendants
+/// too; `kill_on_drop` alone only kills the directly spawned process.
+pub(crate) async fn command_output(
+    command: &mut tokio::process::Command,
+) -> std::io::Result<std::process::Output> {
+    #[cfg(windows)]
+    {
+        windows_job::output(command).await
+    }
+    #[cfg(not(windows))]
+    {
+        command.output().await
+    }
+}
 
 /// Win32 `CREATE_NO_WINDOW` process creation flag.
 ///
