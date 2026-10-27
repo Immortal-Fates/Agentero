@@ -262,20 +262,14 @@ fn caps_paper_dirs(vault_root: &str, path: &str) -> Vec<String> {
     dirs
 }
 
-/// Drop cached `PaperCaps` for folders an external write touched, so the next
-/// reconcile probes real disk state instead of a snapshot from earlier in the
-/// session.
-/// Record Markdown writes on the warm wiki index before the UI debounce.
-/// Rename planning re-reads just these paths, including saves whose watcher
-/// echo deliberately does not rebuild the index.
+/// Record Markdown writes before the UI debounce, without taking the wiki
+/// index lock. Rename planning re-reads just these paths, including saves
+/// whose watcher echo deliberately does not rebuild the index.
 fn note_markdown_for_rename(app: &AppHandle, vault: &str, event: &Event) {
     if event.paths.is_empty() {
         return;
     }
     let Some(state) = app.try_state::<crate::features::markdown::wiki::WikiIndexState>() else {
-        return;
-    };
-    let Ok(mut index) = state.inner.lock() else {
         return;
     };
     for path in &event.paths {
@@ -285,10 +279,13 @@ fn note_markdown_for_rename(app: &AppHandle, vault: &str, event: &Event) {
         if is_ignored(text) || is_agentero_atomic_temp(text) {
             continue;
         }
-        index.note_saved_source(vault, text);
+        state.enqueue_saved_source(vault, text);
     }
 }
 
+/// Drop cached `PaperCaps` for folders an external write touched, so the next
+/// reconcile probes real disk state instead of a snapshot from earlier in the
+/// session.
 fn invalidate_caps_for_paths(app: &AppHandle, vault_root: &str, paths: &[String]) {
     let relevant: Vec<&String> = paths.iter().filter(|p| is_caps_relevant(p)).collect();
     if relevant.is_empty() {

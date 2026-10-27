@@ -1047,17 +1047,7 @@ fn locate_paper_rel(vault_root: &Path, raw: &str) -> PaperLocate {
 }
 
 fn vault_rel_for_catalog(vault_root: &Path, raw: &str) -> String {
-    let normalized = raw.replace('\\', "/");
-    let as_path = std::path::Path::new(raw);
-    let rel = if as_path.is_absolute() || normalized.starts_with('/') {
-        match as_path.strip_prefix(vault_root) {
-            Ok(relative) => relative.to_string_lossy().replace('\\', "/"),
-            Err(_) => return String::new(),
-        }
-    } else {
-        normalized
-    };
-    crate::fs::normalize_rel_lexical(&rel)
+    crate::fs::vault_relative(vault_root, raw).unwrap_or_default()
 }
 
 /// Fallback record when a paper folder has no sidecar: folder name as id/title.
@@ -2639,6 +2629,25 @@ mod tests {
         assert_eq!(get_by_path(&dir, "papers/x").unwrap().unwrap().title, "New");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_rows_for_paths_follows_a_symlink_spelling() {
+        let base = env::temp_dir().join(format!("agentero-ensure-canon-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let real = base.join("real");
+        fs::create_dir_all(real.join("papers/a")).unwrap();
+        fs::write(real.join("papers/a/NOTES.md"), "# A\n").unwrap();
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let notes = real.join("papers/a/NOTES.md");
+        let touched = ensure_rows_for_paths(&link, &[notes.to_string_lossy().to_string()]).unwrap();
+        assert_eq!(touched, PaperRowsTouch::Ensured { count: 1 });
+        assert!(get_by_path(&link, "papers/a").unwrap().is_some());
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

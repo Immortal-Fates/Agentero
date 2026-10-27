@@ -17,7 +17,7 @@ use crate::features::wiki::util::{stem_of, without_markdown_extension};
 use crate::fs::normalize_rel_lexical;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 const IGNORE_NAMES: &[&str] = &[
@@ -194,17 +194,7 @@ fn vault_paths_match(stored: &str, vault_path: &str) -> bool {
 }
 
 fn vault_rel_of(vault_root: &Path, raw: &str) -> Option<String> {
-    let normalized = raw.replace('\\', "/");
-    let rel = if Path::new(raw).is_absolute() || normalized.starts_with('/') {
-        let relative = Path::new(raw).strip_prefix(vault_root).ok()?;
-        normalize_rel_lexical(&relative.to_string_lossy())
-    } else {
-        normalize_rel_lexical(&normalized)
-    };
-    if rel.split('/').any(|part| part == "..") {
-        return None;
-    }
-    Some(rel)
+    crate::fs::vault_relative(vault_root, raw)
 }
 
 fn remap_rel_path(path: &str, from_rel: &str, to_rel: &str) -> String {
@@ -243,11 +233,7 @@ fn list_wiki_targets(vault_root: &Path, dir: &Path) -> Result<Vec<String>, Strin
 }
 
 fn to_vault_rel(vault_root: &Path, path: &str) -> String {
-    let p = PathBuf::from(path);
-    if let Ok(rel) = p.strip_prefix(vault_root) {
-        return normalize_rel_lexical(&rel.to_string_lossy());
-    }
-    normalize_rel_lexical(path)
+    vault_rel_of(vault_root, path).unwrap_or_else(|| normalize_rel_lexical(path))
 }
 
 #[derive(Debug, Default)]
@@ -276,6 +262,9 @@ pub struct WikiIndex {
     /// Markdown sources written since the last index update. A warm index is
     /// not fresh until these are re-read; rename planning consumes the set.
     pending_sources: BTreeSet<String>,
+    /// Saves the watcher recorded without taking the index lock. Rename
+    /// planning drains this into [`Self::pending_sources`].
+    saved_notices: Arc<Mutex<BTreeSet<(String, String)>>>,
 }
 
 /// Reusable parse products from the previous build (in-memory or on-disk).
@@ -696,8 +685,19 @@ impl WikiIndex {
         self.pending_sources.insert(rel);
     }
 
+    fn absorb_saved_notices(&mut self) {
+        let queued = match self.saved_notices.lock() {
+            Ok(mut guard) => std::mem::take(&mut *guard),
+            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+        };
+        for (vault, path) in queued {
+            self.note_saved_source(&vault, &path);
+        }
+    }
+
     /// Fold Markdown saved since the last update into the warm index.
     pub fn refresh_pending_sources(&mut self, vault_path: &str) -> Result<(), String> {
+        self.absorb_saved_notices();
         if self.pending_sources.is_empty() {
             return Ok(());
         }
@@ -1477,18 +1477,38 @@ impl WikiIndex {
 /// thread). The global-Mutex semantics are unchanged.
 pub struct WikiIndexState {
     pub inner: Arc<Mutex<WikiIndex>>,
+    /// Save paths recorded by the watcher. Shared with the index; appending
+    /// does not lock `inner`.
+    saved_notices: Arc<Mutex<BTreeSet<(String, String)>>>,
 }
 
 impl WikiIndexState {
     pub fn new() -> Self {
+        let index = WikiIndex::default();
+        let saved_notices = Arc::clone(&index.saved_notices);
         Self {
-            inner: Arc::new(Mutex::new(WikiIndex::default())),
+            inner: Arc::new(Mutex::new(index)),
+            saved_notices,
         }
     }
 
     /// Cloneable handle for moving into blocking closures.
     pub fn handle(&self) -> Arc<Mutex<WikiIndex>> {
         Arc::clone(&self.inner)
+    }
+
+    /// Remember one Markdown path for the next rename plan. Does not lock the
+    /// index, so a `graph_rebuild` or `graph_apply_paths` in progress cannot
+    /// stall the watcher thread.
+    pub fn enqueue_saved_source(&self, vault_path: &str, path: &str) {
+        if !is_wiki_source(Path::new(path)) {
+            return;
+        }
+        let mut guard = self
+            .saved_notices
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.insert((vault_path.to_string(), path.to_string()));
     }
 }
 
@@ -1502,6 +1522,7 @@ impl Default for WikiIndexState {
 mod tests {
     use super::*;
     use crate::features::wiki::models::{BlockAnchor, HeadingAnchor, LinkResolutionStatus};
+    use std::path::PathBuf;
     use uuid::Uuid;
 
     fn test_vault() -> PathBuf {
@@ -2515,5 +2536,67 @@ mod tests {
             .expect("classify directory");
         assert!(matches!(outcome, WikiPathApply::NeedsRebuild));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn watcher_notices_land_without_the_index_lock() {
+        let root = test_vault();
+        fs::write(root.join("notes/Source.md"), "# Source\n").expect("write source");
+        let vault = root.to_string_lossy().to_string();
+        let state = std::sync::Arc::new(WikiIndexState::new());
+        {
+            let mut index = state.inner.lock().expect("index lock");
+            index.rebuild(&vault).expect("seed index");
+        }
+        let saved = root.join("notes/Saved.md");
+        fs::write(&saved, "[[Source]]\n").expect("write saved note");
+        let queued = std::sync::Arc::clone(&state);
+        let hold = state.inner.lock().expect("hold index lock");
+        let vault_for_queue = vault.clone();
+        let path = saved.to_string_lossy().to_string();
+        std::thread::spawn(move || {
+            queued.enqueue_saved_source(&vault_for_queue, &path);
+        })
+        .join()
+        .expect("enqueue must not wait on the index lock");
+        drop(hold);
+
+        let mut index = state.inner.lock().expect("index lock");
+        index
+            .refresh_pending_sources(&vault)
+            .expect("refresh queued note");
+        assert!(index.files.iter().any(|file| file == "notes/Saved.md"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_known_paths_accepts_the_other_spelling_of_the_vault() {
+        let real = test_vault();
+        fs::write(real.join("notes/Source.md"), "[[Later]]\n").expect("write source");
+        let link_parent =
+            std::env::temp_dir().join(format!("agentero-wiki-link-{}", Uuid::new_v4()));
+        fs::create_dir_all(&link_parent).expect("create link parent");
+        let link = link_parent.join("vault");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink vault");
+        let vault = link.to_string_lossy().to_string();
+        let mut index = WikiIndex::default();
+        index
+            .rebuild(&vault)
+            .expect("seed index through the symlink");
+
+        let added = real.join("notes/Later.md");
+        fs::write(&added, "# Later\n").expect("write note at the real path");
+        let applied = index
+            .apply_known_paths(&vault, &[added.to_string_lossy().to_string()])
+            .expect("apply canonical spelling");
+        assert!(
+            matches!(applied, WikiPathApply::Applied(_)),
+            "a canonical spelling of a vault file must not force a full rebuild"
+        );
+        assert!(index.document("notes/Later.md").is_some());
+
+        let _ = fs::remove_dir_all(&real);
+        let _ = fs::remove_dir_all(&link_parent);
     }
 }
