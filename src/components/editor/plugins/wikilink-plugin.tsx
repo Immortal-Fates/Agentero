@@ -3,6 +3,7 @@
 import { RangeApi } from "platejs";
 import { createPlatePlugin } from "platejs/react";
 import { WikiLinkElement } from "@/components/editor/nodes/inline/wikilink-node";
+import { normalizeWikiTrigger } from "@/lib/wiki/normalize-wiki-trigger";
 import { isWikiLinkNode, wikiLinkNodeSource } from "@/lib/wiki/wikilink-model";
 
 /**
@@ -15,8 +16,13 @@ export const WikiLinkPlugin = createPlatePlugin({
 	key: "wikiLink",
 	node: { isElement: true, isInline: true },
 })
-	.overrideEditor(({ editor, tf: { insertBreak } }) => ({
+	.overrideEditor(({ editor, tf: { insertBreak, insertText } }) => ({
 		transforms: {
+			insertText(text, options) {
+				insertText(text, options);
+				if (!options?.at && !editor.api.isComposing())
+					normalizeWikiTrigger(editor);
+			},
 			insertBreak() {
 				const selection = editor.selection;
 				if (selection && RangeApi.isCollapsed(selection)) {

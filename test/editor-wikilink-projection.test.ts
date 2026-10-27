@@ -8,6 +8,8 @@ vi.mock("@/components/editor/nodes/inline/wikilink-node", () => ({
 
 import { MarkdownKit } from "@/components/editor/plugins/markdown-kit";
 import { WikiLinkPlugin } from "@/components/editor/plugins/wikilink-plugin";
+import { findWikiCompletionTrigger } from "@/lib/wiki/completion";
+import { normalizeWikiTrigger } from "@/lib/wiki/normalize-wiki-trigger";
 import {
 	parseWikiLinkMarkdown,
 	type WikiSlateNode,
@@ -39,6 +41,50 @@ function serializeMd(editor: ReturnType<typeof createWikiEditor>): string {
  * between the two representations must never change the document.
  */
 describe("wikilink projection markdown invariance", () => {
+	it.each([
+		"【",
+		"［",
+	])("normalizes repeated %s into a completion trigger", (bracket) => {
+		const editor = createWikiEditor([{ text: "正文 !" }]);
+		editor.tf.select({ path: [0, 0], offset: 4 });
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe(`正文 !${bracket}`);
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe("正文 ![[");
+		expect(editor.selection?.anchor.offset).toBe(6);
+		expect(findWikiCompletionTrigger(editor.api.string([0]), 6)).toMatchObject({
+			raw: "",
+			embed: true,
+		});
+	});
+
+	it("normalizes an IME committed pair without rewriting surrounding text", () => {
+		const editor = createWikiEditor([{ text: "前【【后" }]);
+		editor.tf.select({ path: [0, 0], offset: 3 });
+		expect(normalizeWikiTrigger(editor)).toBe(true);
+		expect(editor.api.string([0])).toBe("前[[后");
+		expect(editor.selection?.anchor.offset).toBe(3);
+	});
+
+	it("preserves brackets in inline code", () => {
+		const editor = createWikiEditor([{ text: "【", code: true }]);
+		editor.tf.select({ path: [0, 0], offset: 1 });
+		editor.tf.insertText("【");
+		expect(editor.api.string([0])).toBe("【【");
+	});
+
+	it("preserves brackets in code blocks", () => {
+		const editor = createSlateEditor({
+			plugins: [
+				WikiLinkPlugin,
+				createSlatePlugin({ key: KEYS.codeBlock, node: { isElement: true } }),
+			],
+			value: [{ type: KEYS.codeBlock, children: [{ text: "［" }] }],
+		});
+		editor.tf.select({ path: [0, 0], offset: 1 });
+		editor.tf.insertText("［");
+		expect(editor.api.string([0])).toBe("［［");
+	});
 	it.each([
 		0, 9,
 	])("does not duplicate a link when breaking at source offset %i", (offset) => {
