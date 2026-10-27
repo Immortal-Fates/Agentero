@@ -54,7 +54,9 @@ function nodeInstallActive(): boolean {
  * success / failure toast so the Doctor panel (which shows its own inline
  * notice) can stay silent.
  */
-export async function installNodeInBackground(): Promise<NodeInstallResult | null> {
+export async function installNodeInBackground(
+	onProgress?: (progress: number | null) => void,
+): Promise<NodeInstallResult | null> {
 	if (!isTauri()) return null;
 	if (nodeInstallActive()) return null;
 	const taskId = `node-install-${Date.now().toString(36)}`;
@@ -72,6 +74,7 @@ export async function installNodeInBackground(): Promise<NodeInstallResult | nul
 		events.agentLifecycleProgress,
 		(payload) => {
 			if (payload.taskId !== taskId) return;
+			onProgress?.(payload.progress);
 			updateBackgroundTask(rowId, { progress: payload.progress });
 		},
 	);

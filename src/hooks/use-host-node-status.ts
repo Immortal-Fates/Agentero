@@ -24,8 +24,14 @@ import type { HostNodeGap } from "@/lib/doctor/node-guidance";
 export type HostNodeStatus = {
 	nodeMissing: boolean;
 	npmMissing: boolean;
+	/** Latest host probe; null before the first result or after a failed probe. */
+	report: HostDoctorReport | null;
+	/** True while a probe is in flight. */
+	probing: boolean;
 	/** True while the background Node install started here is running. */
 	installing: boolean;
+	/** Install progress (0–100) while installing, null otherwise. */
+	installProgress: number | null;
 	/** Re-probe Node.js/npm (manual refresh or after an install elsewhere). */
 	refresh: () => Promise<void>;
 	/**
@@ -47,13 +53,16 @@ export function useHostNodeStatus(
 	const { onInstalled } = opts;
 	const { t } = useTranslation("settings");
 	const [report, setReport] = useState<HostDoctorReport | null>(null);
+	const [probing, setProbing] = useState(() => isTauri());
 	const [installing, setInstalling] = useState(false);
+	const [installProgress, setInstallProgress] = useState<number | null>(null);
 	const reportRef = useRef<HostDoctorReport | null>(null);
 	const probeRef = useRef<Promise<HostDoctorReport | null> | null>(null);
 	const checkedRef = useRef(false);
 
 	const runProbe = useCallback(async (): Promise<HostDoctorReport | null> => {
 		if (!isTauri()) return null;
+		setProbing(true);
 		try {
 			const next = await doctorCheckHost();
 			reportRef.current = next;
@@ -65,6 +74,8 @@ export function useHostNodeStatus(
 			reportRef.current = null;
 			setReport(null);
 			return null;
+		} finally {
+			setProbing(false);
 		}
 	}, []);
 
@@ -126,8 +137,9 @@ export function useHostNodeStatus(
 	const installNode = useCallback(async () => {
 		if (!isTauri() || installing) return;
 		setInstalling(true);
+		setInstallProgress(null);
 		try {
-			const result = await installNodeInBackground();
+			const result = await installNodeInBackground(setInstallProgress);
 			// null = not desktop / already running / user cancelled: the task
 			// panel row (or the other caller) owns that feedback.
 			if (!result) return;
@@ -136,6 +148,11 @@ export function useHostNodeStatus(
 			} else if (result.error) {
 				notifyError(result.error);
 			} else {
+				// The installer's own re-probe is authoritative; show it right away
+				// so the caller does not flash the stale "missing" state while the
+				// broadcast-triggered refresh runs.
+				reportRef.current = result.report;
+				setReport(result.report);
 				notifySuccess(t("doctor.host.install.success"));
 				// The install module broadcast HOST_NODE_INSTALLED_EVENT; the
 				// listener above re-probes and rescans for every mounted pane.
@@ -144,13 +161,17 @@ export function useHostNodeStatus(
 			notifyError(errorText(error));
 		} finally {
 			setInstalling(false);
+			setInstallProgress(null);
 		}
 	}, [installing, t]);
 
 	return {
 		nodeMissing: report ? report.node.status !== "available" : false,
 		npmMissing: report ? report.npm.status !== "available" : false,
+		report,
+		probing,
 		installing,
+		installProgress,
 		refresh,
 		checkNodeGap,
 		installNode,

@@ -6,6 +6,7 @@ import { useStore } from "zustand";
 import type { AgentStepHandle } from "@/components/onboarding/steps/agent-step";
 import { AgentStep } from "@/components/onboarding/steps/agent-step";
 import { LayoutStep } from "@/components/onboarding/steps/layout-step";
+import { NodeStep } from "@/components/onboarding/steps/node-step";
 import { ProxyStep } from "@/components/onboarding/steps/proxy-step";
 import { ThemeStep } from "@/components/onboarding/steps/theme-step";
 import { TranslateStep } from "@/components/onboarding/steps/translate-step";
@@ -197,6 +198,8 @@ function OnboardingDialog({ onVaultCreated }: { onVaultCreated: () => void }) {
 				return <ThemeStep settings={settings} patch={patch} />;
 			case "proxy":
 				return <ProxyStep settings={settings} patch={patch} />;
+			case "node":
+				return <NodeStep />;
 			case "agent":
 				return <AgentStep ref={agentStepRef} />;
 			case "translate":
@@ -228,6 +231,8 @@ function OnboardingDialog({ onVaultCreated }: { onVaultCreated: () => void }) {
 				return { title: t("theme.title"), desc: t("theme.desc") };
 			case "proxy":
 				return { title: t("proxy.title"), desc: t("proxy.desc") };
+			case "node":
+				return { title: t("node.title"), desc: t("node.desc") };
 			case "agent":
 				return { title: t("agent.title"), desc: t("agent.desc") };
 			case "translate":
