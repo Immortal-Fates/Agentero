@@ -30,6 +30,7 @@ import {
 	loadBuiltinProviderStatus,
 } from "@/lib/core/builtin";
 import { openExternalUrl } from "@/lib/core/open-external";
+import { isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import type {
 	AppSettings,
 	CommercialTranslateProviderId,
@@ -42,9 +43,7 @@ import {
 	COMMERCIAL_MT_DOCS_URLS,
 	COMMERCIAL_MT_PROVIDER_IDS,
 	isCommercialTranslateProvider,
-	isTranslateApiKeyMask,
 	isTranslateProviderId,
-	maskTranslateApiKey,
 	probeCommercialMtProvider,
 } from "@/lib/translate";
 import {
@@ -139,9 +138,7 @@ export function TranslateStep({
 			.replace(/\/+$/, "");
 		if (!apiKey) return;
 		const toSave: TranslateProviderConfig = { ...storedCfg, apiKey, baseUrl };
-		const masked = isTranslateApiKeyMask(apiKey)
-			? apiKey
-			: maskTranslateApiKey(apiKey);
+		const masked = isSecretMask(apiKey) ? apiKey : maskSecret(apiKey);
 		const nextTranslate = {
 			...tr,
 			providerConfigs: {

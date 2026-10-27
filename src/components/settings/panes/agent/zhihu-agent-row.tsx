@@ -11,11 +11,8 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { openExternalUrl } from "@/lib/core/open-external";
-import {
-	hasZhihuSecret,
-	probeZhihuSecret,
-	ZHIHU_DEVELOPER_PROFILE_URL,
-} from "@/lib/zhihu";
+import { hasSecret } from "@/lib/core/secret-mask";
+import { probeZhihuSecret, ZHIHU_DEVELOPER_PROFILE_URL } from "@/lib/zhihu";
 
 type ProbeStatus = "idle" | "probing" | "ok" | "fail";
 
@@ -39,7 +36,7 @@ export function ZhihuAgentRow({
 	const abortRef = useRef<AbortController | null>(null);
 
 	const runProbe = useCallback(async () => {
-		if (!hasZhihuSecret(savedSecret)) {
+		if (!hasSecret(savedSecret)) {
 			setStatus("idle");
 			return;
 		}

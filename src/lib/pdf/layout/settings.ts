@@ -152,14 +152,3 @@ export function isLayoutProviderId(value: unknown): value is LayoutProviderId {
 		(LAYOUT_PROVIDER_IDS as readonly string[]).includes(value)
 	);
 }
-
-/** Same mask convention as translate BYOK keys (all `*`, same length). */
-export function maskLayoutApiKey(key: string): string {
-	const n = key.trim().length;
-	return n === 0 ? "" : "*".repeat(n);
-}
-
-export function isLayoutApiKeyMask(key: string): boolean {
-	const t = key.trim();
-	return t.length > 0 && t.split("").every((c) => c === "*");
-}

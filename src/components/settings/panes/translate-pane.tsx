@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/tooltip";
 import { BUILTIN_PROVIDER_ID } from "@/lib/core/builtin";
 import { openExternalUrl } from "@/lib/core/open-external";
+import { hasSecret, isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import { isTauri } from "@/lib/core/tauri";
 import type {
 	AppSettings,
@@ -54,13 +55,10 @@ import {
 	FREE_MT_PROVIDER_IDS,
 	type FreeMtProbeMap,
 	type FreeMtProbeStatus,
-	hasTranslateApiKey,
 	isCommercialProviderConfigured,
 	isCommercialTranslateProvider,
 	isFreeMtProvider,
-	isTranslateApiKeyMask,
 	listSelectableProviders,
-	maskTranslateApiKey,
 	probeCommercialMtProvider,
 	probeFreeMtProviders,
 	translateSystemTemplateIssue,
@@ -298,9 +296,9 @@ export function TranslatePane({
 				return;
 			}
 
-			const displayMask = isTranslateApiKeyMask(toSave.apiKey)
+			const displayMask = isSecretMask(toSave.apiKey)
 				? toSave.apiKey
-				: maskTranslateApiKey(toSave.apiKey);
+				: maskSecret(toSave.apiKey);
 			const nextTranslate = {
 				...tr,
 				providerConfigs: {
@@ -487,10 +485,10 @@ export function TranslatePane({
 						const displayApiKey =
 							draftKey !== undefined
 								? draftKey
-								: hasTranslateApiKey(cfg.apiKey)
-									? isTranslateApiKeyMask(cfg.apiKey)
+								: hasSecret(cfg.apiKey)
+									? isSecretMask(cfg.apiKey)
 										? cfg.apiKey
-										: maskTranslateApiKey(cfg.apiKey)
+										: maskSecret(cfg.apiKey)
 									: "";
 						const effectiveCfg: TranslateProviderConfig = {
 							...cfg,
@@ -562,11 +560,10 @@ export function TranslatePane({
 											onChange={(e) => {
 												const next = e.target.value;
 												const shownMask =
-													draftKey === undefined &&
-													hasTranslateApiKey(cfg.apiKey)
-														? isTranslateApiKeyMask(cfg.apiKey)
+													draftKey === undefined && hasSecret(cfg.apiKey)
+														? isSecretMask(cfg.apiKey)
 															? cfg.apiKey
-															: maskTranslateApiKey(cfg.apiKey)
+															: maskSecret(cfg.apiKey)
 														: null;
 												// Typing over the mask starts a fresh draft (not mask + chars).
 												if (
@@ -583,10 +580,7 @@ export function TranslatePane({
 											}}
 											onFocus={(e) => {
 												// Select mask so the next keystroke replaces it entirely.
-												if (
-													draftKey === undefined &&
-													hasTranslateApiKey(cfg.apiKey)
-												) {
+												if (draftKey === undefined && hasSecret(cfg.apiKey)) {
 													e.currentTarget.select();
 												}
 											}}

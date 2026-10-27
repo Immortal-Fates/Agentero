@@ -3,20 +3,19 @@
  * (Settings → Layout pane and the onboarding layout step).
  */
 
+import { isSecretMask, maskSecret } from "@/lib/core/secret-mask";
 import { isTauri } from "@/lib/core/tauri";
 import {
 	invokeLayoutRemoteProbe,
 	tinyProbeJpegBase64,
 } from "@/lib/pdf/layout/paddle";
 import {
-	isLayoutApiKeyMask,
 	isLayoutBackend,
 	isParserBackend,
 	type LayoutBackend,
 	type LayoutProviderConfig,
 	type LayoutProviderId,
 	type LayoutSettings,
-	maskLayoutApiKey,
 	type ParserBackend,
 } from "@/lib/pdf/layout/settings";
 import type { AppSettings } from "@/lib/settings";
@@ -81,9 +80,9 @@ export async function persistLayoutProviderConfig(opts: {
 	} catch {
 		// Still mask the UI below.
 	}
-	const masked = isLayoutApiKeyMask(opts.config.apiKey)
+	const masked = isSecretMask(opts.config.apiKey)
 		? opts.config.apiKey
-		: maskLayoutApiKey(opts.config.apiKey);
+		: maskSecret(opts.config.apiKey);
 	return {
 		displayLayout: {
 			...savedLayout,

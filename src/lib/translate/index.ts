@@ -12,10 +12,7 @@ export type {
 	FreeMtProbeStatus,
 } from "@/lib/translate/probe";
 export {
-	hasTranslateApiKey,
 	isCommercialProviderConfigured,
-	isTranslateApiKeyMask,
-	maskTranslateApiKey,
 	probeCommercialMtProvider,
 	probeFreeMtProviders,
 } from "@/lib/translate/probe";

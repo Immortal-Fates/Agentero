@@ -21,11 +21,6 @@ export const ZHIHU_DEVELOPER_PROFILE_URL =
 /** 知乎站点入口：提问草稿复制到剪贴板后打开，用户粘贴发布。 */
 export const ZHIHU_HOME_URL = "https://www.zhihu.com/";
 
-/** True when a non-empty secret is stored (plaintext or Host `*`-mask). */
-export function hasZhihuSecret(secret: string | undefined): boolean {
-	return Boolean(secret?.trim());
-}
-
 /**
  * Probe the configured Access Secret through the Host by running a minimal
  * Zhihu search. Consumes one call against the open-platform quota.

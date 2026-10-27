@@ -7,10 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ZhihuSearchItem } from "@/lib/core/bindings";
 import { errorText } from "@/lib/core/error";
 import { openExternalUrl } from "@/lib/core/open-external";
+import { hasSecret } from "@/lib/core/secret-mask";
 import { cn } from "@/lib/core/utils";
 import type { PaperMetadata } from "@/lib/paper";
 import { loadSettings } from "@/lib/settings";
-import { hasZhihuSecret, searchZhihuDiscussions } from "@/lib/zhihu";
+import { searchZhihuDiscussions } from "@/lib/zhihu";
 
 /** Cap the list so the empty state stays compact and never overflows. */
 const MAX_CARDS = 5;
@@ -42,7 +43,7 @@ export function ZhihuDiscussions({
 }) {
 	const { t } = useTranslation("agent");
 	const title = paper?.title?.trim() ?? "";
-	const secretConfigured = hasZhihuSecret(loadSettings().zhihuAccessSecret);
+	const secretConfigured = hasSecret(loadSettings().zhihuAccessSecret);
 	const [state, setState] = useState<DiscussionState>({ kind: "loading" });
 	const [reloadKey, setReloadKey] = useState(0);
 
