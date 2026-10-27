@@ -10,7 +10,7 @@ pub struct PaperIngestReconcileArgs {
     pub vault_path: String,
 }
 
-/// Startup reconcile: adopt bare `papers/` child folders (created while the
+/// Startup reconcile: adopt bare `papers/` child folders and loose PDFs (created while the
 /// app was closed) into the library. Fire-and-forget from the frontend's
 /// `vault:opened` handler; returns the adopted count.
 #[tauri::command]

@@ -2,8 +2,9 @@
 //! around the tauri-free adoption kernel
 //! (`agentero_core::features::paper::import::auto_ingest`).
 //!
-//! Flow per candidate folder (a `papers/` direct child touched by a create /
-//! rename batch): settle-probe the PDFs (two equal size snapshots), classify,
+//! Flow per candidate (a `papers/` direct child touched by a create /
+//! rename batch): settle-probe the PDFs (two equal size snapshots), give loose
+//! PDFs their own folder, classify,
 //! and — when the folder is a bare PDF folder — adopt it in place. The
 //! classifier is the durable loop guard: once adoption writes NOTES.md and
 //! the sidecar, the folder stops being adoptable; [`IngestQueue`] only
@@ -15,8 +16,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::features::paper::import::auto_ingest::{
-    adopt_paper_folder, classify_papers_subfolder, wait_until_pdf_settled, AdoptOptions,
-    FolderClass,
+    adopt_paper_folder, classify_papers_subfolder, prepare_loose_pdf, wait_until_pdf_settled,
+    AdoptOptions, FolderClass,
 };
 
 /// Gap between the two size snapshots that prove a copy finished.
@@ -52,7 +53,14 @@ fn papers_child_candidate(vault: &Path, path: &Path) -> Option<PathBuf> {
     let rel = rel.to_string_lossy().replace('\\', "/");
     let segments: Vec<&str> = rel.split('/').filter(|s| !s.is_empty()).collect();
     match segments.as_slice() {
-        ["papers", _] => Some(path.to_path_buf()),
+        ["papers", _]
+            if path.is_dir()
+                || path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf")) =>
+        {
+            Some(path.to_path_buf())
+        }
         ["papers", _, ..] => path.parent().map(Path::to_path_buf),
         _ => None,
     }
@@ -110,20 +118,26 @@ pub(crate) async fn run_adoption(
         if wait_settled && !wait_until_pdf_settled(&probe_folder, SETTLE_GAP, SETTLE_MAX_WAIT) {
             // Still copying (or nothing adoptable): the next watcher batch
             // re-triggers once the copy finishes.
-            return FolderClass::NoPdf;
+            return Ok((probe_folder, FolderClass::NoPdf));
         }
-        classify_papers_subfolder(&probe_vault, &probe_folder)
+        let candidate = if probe_folder.is_file() {
+            prepare_loose_pdf(&probe_vault, &probe_folder)?
+        } else {
+            probe_folder
+        };
+        let class = classify_papers_subfolder(&probe_vault, &candidate);
+        Ok::<_, crate::core::error::AppError>((candidate, class))
     })
     .await;
     let adopted = match class {
-        Ok(FolderClass::Adopt { .. }) => {
+        Ok(Ok((candidate, FolderClass::Adopt { .. }))) => {
             use tauri::Manager;
             let cache = app.state::<crate::features::paper::catalog::CapsCache>();
             let host_app = crate::features::host_hooks::wrap(app);
             let note_mode = crate::features::paper::import::note_mode_from_app(app);
             let result = adopt_paper_folder(
                 vault,
-                &folder,
+                &candidate,
                 AdoptOptions {
                     note_mode,
                     cache: Some(&cache),
@@ -140,7 +154,11 @@ pub(crate) async fn run_adoption(
             }
             result.is_ok()
         }
-        Ok(_) => false,
+        Ok(Ok(_)) => false,
+        Ok(Err(e)) => {
+            log::warn!(target: "agentero::ingest", "auto-ingest preparation failed for {}: {e}", folder.display());
+            false
+        }
         Err(e) => {
             log::warn!(
                 target: "agentero::ingest",
@@ -160,7 +178,7 @@ pub(crate) async fn run_adoption(
 }
 
 /// Scan `papers/` direct children once and adopt every candidate. Startup
-/// reconcile: catches folders created while the app (and its watcher) was
+/// reconcile: catches folders and loose PDFs created while the app (and its watcher) was
 /// closed. Disk state at launch is assumed settled except for an in-flight
 /// copy, which the settle probe still guards.
 pub async fn reconcile_folders(app: &tauri::AppHandle, vault: &Path) -> usize {
@@ -171,7 +189,11 @@ pub async fn reconcile_folders(app: &tauri::AppHandle, vault: &Path) -> usize {
     let mut adopted = 0;
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
+        if !path.is_dir()
+            && !path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+        {
             continue;
         }
         if run_adoption(app, vault, path, true).await {
@@ -182,3 +204,28 @@ pub async fn reconcile_folders(app: &tauri::AppHandle, vault: &Path) -> usize {
 }
 
 pub mod commands;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watcher_routes_loose_pdfs_but_not_unrelated_root_files() {
+        let vault = std::env::temp_dir().join("agentero-ingest-route");
+        let pdf = vault.join("papers/book.PDF");
+        assert_eq!(papers_child_candidate(&vault, &pdf), Some(pdf));
+        assert_eq!(
+            papers_child_candidate(&vault, &vault.join("papers/index.md")),
+            None
+        );
+        assert_eq!(
+            papers_child_candidate(&vault, &vault.join("notes/book.pdf")),
+            None
+        );
+        let nested = vault.join("papers/book/main.pdf");
+        assert_eq!(
+            papers_child_candidate(&vault, &nested),
+            Some(vault.join("papers/book"))
+        );
+    }
+}
