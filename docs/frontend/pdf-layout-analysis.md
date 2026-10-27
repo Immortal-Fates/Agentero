@@ -4,6 +4,8 @@
 
 > 该能力已落地并可随论文打开自动运行；大模型推理在低端设备上可能卡顿，分析结果仅写入可重建 sidecar，不改 PDF 二进制。
 
+应用内拖入 PDF 与「魔棒 → 导入 PDF」共用导入入口。直接从文件管理器放入 Vault `papers/` 根目录的 PDF，在自动收录开启时也会建立独立资料文件夹（启动时补扫已有文件），复用相同的后续解析流程和设置中的版面引擎；结果保存在该资料的 `source/layout.json`，重启后读取缓存。远程引擎的文件大小限制仍然适用。
+
 | | |
 |---|---|
 | 上游 | [EmbedPDF Layout Analysis](https://www.embedpdf.com/docs/react/headless/plugins/plugin-layout-analysis) |

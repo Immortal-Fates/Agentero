@@ -4,6 +4,7 @@
  * reachable only via async messages. Documents are projected to plain data
  * (`{ id, pages }`) for the parent; ops resolve the authoritative object by id.
  */
+
 import { readFileSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 import { PdfiumNative } from "@embedpdf/engines/pdfium";

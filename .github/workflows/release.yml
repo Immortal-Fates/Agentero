@@ -9,9 +9,16 @@ permissions:
   contents: write
 
 jobs:
+  checks:
+    name: Validate release commit
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   # Shared draft so installers + CLI can upload in parallel without racing create.
   prepare:
     name: Create draft release
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       - name: Verify updater signing configuration
