@@ -2467,6 +2467,18 @@ function PdfViewerInner({
 				hostRef={hostRef}
 				rightGutter={rightGutter}
 				className="agentero-scroll-both min-h-0 min-w-0 flex-1"
+				onClickCapture={(event) => {
+					const target = event.target;
+					// Observe the reading surface without swallowing its click. Portaled
+					// menus and page controls keep their own interaction unchanged.
+					if (
+						showOutline &&
+						target instanceof Element &&
+						event.currentTarget.contains(target) &&
+						!target.closest("[data-pdf-chrome]")
+					)
+						toggleOutline();
+				}}
 			>
 				<WheelZoomHandler docId={docId} rightGutter={rightGutter} />
 				<PanDragHandler
