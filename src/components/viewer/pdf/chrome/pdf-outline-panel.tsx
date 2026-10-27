@@ -1,6 +1,6 @@
 import type { PdfBookmarkObject } from "@embedpdf/models";
 import { Loader2, RotateCw } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,11 +18,6 @@ import type { PdfBookmarkEditor } from "@/components/viewer/pdf/hooks/use-pdf-bo
 import { cn } from "@/lib/core/utils";
 import { type EditableBookmark, updateBookmark } from "@/lib/pdf/bookmark-edit";
 
-export type BookmarkSelectionRequest = {
-	title: string;
-	page: number;
-	id: number;
-};
 type Form = {
 	title: string;
 	page: number;
@@ -35,26 +30,17 @@ export function PdfOutlinePanel({
 	onGoToPage,
 	editor,
 	currentPage,
-	selectionRequest,
 }: {
 	outline: PdfBookmarkObject[];
 	showOutline: boolean;
 	onGoToPage: (page: number) => void;
 	editor: PdfBookmarkEditor;
 	currentPage: number;
-	selectionRequest: BookmarkSelectionRequest | null;
 }) {
 	const { t } = useTranslation("viewer");
 	const titleId = useId();
 	const [form, setForm] = useState<Form | null>(null);
 	const { draft, canEdit, begin, change, save } = editor;
-	useEffect(() => {
-		if (selectionRequest)
-			setForm({
-				title: selectionRequest.title,
-				page: selectionRequest.page,
-			});
-	}, [selectionRequest]);
 	const add = (parent?: string) => {
 		begin();
 		setForm({

@@ -56,10 +56,7 @@ import { PdfFiguresPanel } from "@/components/viewer/pdf/chrome/pdf-figures-pane
 import { PdfFindBar } from "@/components/viewer/pdf/chrome/pdf-find-bar";
 import { PdfJumpBackChip } from "@/components/viewer/pdf/chrome/pdf-jump-back-chip";
 import { PdfLeftToolbar } from "@/components/viewer/pdf/chrome/pdf-left-toolbar";
-import {
-	type BookmarkSelectionRequest,
-	PdfOutlinePanel,
-} from "@/components/viewer/pdf/chrome/pdf-outline-panel";
+import { PdfOutlinePanel } from "@/components/viewer/pdf/chrome/pdf-outline-panel";
 import { PdfReferencesPanel } from "@/components/viewer/pdf/chrome/pdf-references-panel";
 import { PdfToolbar } from "@/components/viewer/pdf/chrome/pdf-toolbar";
 
@@ -975,8 +972,6 @@ function PdfViewerInner({
 		outline,
 		ready: outlineReady,
 	});
-	const [bookmarkSelectionRequest, setBookmarkSelectionRequest] =
-		useState<BookmarkSelectionRequest | null>(null);
 
 	const {
 		showReferences,
@@ -2214,17 +2209,26 @@ function PdfViewerInner({
 			bookmarkEditor.draft?.saving
 		)
 			return;
+		const title = (selectionMenu.copyText ?? selectionMenu.anchor.quote ?? "")
+			.replace(/\s+/g, " ")
+			.trim();
 		bookmarkEditor.begin();
-		setBookmarkSelectionRequest({
-			title: (selectionMenu.copyText ?? selectionMenu.anchor.quote ?? "")
-				.replace(/\s+/g, " ")
-				.trim(),
-			page: selectionMenu.anchor.page,
-			id: Date.now(),
-		});
+		bookmarkEditor.change([
+			...bookmarkEditor.nodes,
+			{
+				id: crypto.randomUUID(),
+				origin: null,
+				title:
+					title ||
+					t("pdf.bookmarks.defaultTitle", { page: selectionMenu.anchor.page }),
+				pageIndex: selectionMenu.anchor.page - 1,
+				children: [],
+			},
+		]);
 		if (!showOutline) handleToggleOutline();
 		closeSelectionMenu();
 	}, [
+		t,
 		selectionMenu,
 		bookmarkEditor,
 		showOutline,
@@ -2398,7 +2402,6 @@ function PdfViewerInner({
 				<PdfOutlinePanel
 					editor={bookmarkEditor}
 					currentPage={currentPage}
-					selectionRequest={bookmarkSelectionRequest}
 					outline={outline}
 					showOutline={showOutline}
 					onGoToPage={handleGoToPage}
