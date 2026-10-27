@@ -18,7 +18,7 @@ overrides:
   # (Dependabot #79 #81 #82 #84). shadcn 4.13 allows ^1.26.0.
   '@modelcontextprotocol/sdk@<1.32.0': '>=1.32.0 <2'
   browserslist@<4.28.7: '>=4.28.7 <5'
-  dompurify@<3.4.16: '>=3.4.16 <4'
+  dompurify@<3.4.17: '>=3.4.17 <4'
   fast-uri@<3.1.8: '>=3.1.8 <4'
   hono@<4.13.7: '>=4.13.7 <5'
   ip-address@<10.7.1: '>=10.7.1 <11'
@@ -36,7 +36,9 @@ overrides:
   proxy-addr@<2.0.8: '>=2.0.8 <3'
   qs@<6.16.0: '>=6.16.0 <7'
   source-map-js@<1.2.2: '>=1.2.2 <2'
-  undici@<7.29.1: '>=7.29.1 <8'
+  # shadcn 4.13 pins zod 3.25.76, which is below the patched 4.6.6.
+  zod@<4.6.6: '>=4.6.6 <5'
+  undici@<7.30.1: '>=7.30.1 <8'
   '@hono/node-server@<1.19.17': '>=1.19.17 <2'
   # Keep re-installs (e.g. pnpm patch-commit) from drifting the pinned types.
   '@types/react-dom': 19.2.3
