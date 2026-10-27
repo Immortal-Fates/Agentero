@@ -1611,7 +1611,7 @@ export type AppSettings_Deserialize = {
 	 */
 	replaceCurrentTabOnOpenPaper?: boolean,
 	autoUpdateInternalLinks?: string,
-	/**  PDF continuous-scroll direction: `vertical` | `horizontal`. */
+	/**  PDF navigation: `vertical` | `horizontal` | `paginated`. */
 	pdfScrollStrategy?: string,
 	/**  PDF page layout: `none` (single page) | `odd` | `even` (two-page spread). */
 	pdfSpreadMode?: string,
@@ -1741,7 +1741,7 @@ export type AppSettings_Serialize = {
 	 */
 	replaceCurrentTabOnOpenPaper: boolean,
 	autoUpdateInternalLinks: string,
-	/**  PDF continuous-scroll direction: `vertical` | `horizontal`. */
+	/**  PDF navigation: `vertical` | `horizontal` | `paginated`. */
 	pdfScrollStrategy: string,
 	/**  PDF page layout: `none` (single page) | `odd` | `even` (two-page spread). */
 	pdfSpreadMode: string,
