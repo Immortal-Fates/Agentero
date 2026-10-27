@@ -34,6 +34,8 @@ type PdfToolbarProps = {
 	engine: PdfEngine | null;
 	onToggleRegionSelect: () => void;
 	layoutTranslateRunning: boolean;
+	/** Final corrected preview is still building after items settled. */
+	layoutTranslatePreparing?: boolean;
 	/** Queued behind layout analysis; plain click cancels the wait. */
 	layoutTranslateWaiting?: boolean;
 	layoutTranslateActive: boolean;
@@ -59,6 +61,7 @@ export const PdfToolbar = memo(function PdfToolbar({
 	engine,
 	onToggleRegionSelect,
 	layoutTranslateRunning,
+	layoutTranslatePreparing = false,
 	layoutTranslateWaiting = false,
 	layoutTranslateActive,
 	layoutTranslateLabel,
@@ -270,7 +273,8 @@ export const PdfToolbar = memo(function PdfToolbar({
 								>
 									{layoutTranslateWaiting ? (
 										<Clock className="size-3.5 animate-pulse" aria-hidden />
-									) : layoutTranslateRunning && !longPressing ? (
+									) : (layoutTranslateRunning || layoutTranslatePreparing) &&
+										!longPressing ? (
 										<Loader2 className="size-3.5 animate-spin" aria-hidden />
 									) : (
 										<Languages className="size-3.5" aria-hidden />

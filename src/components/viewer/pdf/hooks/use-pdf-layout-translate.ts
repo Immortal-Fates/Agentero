@@ -74,6 +74,8 @@ export type PdfLayoutTranslate = {
 		{ active: boolean; running: boolean }
 	>;
 	layoutTranslateRunning: boolean;
+	/** Final corrected preview/export output is still building after items settled. */
+	layoutTranslatePreparing: boolean;
 	/** Queued behind layout analysis; toolbar shows the waiting state. */
 	layoutTranslateWaiting: boolean;
 	/** Running, or finished with overlays still painted. */
@@ -804,6 +806,10 @@ export function usePdfLayoutTranslate({
 	}, [layoutTranslateJob.items]);
 
 	const layoutTranslateRunning = layoutTranslateJob.status === "running";
+	// Cached re-runs settle almost immediately, but the translated page only
+	// paints once the final reflow build publishes its previews. Keep the
+	// loading indicator up through that build instead of leaving a blank wait.
+	const layoutTranslatePreparing = reflowBusy && !reflowReady;
 	const layoutTranslateWaiting = layoutTranslateJob.status === "waitingLayout";
 	const layoutTranslateActive =
 		layoutTranslateRunning ||
@@ -825,6 +831,7 @@ export function usePdfLayoutTranslate({
 		layoutTranslateItemsByPage,
 		layoutTranslatePageStateByPage,
 		layoutTranslateRunning,
+		layoutTranslatePreparing,
 		layoutTranslateWaiting,
 		layoutTranslateActive,
 		layoutTranslateLabel,

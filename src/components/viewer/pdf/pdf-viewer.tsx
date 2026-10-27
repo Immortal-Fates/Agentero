@@ -1225,6 +1225,7 @@ function PdfViewerInner({
 		layoutTranslateItemsByPage,
 		layoutTranslatePageStateByPage,
 		layoutTranslateRunning,
+		layoutTranslatePreparing,
 		layoutTranslateWaiting,
 		layoutTranslateActive,
 		layoutTranslateLabel,
@@ -2446,6 +2447,7 @@ function PdfViewerInner({
 					engine={engine}
 					onToggleRegionSelect={toggleRegionSelect}
 					layoutTranslateRunning={layoutTranslateRunning}
+					layoutTranslatePreparing={layoutTranslatePreparing}
 					layoutTranslateWaiting={layoutTranslateWaiting}
 					layoutTranslateActive={layoutTranslateActive}
 					layoutTranslateLabel={layoutTranslateLabel}
