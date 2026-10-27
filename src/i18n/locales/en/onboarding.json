@@ -63,8 +63,10 @@
 		"failed": "Probe failed",
 		"notProbed": "Not probed",
 		"scanFailed": "Failed to scan agents",
+		"cliAgents": "CLI Agents",
 		"desktopApps": {
 			"title": "Local desktop apps",
+			"hint": "(not supported yet — install a CLI Agent below)",
 			"unsupported": "Not supported yet",
 			"chatgpt": "ChatGPT",
 			"qwenwork": "QwenWork",
