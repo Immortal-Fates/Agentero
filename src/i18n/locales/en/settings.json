@@ -6,7 +6,6 @@
 	},
 	"nav": {
 		"general": "General",
-		"writing": "Writing",
 		"appearance": "Appearance",
 		"agent": "Agent",
 		"translate": "Translate",
@@ -22,11 +21,6 @@
 		"plugins": "Plugins"
 	},
 	"writing": {
-		"title": "Writing",
-		"engine": "LaTeX engine",
-		"projectSettings": "Project settings",
-		"noProject": "Open a writing project to change these.",
-		"github": "GitHub",
 		"uploadMode": "When to upload",
 		"uploadManual": "Manually",
 		"uploadOnCompile": "After each compile",

@@ -9,7 +9,6 @@ import {
 	LayoutTemplate,
 	MonitorSmartphone,
 	Paintbrush,
-	PenLine,
 	Puzzle,
 	SlidersHorizontal,
 	Stethoscope,
@@ -58,7 +57,6 @@ import {
 const PANE_LOADERS = {
 	plugins: () => import("@/components/settings/panes/plugins-pane"),
 	general: () => import("@/components/settings/panes/general-pane"),
-	writing: () => import("@/components/settings/panes/writing-pane"),
 	appearance: () => import("@/components/settings/panes/appearance-pane"),
 	agent: () => import("@/components/settings/panes/agent-pane"),
 	translate: () => import("@/components/settings/panes/translate-pane"),
@@ -91,11 +89,6 @@ const PluginsPane = memo(
 );
 const GeneralPane = memo(
 	lazy(() => PANE_LOADERS.general().then((m) => ({ default: m.GeneralPane }))),
-);
-const WritingPane = memo(
-	lazy(() =>
-		PANE_LOADERS.writing().then((m) => ({ default: m.WritingSettingsPane })),
-	),
 );
 const AppearancePane = memo(
 	lazy(() =>
@@ -153,7 +146,6 @@ const NAV: {
 	dividerBefore?: boolean;
 }[] = [
 	{ id: "general", icon: SlidersHorizontal },
-	{ id: "writing", icon: PenLine },
 	{ id: "appearance", icon: Paintbrush },
 	{ id: "agent", icon: Bot, dividerBefore: true },
 	{ id: "translate", icon: Languages },
@@ -203,7 +195,9 @@ export function SettingsContent({
 		[],
 	);
 	const activeSection =
-		pluginsSurfaceEnabled || section !== "plugins" ? section : "general";
+		(pluginsSurfaceEnabled || section !== "plugins") && section in PANE_LOADERS
+			? section
+			: "general";
 
 	useEffect(() => {
 		if (activeSection !== section) onSectionChange(activeSection);
@@ -503,17 +497,6 @@ export function SettingsContent({
 									hostContext={hostContext}
 									vaultPath={vaultPath}
 								/>
-							</Suspense>
-						</div>
-					)}
-					{visitedSections.includes("writing") && (
-						<div
-							data-settings-pane
-							data-active={section === "writing" ? "true" : "false"}
-							hidden={section !== "writing"}
-						>
-							<Suspense fallback={<PaneFallback />}>
-								<WritingPane vaultPath={vaultPath} />
 							</Suspense>
 						</div>
 					)}
