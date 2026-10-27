@@ -4,7 +4,34 @@ import { joinVaultPath, vaultRelativePath } from "@/lib/vault/path";
 import { vaultStore } from "@/lib/vault/store";
 import { setWritingFile, writingStore } from "@/lib/writing/store";
 
-export type TexEditorCursor = { path: string; line: number; column: number };
+export type TexSourcePoint = { line: number; column: number };
+export type TexEditorCursor = TexSourcePoint & {
+	path: string;
+	selection?: TexSourcePoint[];
+};
+
+/** Query each non-empty selected source line, including both range boundaries. */
+export function texSelectionPoints(
+	view: EditorView,
+): TexSourcePoint[] | undefined {
+	const { from, to, empty } = view.state.selection.main;
+	if (empty) return undefined;
+	const doc = view.state.doc;
+	const points: TexSourcePoint[] = [];
+	for (
+		let number = doc.lineAt(from).number;
+		number <= doc.lineAt(to - 1).number;
+		number++
+	) {
+		const line = doc.line(number);
+		const start = Math.max(from, line.from);
+		const end = Math.min(to, line.to);
+		if (start >= end || !doc.sliceString(start, end).trim()) continue;
+		points.push({ line: number, column: start - line.from + 1 });
+		if (end - start > 1) points.push({ line: number, column: end - line.from });
+	}
+	return points;
+}
 type EditorRegistration = {
 	path: string;
 	view: EditorView;
@@ -123,7 +150,13 @@ export function getTexEditorCursor(path?: string): TexEditorCursor | null {
 	if (!editor) return null;
 	const pos = editor.view.state.selection.main.head;
 	const line = editor.view.state.doc.lineAt(pos);
-	return { path: editor.path, line: line.number, column: pos - line.from + 1 };
+	const selection = texSelectionPoints(editor.view);
+	return {
+		path: editor.path,
+		line: line.number,
+		column: pos - line.from + 1,
+		...(selection ? { selection } : {}),
+	};
 }
 
 export function getTexEditor(path: string): EditorView | null {

@@ -32,6 +32,7 @@ export function WritingSyncButtons({
 		if (!cursor) return;
 		void syncTexToPdf(cursor.path, cursor.line, cursor.column, {
 			scope: "writing",
+			selection: cursor.selection,
 		});
 	};
 

@@ -121,6 +121,24 @@ export function usePdfSyncTex(options: {
 						pageIndex: location.page - 1,
 						bbox: syncTexHighlightBox(location, size),
 						kind: "text",
+						...(location.highlights
+							? {
+									highlights: location.highlights.flatMap((hit) => {
+										const page =
+											docCapRef.current?.getDocument(docId)?.pages[
+												hit.page - 1
+											];
+										return page
+											? [
+													{
+														pageIndex: hit.page - 1,
+														bbox: syncTexHighlightBox(hit, page.size),
+													},
+												]
+											: [];
+									}),
+								}
+							: {}),
 					});
 				},
 				...(scope === "writing" ? { syncFromView } : {}),

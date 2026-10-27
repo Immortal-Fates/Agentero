@@ -4,7 +4,10 @@ import { notifyError } from "@/lib/core/notify";
 import { normalizePath } from "@/lib/core/path";
 import { embedPdfDocumentId } from "@/lib/pdf/document-id";
 import { texBuildOptions } from "@/lib/tex/config";
-import { getTexEditorCursor } from "@/lib/tex/editor-navigation";
+import {
+	getTexEditorCursor,
+	type TexSourcePoint,
+} from "@/lib/tex/editor-navigation";
 import {
 	getLatexArtifacts,
 	type SyncTexLocation,
@@ -15,12 +18,14 @@ import { openTab } from "@/lib/workspace/navigation";
 import { updateTab, workspaceStore } from "@/lib/workspace/store";
 import { tabIdForPath } from "@/lib/workspace/tabs";
 
+type SyncTexTarget = SyncTexLocation & { highlights?: SyncTexLocation[] };
+
 type TexPdfPeer = {
 	tabId?: string;
 	documentId?: string;
 	/** Writing preview, so a jump does not land on a hidden reading tab. */
 	scope?: "writing";
-	navigate(location: SyncTexLocation): void;
+	navigate(location: SyncTexTarget): void;
 	isActive(): boolean;
 	/** Writing split: map the current viewport back to the .tex cursor. */
 	syncFromView?: () => boolean;
@@ -29,7 +34,7 @@ const viewers = new Map<string, Set<TexPdfPeer>>();
 const pending = new Map<
 	string,
 	{
-		location: SyncTexLocation;
+		location: SyncTexTarget;
 		documentId?: string;
 		tabId?: string;
 		scope?: "writing";
@@ -76,7 +81,7 @@ export function syncWritingPdfToSource(): boolean {
 
 function deliver(
 	pdfPath: string,
-	location: SyncTexLocation,
+	location: SyncTexTarget,
 	queue: boolean,
 	documentId?: string,
 	tabId?: string,
@@ -102,7 +107,11 @@ export async function syncTexToPdf(
 	sourcePath: string,
 	line: number,
 	column = 1,
-	options?: { activate?: boolean; scope?: "writing" },
+	options?: {
+		activate?: boolean;
+		scope?: "writing";
+		selection?: TexSourcePoint[];
+	},
 ): Promise<void> {
 	const request = ++forwardRequest;
 	const report = options?.activate !== false || options?.scope === "writing";
@@ -116,9 +125,35 @@ export async function syncTexToPdf(
 		// current build configuration, rather than an open tab, owns the target.
 		const pdfPath = (await getLatexArtifacts(root, texBuildOptions(root)))
 			.pdfPath;
-		const matches = await syncTexForward(pdfPath, sourcePath, line, column);
+		const matches: SyncTexLocation[] = [];
+		const points = options?.selection ?? [{ line, column }];
+		// Bound concurrent child processes; cancel obsolete requests between batches.
+		for (let offset = 0; offset < points.length; offset += 4) {
+			if (request !== forwardRequest) return;
+			const results = await Promise.all(
+				points
+					.slice(offset, offset + 4)
+					.map((point) =>
+						syncTexForward(pdfPath, sourcePath, point.line, point.column),
+					),
+			);
+			matches.push(...results.flat());
+		}
 		if (request !== forwardRequest) return;
-		const target = matches.find(validSyncTexLocation);
+		const unique = [
+			...new Map(
+				matches
+					.filter(validSyncTexLocation)
+					.map((location) => [
+						`${location.page}:${location.x}:${location.y}:${location.width}:${location.height}`,
+						location,
+					]),
+			).values(),
+		];
+		const target: SyncTexTarget | undefined = unique[0] && {
+			...unique[0],
+			...(options?.selection ? { highlights: unique } : {}),
+		};
 		if (!target) {
 			if (report) notifyError(i18n.t("latexPdf:noMatch"));
 			return;
