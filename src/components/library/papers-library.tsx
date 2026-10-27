@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCellCopy } from "@/components/library/hooks/use-cell-copy";
 import { useLibraryHeatmap } from "@/components/library/hooks/use-library-heatmap";
+import { useLibraryPreview } from "@/components/library/hooks/use-library-preview";
 import { resolveColumnWidths } from "@/components/library/library-column-widths";
 import { getColumnMeta } from "@/components/library/library-columns";
 import { LibraryPaperRow } from "@/components/library/library-paper-row";
@@ -29,6 +30,7 @@ import {
 } from "@/components/library/library-row-utils";
 import { LibraryTableHeader } from "@/components/library/library-table-header";
 import { Button } from "@/components/ui/button";
+import { useWritingStore } from "@/hooks/use-app-stores";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
 import { cn } from "@/lib/core/utils";
 import type { PaperLibraryRow, PaperMetadata } from "@/lib/paper";
@@ -45,7 +47,6 @@ import {
 	type LibraryColumnPref,
 	useUiScale,
 } from "@/lib/settings";
-import { setHoveredPaperPath } from "@/lib/shell/ui-store";
 import { joinVaultPath } from "@/lib/vault";
 import { isRemoteVaultHandle } from "@/lib/vault/remote/remote-vault";
 
@@ -103,6 +104,7 @@ export function PapersLibrary({
 	rescanning,
 	className,
 }: PapersLibraryProps) {
+	const reading = useWritingStore((s) => s.surface === "reading");
 	const { t: tRaw, i18n } = useTranslation("sidebar");
 	/** Column renderers take plain string keys; cast off strict resource unions. */
 	const t = tRaw as unknown as CellT;
@@ -129,16 +131,10 @@ export function PapersLibrary({
 
 	useEffect(() => () => commitSearch.cancel(), [commitSearch]);
 
-	// Preview hovered rows in the left Paper Info panel; clear once the table
-	// loses focus or unmounts so a stale preview never lingers.
+	// Load the custom fields used by Paper Info for the active Library.
 	useEffect(() => {
 		if (active && vaultPath) void loadCustomProperties(vaultPath);
 	}, [active, vaultPath]);
-
-	useEffect(() => {
-		if (!active) setHoveredPaperPath(null);
-	}, [active]);
-	useEffect(() => () => setHoveredPaperPath(null), []);
 
 	const onSearchInputChange = useCallback(
 		(value: string) => {
@@ -313,6 +309,18 @@ export function PapersLibrary({
 		return copy;
 	}, [indexedRows, normalizedQuery, tagFilterSet, sortKey, sortDir]);
 
+	const previewPaths = useMemo(
+		() =>
+			new Set(rows.flatMap(({ paper }) => (paper.path ? [paper.path] : []))),
+		[rows],
+	);
+	const previewPaper = useLibraryPreview({
+		active: active && reading,
+		vaultPath,
+		scopePath,
+		paths: previewPaths,
+	});
+
 	// Reorder cue: replay a quick fade when the user re-sorts or changes tag
 	// filters. Deliberately excludes the search query — per-keystroke remounts
 	// would flicker (high-frequency input, motion-15).
@@ -326,43 +334,46 @@ export function PapersLibrary({
 	/** True only while the table is scrolling; idle restores search/actions. */
 	const [headerCompact, setHeaderCompact] = useState(false);
 	/** Bind scroll listener when the table scroller mounts (after loading). */
-	const setScrollEl = useCallback((el: HTMLDivElement | null) => {
-		detachScrollRef.current?.();
-		detachScrollRef.current = null;
-		scrollRef.current = el;
-		if (!el) {
-			setHeaderCompact(false);
-			return;
-		}
-		let idleTimer: ReturnType<typeof setTimeout> | null = null;
-		const onScroll = () => {
-			// Rows can unmount under a still pointer while scrolling.
-			setHoveredPaperPath(null);
-			setHeaderCompact((prev) => (prev ? prev : true));
-			if (idleTimer) clearTimeout(idleTimer);
-			idleTimer = setTimeout(() => {
-				idleTimer = null;
+	const setScrollEl = useCallback(
+		(el: HTMLDivElement | null) => {
+			detachScrollRef.current?.();
+			detachScrollRef.current = null;
+			scrollRef.current = el;
+			if (!el) {
 				setHeaderCompact(false);
-			}, HEADER_SCROLL_IDLE_MS);
-		};
-		const updateWidth = () =>
-			setViewportRem(
-				el.clientWidth /
-					Number.parseFloat(
-						getComputedStyle(el.ownerDocument.documentElement).fontSize,
-					),
-			);
-		const observer = new ResizeObserver(updateWidth);
-		observer.observe(el);
-		observer.observe(el.ownerDocument.documentElement);
-		updateWidth();
-		el.addEventListener("scroll", onScroll, { passive: true });
-		detachScrollRef.current = () => {
-			if (idleTimer) clearTimeout(idleTimer);
-			observer.disconnect();
-			el.removeEventListener("scroll", onScroll);
-		};
-	}, []);
+				return;
+			}
+			let idleTimer: ReturnType<typeof setTimeout> | null = null;
+			const onScroll = () => {
+				// Cancel pending hover when rows move, but retain the current preview.
+				previewPaper.cancel();
+				setHeaderCompact((prev) => (prev ? prev : true));
+				if (idleTimer) clearTimeout(idleTimer);
+				idleTimer = setTimeout(() => {
+					idleTimer = null;
+					setHeaderCompact(false);
+				}, HEADER_SCROLL_IDLE_MS);
+			};
+			const updateWidth = () =>
+				setViewportRem(
+					el.clientWidth /
+						Number.parseFloat(
+							getComputedStyle(el.ownerDocument.documentElement).fontSize,
+						),
+				);
+			const observer = new ResizeObserver(updateWidth);
+			observer.observe(el);
+			observer.observe(el.ownerDocument.documentElement);
+			updateWidth();
+			el.addEventListener("scroll", onScroll, { passive: true });
+			detachScrollRef.current = () => {
+				if (idleTimer) clearTimeout(idleTimer);
+				observer.disconnect();
+				el.removeEventListener("scroll", onScroll);
+			};
+		},
+		[previewPaper],
+	);
 	useEffect(
 		() => () => {
 			detachScrollRef.current?.();
@@ -418,10 +429,8 @@ export function PapersLibrary({
 		const empty = rows.length === 0;
 		body = (
 			<>
-				{/* biome-ignore lint/a11y/noStaticElementInteractions: hover only clears the Paper Info preview */}
 				<div
 					ref={setScrollEl}
-					onMouseLeave={() => setHoveredPaperPath(null)}
 					className={cn(
 						"agentero-scroll-both min-w-0",
 						empty ? "h-auto" : "min-h-0 flex-1",
@@ -504,7 +513,8 @@ export function PapersLibrary({
 										onOpenPaper={openPaperFromRow}
 										onRowClick={onRowClick}
 										onRefreshMetadata={handleRefreshPaperMetadata}
-										onHoverPaper={setHoveredPaperPath}
+										onHoverPaper={previewPaper}
+										onLeavePaper={previewPaper.cancel}
 										measureRef={rowVirtualizer.measureElement}
 									/>
 								);

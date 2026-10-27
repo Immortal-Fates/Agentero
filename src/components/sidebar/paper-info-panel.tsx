@@ -559,6 +559,7 @@ export function PaperInfoPanel({
 
 	return (
 		<div
+			data-paper-info
 			className={cn(
 				"relative flex min-h-0 shrink-0 flex-col overflow-hidden border-t",
 				// Match rail collapse: 200ms ease-out. Skip while resizing.

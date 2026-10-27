@@ -102,8 +102,9 @@ type LibraryPaperRowProps = {
 		paper: PaperMetadata,
 	) => void;
 	onRefreshMetadata?: (paper: PaperMetadata) => void;
-	/** Preview the row in the left Paper Info panel while hovered. */
+	/** Schedule the row preview; leaving cancels only the pending change. */
 	onHoverPaper?: (relPath: string | null) => void;
+	onLeavePaper?: () => void;
 	/** rowVirtualizer.measureElement — attached to the `<tr>`. */
 	measureRef: (element: Element | null) => void;
 };
@@ -121,6 +122,7 @@ export const LibraryPaperRow = memo(function LibraryPaperRow({
 	onRowClick,
 	onRefreshMetadata,
 	onHoverPaper,
+	onLeavePaper,
 	measureRef,
 }: LibraryPaperRowProps) {
 	const p = row.paper;
@@ -139,6 +141,7 @@ export const LibraryPaperRow = memo(function LibraryPaperRow({
 					className="border-border/40 border-b transition-colors duration-100 hover:bg-accent/70 active:bg-accent"
 					onClick={(e) => onRowClick(e, p)}
 					onMouseEnter={() => onHoverPaper?.(p.path ?? null)}
+					onMouseLeave={onLeavePaper}
 				>
 					{visibleColumns.map((col) => (
 						<Fragment key={col.key}>

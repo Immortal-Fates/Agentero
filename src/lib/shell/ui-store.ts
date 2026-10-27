@@ -62,9 +62,9 @@ type UiStore = {
 	commandMode: PaletteMode;
 	settingsOpen: boolean;
 	/**
-	 * Vault-relative path of the Library row under the pointer (null = none).
+	 * Vault-relative path of the retained Library preview (null = none).
 	 * The left Paper Info panel previews this paper so users can inspect it
-	 * without opening the row.
+	 * without opening the row. Cleared when its Library context changes.
 	 */
 	hoveredPaperPath: string | null;
 	skillImportDraft: SkillDiscovery[] | null;
@@ -204,7 +204,7 @@ export function setSettingsOpenState(open: boolean): void {
 	uiStore.setState({ settingsOpen: open });
 }
 
-/** Track which Library row the pointer is over (see Paper Info preview). */
+/** Retain the last intentionally hovered Library row for Paper Info. */
 export function setHoveredPaperPath(path: string | null): void {
 	if (uiStore.getState().hoveredPaperPath === path) return;
 	uiStore.setState({ hoveredPaperPath: path });
