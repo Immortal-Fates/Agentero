@@ -114,7 +114,6 @@ export function InstitutionProxyRow({
 	testLabel,
 	testingLabel,
 	loginLabel,
-	captureLabel,
 	presetsLabel,
 	presets,
 	onPrefixChange,
@@ -123,7 +122,6 @@ export function InstitutionProxyRow({
 	onCommit,
 	onTest,
 	onLogin,
-	onCapture,
 	testing,
 	probeStatus,
 	probeLabel,
@@ -140,7 +138,6 @@ export function InstitutionProxyRow({
 	testLabel: string;
 	testingLabel: string;
 	loginLabel: string;
-	captureLabel: string;
 	presetsLabel: string;
 	presets: readonly InstitutionProxyPresetOption[];
 	onPrefixChange: (v: string) => void;
@@ -149,7 +146,6 @@ export function InstitutionProxyRow({
 	onCommit: () => void;
 	onTest: () => void;
 	onLogin: () => void;
-	onCapture: () => void;
 	testing: boolean;
 	probeStatus: ProbeStatus;
 	probeLabel: string;
@@ -265,15 +261,6 @@ export function InstitutionProxyRow({
 						onClick={onLogin}
 					>
 						{loginLabel}
-					</Button>
-					<Button
-						type="button"
-						variant="outline"
-						size="xs"
-						disabled={!isTauri() || !prefix.trim()}
-						onClick={onCapture}
-					>
-						{captureLabel}
 					</Button>
 				</div>
 			</SettingsRow>

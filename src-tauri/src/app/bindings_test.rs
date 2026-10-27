@@ -30,7 +30,6 @@ pub(crate) fn export_typescript_bindings() {
             crate::features::system::settings::commands::easy_scholar_probe,
             crate::features::system::settings::commands::institution_proxy_probe,
             crate::features::system::settings::commands::institution_proxy_login_open,
-            crate::features::system::settings::commands::institution_proxy_cookie_capture,
             crate::features::system::builtin::builtin_provider_status,
             crate::features::paper::analyze::layout::model_assets::commands::layout_model_status,
             crate::features::paper::analyze::layout::hosted::commands::layout_remote_analyze_pdf,

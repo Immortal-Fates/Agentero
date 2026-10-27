@@ -135,23 +135,6 @@ export function GeneralPane({
 			});
 		}
 	}, [commitInstitutionProxy, institutionProxyPrefixDraft, t]);
-	const captureInstitutionCookie = useCallback(async () => {
-		try {
-			const cookie = await callResult(() =>
-				commands.institutionProxyCookieCapture(institutionProxyPrefixDraft),
-			);
-			setInstitutionProxyCookieDraft(cookie);
-			patch({ institutionProxyCookie: cookie });
-			localStorage.removeItem(
-				`institution-proxy-checked:${institutionProxyPrefixDraft}`,
-			);
-			notifySuccess(t("general.institutionProxy.captureDone"));
-		} catch (error) {
-			notifyError(t("general.institutionProxy.captureFailed"), {
-				description: errorText(error),
-			});
-		}
-	}, [institutionProxyPrefixDraft, patch, t]);
 	const testInstitutionProxy = useCallback(async () => {
 		setInstitutionProxyTesting(true);
 		setInstitutionProxyResult(undefined);
@@ -551,7 +534,6 @@ export function GeneralPane({
 					cookiePlaceholder={t("general.institutionProxy.cookiePlaceholder")}
 					cookieLabel={t("general.institutionProxy.cookieLabel")}
 					loginLabel={t("general.institutionProxy.login")}
-					captureLabel={t("general.institutionProxy.capture")}
 					testLabel={t("general.institutionProxy.test")}
 					testingLabel={t("general.institutionProxy.testing")}
 					presetsLabel={t("general.institutionProxy.presetsLabel")}
@@ -562,7 +544,6 @@ export function GeneralPane({
 					onCommit={commitInstitutionProxy}
 					onTest={() => void testInstitutionProxy()}
 					onLogin={() => void openInstitutionLogin()}
-					onCapture={() => void captureInstitutionCookie()}
 					testing={institutionProxyTesting}
 					probeStatus={institutionProxyProbeStatus}
 					probeLabel={institutionProxyProbeLabel}
@@ -1189,6 +1170,26 @@ function McpTunnelRows({
 
 	return (
 		<>
+			<SettingsRow label={t("general.mcp.tunnel.label")}>
+				<div className="flex items-center gap-2">
+					<StatusDot tone={tunnelPhaseTone(phase)} label={phaseLabel} />
+					<Button
+						type="button"
+						size="sm"
+						disabled={disabled || busy || binaryMissing || !mcpListening}
+						onClick={() => void (running ? stop() : start())}
+					>
+						{busy ? (
+							<LoaderCircle className="mr-1.5 size-4 animate-spin" />
+						) : (
+							<Power className="mr-1.5 size-4" />
+						)}
+						{running
+							? t("general.mcp.tunnel.stop")
+							: t("general.mcp.tunnel.start")}
+					</Button>
+				</div>
+			</SettingsRow>
 			<SettingsRow
 				label={t("general.mcp.tunnel.apiKeyLabel")}
 				htmlFor="mcp-tunnel-key"

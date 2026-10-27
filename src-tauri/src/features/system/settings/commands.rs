@@ -114,33 +114,6 @@ async fn monitor_institution_login(app: AppHandle, prefix: String) {
     }
 }
 
-/// Read only the configured gateway's cookies, including HttpOnly cookies.
-/// The login webview is deliberately separate from the app's own webview.
-#[tauri::command]
-#[specta::specta]
-pub async fn institution_proxy_cookie_capture(
-    app: AppHandle,
-    prefix: String,
-) -> Result<String, String> {
-    let url = proxy_gateway_url(&prefix)?;
-    let window = app
-        .get_webview_window(PROXY_LOGIN_WINDOW)
-        .ok_or("open the institution login window first")?;
-    let cookies = tauri::async_runtime::spawn_blocking(move || window.cookies_for_url(url))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let header = cookies
-        .into_iter()
-        .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
-        .collect::<Vec<_>>()
-        .join("; ");
-    if header.is_empty() {
-        return Err("no gateway cookies found; finish signing in first".into());
-    }
-    Ok(header)
-}
-
 #[tauri::command]
 #[specta::specta]
 pub fn settings_get(store: State<'_, AppSettingsStore>) -> ApiResult<SettingsGetResult> {
