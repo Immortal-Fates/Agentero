@@ -1,10 +1,10 @@
 # 网页收藏入库（#821）
 
-状态：设计，尚未实现。关联 [#821](https://github.com/poco-ai/Agentero/issues/821)。
+状态：RSS 右键入库与详情入口已实现（复用现有 URL 导入）；正文归档及统一网页入库用例仍为设计。关联 [#821](https://github.com/poco-ai/Agentero/issues/821)。
 
 ## 现有基础
 
-Translator / Connector / Zotero 的 `webpage` 可映射为现有 `PaperKind::Html`，使用 catalog、来源 URL 和 `NOTES.md`；阅读器可以加载远程网页。RSS 有正文抽取与 Markdown 缓存，但非论文条目没有入库入口。远程阅读和缓存均不等同于长期归档。
+Translator / Connector / Zotero 的 `webpage` 可映射为现有 `PaperKind::Html`，使用 catalog、来源 URL 和 `NOTES.md`；阅读器可以加载远程网页。RSS 有正文抽取与 Markdown 缓存，现可从条目右键菜单 / 详情工具栏提交普通网页 URL 到现有魔棒导入。远程阅读和缓存均不等同于长期归档。
 
 ## 目标与边界
 
@@ -20,7 +20,8 @@ Translator / Connector / Zotero 的 `webpage` 可映射为现有 `PaperKind::Htm
 
 ## 待实现 / 验收
 
-- [ ] 统一网页入库用例与 RSS 入口，普通网页无需 DOI / arXiv。
+- [x] RSS 右键菜单 / 详情工具栏入库入口，普通网页可提交来源 URL，无需 DOI / arXiv（依赖 Translator 解析成功）。
+- [ ] 统一网页入库用例，补全下述正文保存与去重能力。
 - [ ] 确定归档正文文件与资源目录契约；明确远程图片、相对链接及失败重试策略。
 - [ ] 按规范 URL 与已有 HTML 条目去重，兼容只有 `source_url` 的旧条目。
 - [ ] 正文与来源保存后可离线阅读；删除订阅或清理缓存不影响已收藏条目。

@@ -338,9 +338,9 @@ export function compareFeedSubs(a: FeedSub, b: FeedSub): number {
 	return a.addedAt.localeCompare(b.addedAt);
 }
 
-/** Import via the magic wand. Resolves true when the paper is in the library. */
-export function importFeedPaper(item: FeedItem): Promise<boolean> {
-	const url = item.paperUrl?.trim();
+/** Import a paper or webpage via the existing URL lookup flow. */
+export function importFeedItem(item: FeedItem): Promise<boolean> {
+	const url = item.paperUrl?.trim() || item.url?.trim();
 	if (!url) return Promise.resolve(false);
 	return new Promise<boolean>((resolve) => {
 		let settled = false;

@@ -41,12 +41,14 @@ import {
 	feedsAdd,
 	feedsItems,
 	feedsList,
+	feedsMarkImported,
 	feedsRefresh,
 	feedsRemove,
 	feedsRename,
 	feedsSetPinned,
 	feedsSetRead,
 	hostErrorKey,
+	importFeedItem,
 } from "@/lib/plaza/feeds";
 
 const STALE_REFRESH_MS = 15 * 60 * 1000;
@@ -288,6 +290,10 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 	const hideReadRef = useRef(hideRead);
 	hideReadRef.current = hideRead;
 	const itemsRequest = useRef(0);
+	const importPending = useRef(new Set<string>());
+	const [importingIds, setImportingIds] = useState<Set<string>>(
+		() => new Set(),
+	);
 	const readPending = useRef(new Set<string>());
 	const [items, setItems] = useState<FeedItem[]>([]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -435,6 +441,25 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 			current?.id === next.id ? { ...next, readAt: current.readAt } : current,
 		);
 	}, []);
+
+	const importItem = useCallback(
+		async (item: FeedItem) => {
+			if (item.importedAt || importPending.current.has(item.id)) return;
+			importPending.current.add(item.id);
+			setImportingIds(new Set(importPending.current));
+			try {
+				if (await importFeedItem(item)) {
+					applyItem(await feedsMarkImported(item.id));
+				}
+			} catch (error) {
+				toastHostError(errorText(error), t);
+			} finally {
+				importPending.current.delete(item.id);
+				setImportingIds(new Set(importPending.current));
+			}
+		},
+		[applyItem, t],
+	);
 
 	const setRead = useCallback(
 		async (item: FeedItem, read: boolean) => {
@@ -666,7 +691,8 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 									if (hideRead) void loadItems(selectedId);
 								}}
 								onToggleRead={() => void setRead(openItem, !openItem.readAt)}
-								onImported={applyItem}
+								onImport={(item) => void importItem(item)}
+								importing={importingIds.has(openItem.id)}
 								onResolved={applyItem}
 							/>
 						) : emptyItems ? (
@@ -704,6 +730,8 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 													item={item}
 													hideSource={selectedId !== null}
 													onOpen={openFeedItem}
+													onImport={(item) => void importItem(item)}
+													importing={importingIds.has(item.id)}
 													onToggleRead={(item) =>
 														void setRead(item, !item.readAt)
 													}
