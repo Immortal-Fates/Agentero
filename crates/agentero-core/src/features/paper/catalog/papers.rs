@@ -938,6 +938,13 @@ pub fn ensure_row_for_path(
     let rel_path = crate::fs::normalize_rel_separators(rel_path);
     with_catalog(vault_root, |conn| {
         if let Some(row) = get_conn(conn, &rel_path)? {
+            // Same sidecar rule as `rebuild_from_disk`: a newer metadata.json
+            // (sync, or an external replace) updates this one row.
+            if let Some(sidecar) = super::sidecar::read_sidecar(vault_root, &rel_path) {
+                if crate::time::rfc3339_after(&sidecar.updated_at, &row.updated_at) {
+                    return upsert_conn(conn, &sidecar).map(Some);
+                }
+            }
             return Ok(Some(row));
         }
         let record = super::sidecar::read_sidecar(vault_root, &rel_path)
@@ -949,8 +956,8 @@ pub fn ensure_row_for_path(
 /// How a batch of watcher paths was reconciled into the catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaperRowsTouch {
-    /// Each path mapped onto one paper folder. `count` is rows written
-    /// (existing rows are not rewritten).
+    /// Each path mapped onto one paper folder. `count` is rows inserted.
+    /// An existing row is left in place unless its sidecar is newer.
     Ensured { count: usize },
     /// A path under `papers/` did not belong to a single paper folder, so
     /// the whole library was rebuilt.
@@ -2601,6 +2608,35 @@ mod tests {
         assert!(matches!(rescanned, PaperRowsTouch::Rescanned { count: 2 }));
         assert!(get_by_path(&dir, "papers/a").unwrap().is_some());
         assert!(get_by_path(&dir, "papers/b").unwrap().is_some());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ensure_row_for_path_refreshes_a_newer_sidecar() {
+        let dir = env::temp_dir().join(format!("agentero-ensure-sidecar-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("papers/x")).unwrap();
+        fs::write(dir.join("papers/x/NOTES.md"), "# notes\n").unwrap();
+        upsert_paper(
+            &dir,
+            &PaperRecord::local_pdf("x".into(), "Old".into()).at_path("papers/x"),
+        )
+        .unwrap();
+        let mut sidecar: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("papers/x/metadata.json")).unwrap())
+                .unwrap();
+        sidecar["title"] = serde_json::json!("New");
+        sidecar["updated_at"] = serde_json::json!("2099-01-01T00:00:00.000Z");
+        fs::write(
+            dir.join("papers/x/metadata.json"),
+            serde_json::to_vec_pretty(&sidecar).unwrap(),
+        )
+        .unwrap();
+
+        let row = ensure_row_for_path(&dir, "papers/x").unwrap().unwrap();
+        assert_eq!(row.title, "New");
+        assert_eq!(get_by_path(&dir, "papers/x").unwrap().unwrap().title, "New");
 
         let _ = fs::remove_dir_all(&dir);
     }

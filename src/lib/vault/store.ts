@@ -334,8 +334,9 @@ export async function refreshKnownDirectories(
 				childrenPending: false,
 			});
 		} catch {
-			// Not a directory, or it was removed. Callers drop deleted folders
-			// through removeTreePaths.
+			// A file create/delete, or a directory that is already gone. The
+			// targeted tree refresh lists the loaded parent and applies it.
+			fallback.push(abs);
 		}
 	}
 	setTree(tree);
