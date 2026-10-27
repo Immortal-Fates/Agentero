@@ -146,7 +146,6 @@
 		"institutionProxy": {
 			"label": "机构代理",
 			"cookieLabel": "代理 Cookie",
-			"cookieDescription": "打开网关登录后读取 Cookie。各校名称不同，无固定必填列表。",
 			"cookiePlaceholder": "粘贴 WebVPN Cookie",
 			"login": "打开登录",
 			"capture": "读取",

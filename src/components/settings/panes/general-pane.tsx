@@ -560,7 +560,6 @@ export function GeneralPane({
 					}
 					cookiePlaceholder={t("general.institutionProxy.cookiePlaceholder")}
 					cookieLabel={t("general.institutionProxy.cookieLabel")}
-					cookieDescription={t("general.institutionProxy.cookieDescription")}
 					loginLabel={t("general.institutionProxy.login")}
 					captureLabel={t("general.institutionProxy.capture")}
 					testLabel={t("general.institutionProxy.test")}

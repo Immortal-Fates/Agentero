@@ -160,7 +160,6 @@ export function InstitutionProxyRow({
 	prefixPlaceholder,
 	cookiePlaceholder,
 	cookieLabel,
-	cookieDescription,
 	testLabel,
 	testingLabel,
 	loginLabel,
@@ -187,7 +186,6 @@ export function InstitutionProxyRow({
 	prefixPlaceholder?: string;
 	cookiePlaceholder?: string;
 	cookieLabel: string;
-	cookieDescription: string;
 	testLabel: string;
 	testingLabel: string;
 	loginLabel: string;
@@ -289,11 +287,7 @@ export function InstitutionProxyRow({
 					</Button>
 				</div>
 			</SettingsRow>
-			<SettingsRow
-				label={cookieLabel}
-				description={cookieDescription}
-				htmlFor={`${htmlFor}-cookie`}
-			>
+			<SettingsRow label={cookieLabel} htmlFor={`${htmlFor}-cookie`}>
 				<div className="flex items-center gap-2">
 					<Input
 						id={`${htmlFor}-cookie`}

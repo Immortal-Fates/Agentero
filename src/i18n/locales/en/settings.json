@@ -146,7 +146,6 @@
 		"institutionProxy": {
 			"label": "Institution proxy",
 			"cookieLabel": "Proxy cookie",
-			"cookieDescription": "Sign in to the gateway, then capture its cookies. Cookie names differ by institution; no fixed list is required.",
 			"cookiePlaceholder": "Paste WebVPN cookie",
 			"login": "Open login",
 			"capture": "Capture",
