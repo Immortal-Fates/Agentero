@@ -1,6 +1,10 @@
 import { MarkdownPlugin } from "@platejs/markdown";
 import { createSlateEditor, createSlatePlugin, KEYS } from "platejs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/components/editor/nodes/inline/wikilink-node", () => ({
+	WikiLinkElement: () => null,
+}));
 
 import { MarkdownKit } from "@/components/editor/plugins/markdown-kit";
 import { WikiLinkPlugin } from "@/components/editor/plugins/wikilink-plugin";
@@ -35,6 +39,17 @@ function serializeMd(editor: ReturnType<typeof createWikiEditor>): string {
  * between the two representations must never change the document.
  */
 describe("wikilink projection markdown invariance", () => {
+	it.each([
+		0, 9,
+	])("does not duplicate a link when breaking at source offset %i", (offset) => {
+		const link = parseWikiLinkMarkdown("[[notes]]");
+		if (!link) throw new Error("expected link");
+		const editor = createWikiEditor([{ text: "" }, link, { text: "" }]);
+		editor.tf.select({ path: [0, 1, 0], offset });
+		editor.tf.insertBreak();
+		expect(serializeMd(editor).match(/\[\[notes\]\]/g)).toHaveLength(1);
+		expect(editor.children).toHaveLength(2);
+	});
 	it("expanding a display node's source child keeps the markdown identical", () => {
 		// Display node with an empty text child (as produced by template
 		// insertion): expandWikiLinkAt writes the raw source into the child.
