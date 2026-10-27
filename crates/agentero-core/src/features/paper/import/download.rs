@@ -1656,7 +1656,7 @@ pub async fn download_paper_assets_with_progress(
         .map_err(|e| AppError::message(format!("blocking task failed: {e}")))??;
 
     if let Some(row_id) = rebuilt_row {
-        crate::features::lifecycle::emit_paper_imported(app, &vault, &row_id);
+        crate::features::lifecycle::emit_paper_imported(app, &vault, &row_id, &path_rel);
     }
 
     let mut result = ensure_paper_assets_with_progress(

@@ -5,8 +5,19 @@ export type LifecycleEventMap = {
 	"vault:opened": { vaultId: string; timestamp: number };
 	/** Host-emitted; payload matches `WindowClosedPayload` (no timestamp). */
 	"window:closed": { kind: string; view?: string | null };
-	"paper:imported": { vaultId: string; paperId: string; timestamp: number };
-	"paper:assets-ready": { vaultId: string; paperId: string; timestamp: number };
+	"paper:imported": {
+		vaultId: string;
+		paperId: string;
+		/** Vault-relative folder. Empty when the emitter only knew the id. */
+		path: string;
+		timestamp: number;
+	};
+	"paper:assets-ready": {
+		vaultId: string;
+		paperId: string;
+		path: string;
+		timestamp: number;
+	};
 	/** Deferred recognition renamed a paper folder or merged it into an existing entry. */
 	"paper:renamed": {
 		vaultId: string;

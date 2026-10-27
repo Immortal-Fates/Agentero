@@ -44,6 +44,7 @@ pub async fn lookup_import_batch(
                     Some(&host_app),
                     &vault_id,
                     &paper.id,
+                    &paper.path,
                 );
             }
         }
@@ -200,6 +201,7 @@ pub async fn paper_import_local_pdf(
                     Some(&host_app),
                     &vault_id,
                     &paper.id,
+                    &paper.path,
                 );
             }
         }

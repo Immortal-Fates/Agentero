@@ -24,15 +24,17 @@ pub const PAPER_RENAMED_EVENT: &str = "paper:renamed";
 struct PaperEventPayload {
     vault_id: String,
     paper_id: String,
+    /// Vault-relative paper folder. Empty when the emitter only knows the id.
+    path: String,
     timestamp: i64,
 }
 
-pub fn emit_paper_imported(app: Option<&AppHandle>, vault: &Path, paper_id: &str) {
-    emit_paper_event(app, PAPER_IMPORTED_EVENT, vault, paper_id);
+pub fn emit_paper_imported(app: Option<&AppHandle>, vault: &Path, paper_id: &str, path: &str) {
+    emit_paper_event(app, PAPER_IMPORTED_EVENT, vault, paper_id, path);
 }
 
-pub fn emit_paper_assets_ready(app: Option<&AppHandle>, vault: &Path, paper_id: &str) {
-    emit_paper_event(app, PAPER_ASSETS_READY_EVENT, vault, paper_id);
+pub fn emit_paper_assets_ready(app: Option<&AppHandle>, vault: &Path, paper_id: &str, path: &str) {
+    emit_paper_event(app, PAPER_ASSETS_READY_EVENT, vault, paper_id, path);
 }
 
 /// Fact payload for `paper:renamed`: a committed paper folder changed identity
@@ -76,13 +78,20 @@ pub fn emit_paper_renamed(app: Option<&AppHandle>, vault: &Path, event: PaperRen
     );
 }
 
-fn emit_paper_event(app: Option<&AppHandle>, event: &str, vault: &Path, paper_id: &str) {
+fn emit_paper_event(
+    app: Option<&AppHandle>,
+    event: &str,
+    vault: &Path,
+    paper_id: &str,
+    path: &str,
+) {
     let Some(app) = app else { return };
     app.emit(
         event,
         &PaperEventPayload {
             vault_id: vault.to_string_lossy().to_string(),
             paper_id: paper_id.to_string(),
+            path: crate::fs::normalize_rel_separators(path),
             timestamp: now_ms(),
         },
     );

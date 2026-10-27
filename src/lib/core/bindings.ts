@@ -4091,6 +4091,8 @@ export type PaperExportResult = {
 export type PaperFactPayload = {
 	vaultId: string,
 	paperId: string,
+	/**  Vault-relative paper folder. Empty when the emitter only knows the id. */
+	path: string,
 	timestamp: number,
 };
 

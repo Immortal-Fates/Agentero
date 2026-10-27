@@ -15,7 +15,12 @@ import { setLibraryPapers } from "@/lib/paper/library-store";
 import { normalizePathKey } from "@/lib/vault/path";
 import { isRemoteVaultHandle } from "@/lib/vault/remote/remote-vault";
 import { watchRefreshDelayMs } from "@/lib/vault/shell-activity";
-import { getVaultPath, scheduleTreeRefresh } from "@/lib/vault/store";
+import {
+	getVaultPath,
+	refreshKnownDirectories,
+	removeTreePaths,
+	scheduleTreeRefresh,
+} from "@/lib/vault/store";
 import { applyWikiPaths } from "@/lib/wiki/api";
 import { notifyWikiEmbedTargets } from "@/lib/wiki/embed-refresh";
 
@@ -28,6 +33,7 @@ type Bucket = {
 	ensurePaths: Set<string>;
 	wikiPaths: Set<string>;
 	treePaths: Set<string>;
+	treeRemove: Set<string>;
 };
 
 function emptyBucket(): Bucket {
@@ -36,6 +42,7 @@ function emptyBucket(): Bucket {
 		ensurePaths: new Set(),
 		wikiPaths: new Set(),
 		treePaths: new Set(),
+		treeRemove: new Set(),
 	};
 }
 
@@ -53,7 +60,8 @@ function hasWork(bucket: Bucket): boolean {
 	return (
 		bucket.library !== "none" ||
 		bucket.wikiPaths.size > 0 ||
-		bucket.treePaths.size > 0
+		bucket.treePaths.size > 0 ||
+		bucket.treeRemove.size > 0
 	);
 }
 
@@ -112,7 +120,9 @@ function ensureWaveSubscription(): void {
 	if (waveSubscribed) return;
 	waveSubscribed = true;
 	backgroundTasksStore.subscribe(() => {
-		if (!waveActive() && hasWork(wave)) scheduleWaveFlush();
+		if (waveActive()) return;
+		if (hasWork(wave)) scheduleWaveFlush();
+		if (hasWork(external)) scheduleExternalFlush();
 	});
 }
 
@@ -131,6 +141,10 @@ function scheduleWaveFlush(): void {
 
 function scheduleExternalFlush(): void {
 	if (externalTimer) clearTimeout(externalTimer);
+	if (waveActive()) {
+		externalTimer = null;
+		return;
+	}
 	const delay =
 		external.library === "none"
 			? watchRefreshDelayMs("wiki")
@@ -163,9 +177,28 @@ export function noteCommittedRename(fromAbs: string, toAbs: string): void {
 	upgrade(wave, "list");
 	wave.wikiPaths.add(fromAbs);
 	wave.wikiPaths.add(toAbs);
-	wave.treePaths.add(fromAbs);
+	wave.treeRemove.add(fromAbs);
 	wave.treePaths.add(toAbs);
 	scheduleWaveFlush();
+}
+
+/**
+ * File-tree paths from the watcher. While an import wave is open they wait
+ * for that wave, so a batch does not re-list `papers/` once per paper.
+ */
+export function noteTreePaths(paths: string[]): void {
+	const deferred: string[] = [];
+	const immediate: string[] = [];
+	for (const path of paths) {
+		if (!path) continue;
+		if (waveActive() || isCommittedRefreshPath(path)) deferred.push(path);
+		else immediate.push(path);
+	}
+	if (deferred.length > 0) {
+		for (const path of deferred) wave.treePaths.add(path);
+		scheduleWaveFlush();
+	}
+	if (immediate.length > 0) scheduleTreeRefresh(immediate);
 }
 
 /** Quiet catalog list, coalesced with an in-flight import wave. */
@@ -255,8 +288,11 @@ async function flushExternal(): Promise<void> {
 async function flushBucket(bucket: Bucket): Promise<void> {
 	const vault = getVaultPath();
 	if (!vault || !isTauri() || isRemoteVaultHandle(vault)) return;
+	if (bucket.treeRemove.size > 0) {
+		removeTreePaths([...bucket.treeRemove]);
+	}
 	if (bucket.treePaths.size > 0) {
-		scheduleTreeRefresh([...bucket.treePaths]);
+		await refreshKnownDirectories([...bucket.treePaths]);
 	}
 	try {
 		if (bucket.library === "ensure") {

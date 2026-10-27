@@ -20,7 +20,7 @@
    - **事实事件**（生命周期核心，动词过去式）：`paper:imported`、`vault:opened` —— "某事已发生"，唯一的 hook 挂载点
    - **进度流**：`xxx:progress` —— 仅 UI 反馈，不是 hook 点
    - **请求/指令**：`xxx:request` —— 需要响应方，不属于生命周期
-3. **payload**：统一 envelope `{ vaultId, timestamp, ...data }`；paper 相关必带 `paperId`。
+3. **payload**：统一 envelope `{ vaultId, timestamp, ...data }`；paper 相关必带 `paperId`。`paper:imported` / `paper:assets-ready` 另带 vault 相对目录 `path`（组织夹下不是 `papers/` + basename；未知时为空字符串）。
 4. **Tauri wire 事件名 = lifecycle 事件名**，不做两套映射。
 5. **前端 API**：`lifecycle.on('paper:imported', handler)`；事件类型集中定义于 `LifecycleEventMap`（单一事实来源）。
 6. **事件分两类**（`events.ts` 在类型层面区分）：

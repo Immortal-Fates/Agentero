@@ -714,7 +714,12 @@ async fn import_standalone_local(
     if !pdf_path.is_file() {
         fs::write(&pdf_path, bytes)?;
         if let Some(app) = app {
-            crate::features::lifecycle::emit_paper_assets_ready(Some(app), vault, &commit.id);
+            crate::features::lifecycle::emit_paper_assets_ready(
+                Some(app),
+                vault,
+                &commit.id,
+                &commit.path,
+            );
         }
     }
 

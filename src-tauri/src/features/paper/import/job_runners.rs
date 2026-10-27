@@ -221,9 +221,11 @@ fn recognize_metadata_runner(
         }
 
         let host_app = crate::features::host_hooks::wrap(&app);
+        let event_vault = std::path::PathBuf::from(&snapshot.vault_id);
         let outcome = crate::features::paper::import::recognize::apply::apply_probe_result(
             Some(&host_app),
             &vault,
+            &event_vault,
             Some(&cache),
             index,
             &path,

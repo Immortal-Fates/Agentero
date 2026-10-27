@@ -110,18 +110,19 @@ export function registerLifecycleHandlers(): () => void {
 				}
 			};
 		}),
-		lifecycle.on("paper:imported", ({ vaultId, paperId }) => {
+		lifecycle.on("paper:imported", ({ vaultId, paperId, path }) => {
 			// `app.emit` broadcasts to every window; only react to the active vault.
 			if (vaultId !== getVaultPath()) return;
 			// The catalog row is already committed. Hold the list refresh and a
 			// path-scoped wiki update until this import wave, including
-			// recognition renames, goes idle.
-			if (paperId) {
-				noteCommittedPaths([joinVaultPath(vaultId, `papers/${paperId}`)]);
-				void syncRenamedPaperTabs(
-					vaultId,
-					joinVaultPath(vaultId, `papers/${paperId}`),
-				);
+			// recognition renames, goes idle. `path` is the real folder
+			// (`papers/nlp/<id>`), not `papers/` plus the basename.
+			const rel = path?.trim();
+			const folder = rel ? rel : paperId ? `papers/${paperId}` : "";
+			if (folder) {
+				const abs = joinVaultPath(vaultId, folder);
+				noteCommittedPaths([abs]);
+				void syncRenamedPaperTabs(vaultId, abs);
 			} else {
 				noteCommittedLibraryList();
 				scheduleTreeRefresh();

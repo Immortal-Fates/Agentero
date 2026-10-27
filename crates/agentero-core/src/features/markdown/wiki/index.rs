@@ -654,7 +654,19 @@ impl WikiIndex {
     /// True when this index already describes `vault_path` and has a file
     /// inventory. Callers can then update known paths without walking the vault.
     pub fn is_warm_for(&self, vault_path: &str) -> bool {
-        self.vault_path.as_deref() == Some(vault_path) && !self.fingerprints.is_empty()
+        let Some(stored) = self.vault_path.as_deref() else {
+            return false;
+        };
+        if self.fingerprints.is_empty() {
+            return false;
+        }
+        if stored == vault_path {
+            return true;
+        }
+        // Job runners canonicalize the vault (Windows `\\?\`, macOS `/var` vs
+        // `/private/var`). The index stays warm across those spellings.
+        crate::fs::canonicalize_best_effort(Path::new(stored))
+            == crate::fs::canonicalize_best_effort(Path::new(vault_path))
     }
 
     /// Update documents for caller-supplied paths, then resolve every link in
@@ -2398,6 +2410,14 @@ mod tests {
         let mut index = WikiIndex::default();
         index.rebuild(&vault).expect("seed index");
         assert!(index.is_warm_for(&vault));
+        let canonical = crate::fs::canonicalize_best_effort(&root);
+        let canonical_text = canonical.to_string_lossy().to_string();
+        if canonical_text != vault {
+            assert!(
+                index.is_warm_for(&canonical_text),
+                "canonical vault spelling should reuse the warm index"
+            );
+        }
         let before = index
             .check_links(&vault, Some("notes/Source.md"))
             .counts

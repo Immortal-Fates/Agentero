@@ -47,6 +47,7 @@ export {
 	collectTreeRefreshTargets,
 	collectWikiTargetRelPaths,
 	compareVaultTreeNodes,
+	directoryIsLoaded,
 	isEagerTreeRel,
 	isPathMissingError,
 	listVaultDirChildren,
@@ -56,5 +57,6 @@ export {
 	replaceTreeNodeChildren,
 	shouldIgnoreTreeName,
 	treeHasPendingChildren,
+	upsertTreeChild,
 } from "@/lib/vault/tree";
 export type { FileNode } from "@/lib/vault/types";

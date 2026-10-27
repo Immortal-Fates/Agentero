@@ -7,12 +7,17 @@ import {
 	clearRefreshWave,
 	noteCommittedPaths,
 	noteExternalLibraryPaths,
+	noteTreePaths,
 	noteWikiPath,
 	registerWikiRevisionBump,
 } from "@/lib/lifecycle/refresh-wave";
 import { ensurePaperRows, listPapers } from "@/lib/paper/api";
 import { setLibraryPapers } from "@/lib/paper/library-store";
-import { getVaultPath, scheduleTreeRefresh } from "@/lib/vault/store";
+import {
+	getVaultPath,
+	refreshKnownDirectories,
+	removeTreePaths,
+} from "@/lib/vault/store";
 import { applyWikiPaths } from "@/lib/wiki/api";
 import { notifyWikiEmbedTargets } from "@/lib/wiki/embed-refresh";
 
@@ -26,6 +31,8 @@ vi.mock("@/lib/paper/library-store", () => ({
 vi.mock("@/lib/vault/store", () => ({
 	getVaultPath: vi.fn(() => "/vault"),
 	scheduleTreeRefresh: vi.fn(),
+	refreshKnownDirectories: vi.fn(async () => undefined),
+	removeTreePaths: vi.fn(),
 }));
 vi.mock("@/lib/vault/shell-activity", () => ({
 	watchRefreshDelayMs: () => 400,
@@ -91,10 +98,38 @@ describe("import refresh wave", () => {
 			"/vault/papers/a",
 			"/vault/papers/b",
 		]);
-		expect(scheduleTreeRefresh).toHaveBeenCalledTimes(1);
+		expect(refreshKnownDirectories).toHaveBeenCalledWith([
+			"/vault/papers/a",
+			"/vault/papers/b",
+		]);
+		expect(removeTreePaths).not.toHaveBeenCalled();
 		expect(setLibraryPapers).toHaveBeenCalledTimes(1);
 		expect(bump).toHaveBeenCalledTimes(1);
 		expect(notifyWikiEmbedTargets).toHaveBeenCalledTimes(1);
+	});
+
+	it("holds watcher refreshes until the import wave finishes", async () => {
+		const job = startBackgroundTask({
+			kind: "import",
+			title: "import",
+			id: "import-hold",
+		});
+		noteCommittedPaths(["/vault/papers/nlp/a"]);
+		noteExternalLibraryPaths(["/vault/papers/nlp/b/NOTES.md"]);
+		noteTreePaths(["/vault/papers/nlp/b"]);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(listPapers).not.toHaveBeenCalled();
+		expect(ensurePaperRows).not.toHaveBeenCalled();
+		expect(refreshKnownDirectories).not.toHaveBeenCalled();
+
+		settleTask(job);
+		await vi.advanceTimersByTimeAsync(400);
+		expect(ensurePaperRows).toHaveBeenCalledWith("/vault", [
+			"/vault/papers/nlp/b/NOTES.md",
+		]);
+		expect(refreshKnownDirectories).toHaveBeenCalledWith(
+			expect.arrayContaining(["/vault/papers/nlp/a", "/vault/papers/nlp/b"]),
+		);
 	});
 
 	it("ensures external paper paths instead of treating them as a committed list", async () => {

@@ -70,6 +70,7 @@ import { doctorSetDirtyPaths } from "@/lib/doctor/api";
 import {
 	isCommittedRefreshPath,
 	noteExternalLibraryPaths,
+	noteTreePaths,
 } from "@/lib/lifecycle/refresh-wave";
 import { openMagicWand } from "@/lib/paper/import-actions";
 import { UI_SCALE_PRESETS } from "@/lib/settings";
@@ -108,7 +109,7 @@ import {
 	revealSelectedInFinder,
 } from "@/lib/vault/actions";
 import { isRemoteVaultHandle } from "@/lib/vault/remote/remote-vault";
-import { scheduleTreeRefresh, vaultStore } from "@/lib/vault/store";
+import { vaultStore } from "@/lib/vault/store";
 import { renameMayAffectWikiTargets } from "@/lib/wiki";
 import { handleExternalRename } from "@/lib/wiki/actions";
 import {
@@ -344,8 +345,7 @@ export default function App() {
 		vaultPath,
 		onDiskChange: (absPath) => void applyDiskChange(absPath),
 		onStructuralChange: (paths) => {
-			const external = paths.filter((path) => !isCommittedRefreshPath(path));
-			if (external.length > 0) scheduleTreeRefresh(external);
+			noteTreePaths(paths.filter((path) => !isCommittedRefreshPath(path)));
 		},
 		onLibraryChange: noteExternalLibraryPaths,
 		onWikiChange: scheduleWikiRebuild,
