@@ -218,6 +218,37 @@ export const AgentStep = forwardRef<AgentStepHandle>(
 			<div className="space-y-4">
 				{error ? <p className="text-destructive text-xs">{error}</p> : null}
 
+				<div className="space-y-2">
+					<p className="px-0.5 text-muted-foreground text-xs">
+						{t("agent.desktopApps.title")}
+					</p>
+					<ul className="grid grid-cols-4 gap-3">
+						{DESKTOP_APP_IDS.map((id) => {
+							const installed = desktopApps[id]?.installed ?? false;
+							return (
+								<li key={id}>
+									<div
+										className={cn(
+											"flex w-full flex-col items-center gap-2 rounded-xl border bg-background p-3 text-center",
+											!installed && "opacity-60",
+										)}
+									>
+										<div className="flex size-14 items-center justify-center">
+											<DesktopAppLogo id={id} className="size-12" />
+										</div>
+										<p className="w-full truncate font-medium text-sm">
+											{t(`agent.desktopApps.${id}`)}
+										</p>
+										<p className="w-full text-caption text-muted-foreground leading-tight">
+											{t("agent.desktopApps.unsupported")}
+										</p>
+									</div>
+								</li>
+							);
+						})}
+					</ul>
+				</div>
+
 				{entries.length === 0 ? (
 					<div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-muted-foreground text-xs">
 						<Wifi className="size-4 shrink-0" />
@@ -375,37 +406,6 @@ export const AgentStep = forwardRef<AgentStepHandle>(
 						})}
 					</ul>
 				)}
-
-				<div className="space-y-2">
-					<p className="px-0.5 text-muted-foreground text-xs">
-						{t("agent.desktopApps.title")}
-					</p>
-					<ul className="grid grid-cols-4 gap-3">
-						{DESKTOP_APP_IDS.map((id) => {
-							const installed = desktopApps[id]?.installed ?? false;
-							return (
-								<li key={id}>
-									<div
-										className={cn(
-											"flex w-full flex-col items-center gap-2 rounded-xl border bg-background p-3 text-center",
-											!installed && "opacity-60",
-										)}
-									>
-										<div className="flex size-14 items-center justify-center">
-											<DesktopAppLogo id={id} className="size-12" />
-										</div>
-										<p className="w-full truncate font-medium text-sm">
-											{t(`agent.desktopApps.${id}`)}
-										</p>
-										<p className="w-full text-caption text-muted-foreground leading-tight">
-											{t("agent.desktopApps.unsupported")}
-										</p>
-									</div>
-								</li>
-							);
-						})}
-					</ul>
-				</div>
 			</div>
 		);
 	},
