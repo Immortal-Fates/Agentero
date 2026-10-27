@@ -28,7 +28,6 @@ import { cn } from "@/lib/core/utils";
 import { formatShortcutById } from "@/lib/shell/shortcuts";
 
 type PdfToolbarProps = {
-	reflowBusy?: boolean;
 	onExportTranslatedPdf?: (dual?: boolean) => void;
 	regionSelecting: boolean;
 	visualCropPending: boolean;
@@ -54,7 +53,6 @@ type PdfToolbarProps = {
 
 /** Top-right toolbar: region select, bulk translate. Always visible. */
 export const PdfToolbar = memo(function PdfToolbar({
-	reflowBusy,
 	onExportTranslatedPdf,
 	regionSelecting,
 	visualCropPending,
@@ -168,37 +166,28 @@ export const PdfToolbar = memo(function PdfToolbar({
 						PDF_CHROME_CHIP,
 					)}
 				>
-					{(onExportTranslatedPdf || reflowBusy) && (
+					{onExportTranslatedPdf ? (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button
 									type="button"
 									size="icon-xs"
 									variant="ghost"
-									disabled={reflowBusy}
 									aria-label={t("pdf.layoutTranslate.exportPdf")}
 								>
-									{reflowBusy ? (
-										<Loader2 className="size-3.5 animate-spin" />
-									) : (
-										<Download className="size-3.5" />
-									)}
+									<Download className="size-3.5" />
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
-								<DropdownMenuItem
-									onSelect={() => onExportTranslatedPdf?.(false)}
-								>
+								<DropdownMenuItem onSelect={() => onExportTranslatedPdf(false)}>
 									{t("pdf.layoutTranslate.exportPdf")}
 								</DropdownMenuItem>
-								<DropdownMenuItem
-									onSelect={() => onExportTranslatedPdf?.(true)}
-								>
+								<DropdownMenuItem onSelect={() => onExportTranslatedPdf(true)}>
 									{t("pdf.layoutTranslate.exportDualPdf")}
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
-					)}
+					) : null}
 					{isRemotePaper ? (
 						<Tooltip>
 							<TooltipTrigger asChild>
