@@ -18,7 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PDFIUM_RELEASE_TAG = "chromium/7897";
+const PDFIUM_RELEASE_TAG = "chromium/8058";
 const PDFIUM_RELEASE_URL =
 	"https://github.com/run-llama/pdfium-binaries/releases/download";
 

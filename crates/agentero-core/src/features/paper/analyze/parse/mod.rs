@@ -894,8 +894,8 @@ pub async fn run_liteparse_render_pngs(
 
 /// Worker body for the render mode: write per-page PNGs into `out_dir`.
 ///
-/// `render_pages_to_png` errors on out-of-range page numbers, so a cheap
-/// capped text pass determines how many pages exist (≤ [`VLM_MAX_PAGES`]).
+/// `screenshot_input` errors on out-of-range page numbers, so a cheap capped
+/// text pass determines how many pages exist (≤ [`VLM_MAX_PAGES`]).
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub async fn run_liteparse_render_direct(
     pdf_path: &Path,
@@ -911,19 +911,18 @@ pub async fn run_liteparse_render_direct(
         return Err(AppError::message("PDF has no pages"));
     }
     let numbers: Vec<u32> = (1..=page_count as u32).collect();
-    let rendered = liteparse::render::render_pages_to_png(
-        &input,
-        Some(&numbers),
-        RENDER_DPI,
-        None,
-        false,
-        false,
-    )
-    .map_err(|e| AppError::message(format!("liteparse render: {e}")))?;
+    let parser = liteparse::LiteParse::new(LiteParseConfig {
+        dpi: RENDER_DPI,
+        ..Default::default()
+    });
+    let rendered = parser
+        .screenshot_input(input, Some(numbers))
+        .await
+        .map_err(|e| AppError::message(format!("liteparse render: {e}")))?;
     let mut pages = Vec::with_capacity(rendered.len());
     for page in rendered {
         let file = format!("page-{:04}.png", page.page_num);
-        fs::write(out_dir.join(&file), &page.png_bytes)
+        fs::write(out_dir.join(&file), &page.image_bytes)
             .map_err(|e| AppError::message(format!("write page png: {e}")))?;
         pages.push(RenderedPngPage {
             page_num: page.page_num,
