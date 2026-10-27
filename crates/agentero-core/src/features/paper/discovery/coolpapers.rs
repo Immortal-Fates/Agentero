@@ -483,8 +483,7 @@ pub async fn fetch_notes(req: FetchNotesRequest<'_>) -> Result<CoolPapersNotes, 
     // the paper's existing `#` title without a competing section heading.
     let block =
         format!("**Cool Papers · Kimi 解析**\n\n> 来源：[{page_url}]({page_url})\n\n{markdown}");
-    let appended =
-        crate::features::markdown::append::append_markdown_blocks(&notes_path, &[block]);
+    let appended = crate::features::markdown::append::append_markdown_blocks(&notes_path, &[block]);
 
     Ok(CoolPapersNotes {
         found: true,
