@@ -11,7 +11,7 @@ import {
 } from "@/lib/pdf/layout/layout-translate";
 import { runLayoutRegionTranslate } from "@/lib/pdf/layout/layout-translate-reliable";
 import type { PdfLayoutRegion } from "@/lib/pdf/layout/types";
-import { buildReflowPdf } from "@/lib/pdf/reflow/export";
+import { buildReflowPage, buildReflowPdf } from "@/lib/pdf/reflow/export";
 import { extractReflowDocument } from "@/lib/pdf/reflow/extract";
 import { prepareReflowItems } from "@/lib/pdf/reflow/service";
 
@@ -222,7 +222,7 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 			if (mode === "fixed")
 				expect(translations.size).toBe(name === "attention" ? 3 : 4);
 			else expect(translations.size).toBeGreaterThan(0);
-			const output = await buildReflowPdf(engine, doc, ir, translations, {
+			const fonts = {
 				regular: readFileSync(
 					join(dirname(font ?? ""), "NotoSerif-Regular.ttf"),
 				),
@@ -235,7 +235,68 @@ describe.skipIf(!dir || !font)("real PDF reflow", () => {
 				cjkBold: readFileSync(
 					join(dirname(font ?? ""), "SourceHanSerifCN-Bold.ttf"),
 				),
-			});
+			};
+			const output = await buildReflowPdf(engine, doc, ir, translations, fonts);
+			if (process.env.AGENTERO_REFLOW_INCREMENTAL === "1") {
+				const pageIr = { ...ir, pages: [ir.pages[0]] };
+				const start = performance.now();
+				const single = await buildReflowPage(
+					engine,
+					doc,
+					pageIr,
+					translations,
+					fonts,
+				);
+				const pageMs = Math.round(performance.now() - start);
+				const fullStart = performance.now();
+				const reference = await buildReflowPdf(
+					engine,
+					doc,
+					pageIr,
+					translations,
+					fonts,
+					undefined,
+					false,
+				);
+				const timing = {
+					name,
+					page: pageIr.pages[0].index,
+					pageMs,
+					documentMs: Math.round(performance.now() - fullStart),
+				};
+				writeFileSync(
+					join(root, `${tag}-incremental-timing.json`),
+					JSON.stringify(timing, null, 2),
+				);
+				expect(single.pages).toEqual(reference.pages);
+				const preview = await engine
+					.openDocumentBuffer({
+						id: `${name}-single`,
+						content: single.bytes.slice().buffer,
+					})
+					.toPromise();
+				const baseline = await engine
+					.openDocumentBuffer({
+						id: `${name}-reference`,
+						content: reference.bytes.slice().buffer,
+					})
+					.toPromise();
+				try {
+					expect(preview.pages).toHaveLength(1);
+					const actual = await engine
+						.renderPageRaw(preview, preview.pages[0], { scaleFactor: 1 })
+						.toPromise();
+					const expected = await engine
+						.renderPageRaw(baseline, baseline.pages[pageIr.pages[0].index], {
+							scaleFactor: 1,
+						})
+						.toPromise();
+					expect(actual).toEqual(expected);
+				} finally {
+					await engine.closeDocument(preview).toPromise();
+					await engine.closeDocument(baseline).toPromise();
+				}
+			}
 			writeFileSync(join(root, `${tag}-reflow.pdf`), output.bytes);
 			writeFileSync(
 				join(root, `${tag}-reflow-layout.json`),

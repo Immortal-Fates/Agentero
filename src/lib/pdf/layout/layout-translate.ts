@@ -793,6 +793,8 @@ export async function runLayoutRegionTranslate(options: {
 	paperKey?: string | null;
 	vaultPath?: string | null;
 }): Promise<LayoutTranslateItem[]> {
+	const started = performance.now();
+	let firstResult = false;
 	const agentOpts = await resolveLayoutTranslateAgentOpts({
 		paperKey: options.paperKey,
 		vaultPath: options.vaultPath,
@@ -862,7 +864,18 @@ export async function runLayoutRegionTranslate(options: {
 	const batches = buildTranslateBatches(units);
 	let nextBatch = 0;
 
-	const publish = () => options.onUpdate(items.map((it) => ({ ...it })));
+	const publish = () => {
+		if (
+			!firstResult &&
+			items.some((i) => i.status === "done" && i.translated)
+		) {
+			firstResult = true;
+			logger.info("pdf.translate.first-result", {
+				duration_ms: Math.round(performance.now() - started),
+			});
+		}
+		options.onUpdate(items.map((it) => ({ ...it })));
+	};
 
 	const translateText = async (
 		text: string,
@@ -1129,5 +1142,9 @@ export async function runLayoutRegionTranslate(options: {
 		publish();
 	}
 
+	logger.info("pdf.translate.complete", {
+		duration_ms: Math.round(performance.now() - started),
+		cancelled: Boolean(signal?.aborted),
+	});
 	return items;
 }

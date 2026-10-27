@@ -222,4 +222,4 @@ Host 下载/解析：[../backend/paper-import.md](../backend/paper-import.md)。
 
 - EmbedPDF 升级时继续核对 engines 原生内存 / 坐标 / refcount、tiling 旋转与 DPR、AI 按 backend 选择 ORT 入口的补丁；2.15.1 对应实现仍与 2.14.4 相同，不能仅凭升版删掉。zoom 评论列留白补丁也需核对上游是否已有等价配置。待上游修复 annotation 同 uid 在途变更被旧 commit 清 pending 的问题后，移除删除协调器。
 
-字符级全文翻译路径使用 `src/lib/pdf/reflow/`，将公式作为可移动矢量片段，基于固定字体度量重排；预览与译文/双语 PDF 导出共用输出。该路径按段落对齐，旧句链逻辑只用于无引擎上下文的回退。限制及字体下载见 [translate.md](translate.md#与-babeldoc-的差异和后续)。
+字符级全文翻译路径使用 `src/lib/pdf/reflow/`，将公式作为可移动矢量片段，基于固定字体度量重排；每页翻译结束后增量显示重排预览，全文结束时执行全局字号校正，最终预览与译文/双语 PDF 导出共用输出。该路径按段落对齐，旧句链逻辑只用于无引擎上下文的回退。限制及字体下载见 [translate.md](translate.md#与-babeldoc-的差异和后续)。

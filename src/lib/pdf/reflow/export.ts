@@ -45,11 +45,12 @@ export async function writeReflowPdf(
 	cjkFont: Uint8Array | ReflowFontBytes,
 	dual = false,
 	formulaPdfs: ReadonlyMap<string, Uint8Array> = new Map(),
+	commonScale = true,
 ): Promise<ReflowOutput> {
 	const pdf = await PDFDocument.load(redacted);
 	const source = await PDFDocument.load(original);
 	const fonts = await embedReflowFonts(pdf, cjkFont);
-	const pages = layoutReflowDocument(ir, translations, fonts);
+	const pages = layoutReflowDocument(ir, translations, fonts, commonScale);
 	for (const page of pages) {
 		const target = pdf.getPage(page.index);
 		if (target.getRotation().angle !== 0)
@@ -132,6 +133,7 @@ export async function buildReflowPdf(
 	translations: ReadonlyMap<string, string>,
 	cjkFont: Uint8Array | ReflowFontBytes,
 	signal?: AbortSignal,
+	commonScale = true,
 ): Promise<ReflowOutput> {
 	signal?.throwIfAborted();
 	const original = new Uint8Array(await engine.saveAsCopy(doc).toPromise());
@@ -218,9 +220,62 @@ export async function buildReflowPdf(
 			cjkFont,
 			false,
 			formulaPdfs,
+			commonScale,
 		);
 	} finally {
 		await engine.closeDocument(clone).toPromise();
+	}
+}
+
+/** Preview bytes contain one page; layouts retain the source document's indexes. */
+export async function buildReflowPage(
+	engine: PdfEngine,
+	doc: PdfDocumentObject,
+	ir: ReflowDocument,
+	translations: ReadonlyMap<string, string>,
+	fonts: ReflowFontBytes,
+	signal?: AbortSignal,
+): Promise<ReflowOutput> {
+	if (ir.pages.length !== 1) throw new Error("Expected one reflow page");
+	const page = ir.pages[0];
+	signal?.throwIfAborted();
+	const content = await engine.extractPages(doc, [page.index]).toPromise();
+	signal?.throwIfAborted();
+	const single = await engine
+		.openDocumentBuffer({
+			id: `reflow-page-${crypto.randomUUID()}`,
+			content,
+		})
+		.toPromise();
+	try {
+		const result = await buildReflowPdf(
+			engine,
+			single,
+			{
+				version: 1,
+				pages: [
+					{
+						...page,
+						index: 0,
+						paragraphs: page.paragraphs.map((p) => ({ ...p, pageIndex: 0 })),
+					},
+				],
+			},
+			translations,
+			fonts,
+			signal,
+			false,
+		);
+		return {
+			bytes: result.bytes,
+			pages: result.pages.map((p) => ({
+				...p,
+				index: page.index,
+				paragraphs: p.paragraphs.map((q) => ({ ...q, pageIndex: page.index })),
+			})),
+		};
+	} finally {
+		await engine.closeDocument(single).toPromise();
 	}
 }
 

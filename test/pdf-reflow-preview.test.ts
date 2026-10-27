@@ -1,0 +1,284 @@
+import type { PdfDocumentObject, PdfEngine } from "@embedpdf/models";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { LayoutTranslateItem } from "@/lib/pdf/layout/types";
+import {
+	buildReflowPage,
+	buildReflowPdf,
+	type ReflowOutput,
+} from "@/lib/pdf/reflow/export";
+import { paragraphFromCharacters } from "@/lib/pdf/reflow/extract";
+import { ReflowPreviewSession } from "@/lib/pdf/reflow/preview";
+import type { ReflowDocument } from "@/lib/pdf/reflow/types";
+
+vi.mock("@/lib/core/logger", () => ({
+	logOp: (_name: string, _fields: unknown, run: () => Promise<unknown>) =>
+		run(),
+}));
+vi.mock("@/lib/pdf/reflow/fonts", () => ({
+	loadReflowFonts: vi.fn(async () => ({})),
+}));
+vi.mock("@/lib/pdf/reflow/export", () => ({
+	buildReflowPage: vi.fn(),
+	buildReflowPdf: vi.fn(),
+}));
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
+}
+function item(
+	pageIndex: number,
+	status: LayoutTranslateItem["status"] = "done",
+): LayoutTranslateItem {
+	return {
+		id: `p${pageIndex}`,
+		pageIndex,
+		status,
+		kind: "text",
+		readingOrder: 0,
+		source: "original",
+		raw: "original",
+		translated: status === "done" ? "translated" : undefined,
+		bbox: { x: 0.1, y: 0.1, w: 0.8, h: 0.2 },
+		reflow: paragraphFromCharacters(
+			`p${pageIndex}`,
+			pageIndex,
+			{ x: 10, y: 10, w: 80, h: 20 },
+			[],
+			[],
+			false,
+		),
+	};
+}
+function result(ir: ReflowDocument): ReflowOutput {
+	return {
+		bytes: new Uint8Array([1, 2]),
+		pages: ir.pages.map((page) => ({
+			index: page.index,
+			width: page.width,
+			height: page.height,
+			paragraphs: page.paragraphs.map((p) => ({
+				id: p.id,
+				pageIndex: p.pageIndex,
+				sourceBox: p.box,
+				box: p.box,
+				scale: 1,
+				units: [],
+				fits: true,
+			})),
+		})),
+	};
+}
+const document = {
+	id: "source",
+	pages: Array.from({ length: 3 }, (_, index) => ({
+		index,
+		size: { width: 100, height: 100 },
+	})),
+} as PdfDocumentObject;
+const render = vi.fn(() => ({ toPromise: async () => new Blob(["preview"]) }));
+const close = vi.fn(() => ({ toPromise: async () => true }));
+const engine = {
+	openDocumentBuffer: vi.fn(() => ({ toPromise: async () => document })),
+	renderPage: render,
+	closeDocument: close,
+} as unknown as PdfEngine;
+let session: ReflowPreviewSession;
+const failed = vi.fn();
+beforeEach(() => {
+	vi.clearAllMocks();
+	vi.spyOn(URL, "createObjectURL").mockImplementation(
+		() => `blob:${crypto.randomUUID()}`,
+	);
+	vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+	vi.mocked(buildReflowPage).mockImplementation(async (_engine, _doc, ir) =>
+		result(ir),
+	);
+	vi.mocked(buildReflowPdf).mockImplementation(async (_engine, _doc, ir) =>
+		result(ir),
+	);
+	session = new ReflowPreviewSession(engine, document, () => {}, failed);
+});
+afterEach(() => {
+	session.dispose();
+	vi.restoreAllMocks();
+});
+const settled = () => vi.waitFor(() => expect(session.busy).toBe(false));
+
+it("publishes a finished page during translation and preserves it across other batches", async () => {
+	const first = item(0),
+		second = item(1, "pending");
+	session.update([first, second], [], true);
+	await settled();
+	const url = session.decorate([first])[0].reflowPreview;
+	expect(url).toBeTruthy();
+	expect(session.decorate([second])[0].reflowPreview).toBeUndefined();
+	expect(session.output).toBeNull();
+	session.update([{ ...first }, { ...second, status: "running" }], [], true);
+	await settled();
+	expect(session.decorate([first])[0].reflowPreview).toBe(url);
+	expect(buildReflowPage).toHaveBeenCalledTimes(1);
+	expect(buildReflowPdf).not.toHaveBeenCalled();
+});
+
+it("waits for the entire page and retains failed IR paragraphs as obstacles", async () => {
+	const first = item(0),
+		pending = { ...item(0, "pending"), id: "other" };
+	session.update([first, pending], [], true);
+	await settled();
+	expect(buildReflowPage).not.toHaveBeenCalled();
+	session.update([first, { ...pending, status: "error" }], [], true);
+	await settled();
+	const call = vi.mocked(buildReflowPage).mock.calls[0];
+	expect(call[2].pages[0].paragraphs).toHaveLength(2);
+	expect([...call[3].keys()]).toEqual([first.id]);
+});
+
+it("keeps an in-flight page alive when another page changes and serializes builders", async () => {
+	const first = item(0),
+		second = item(1, "pending"),
+		gate = deferred<ReflowOutput>();
+	vi.mocked(buildReflowPage).mockReturnValueOnce(gate.promise);
+	session.update([first, second], [], true);
+	await vi.waitFor(() => expect(buildReflowPage).toHaveBeenCalledTimes(1));
+	session.update(
+		[first, { ...second, status: "done", translated: "next" }],
+		[],
+		true,
+	);
+	expect(vi.mocked(buildReflowPage).mock.calls[0][5]?.aborted).toBe(false);
+	expect(buildReflowPage).toHaveBeenCalledTimes(1);
+	gate.resolve(result(vi.mocked(buildReflowPage).mock.calls[0][2]));
+	await settled();
+	expect(buildReflowPage).toHaveBeenCalledTimes(2);
+	expect(session.decorate([first, second]).every((i) => i.reflowPreview)).toBe(
+		true,
+	);
+});
+
+it("discards superseded page results and clears previews on retry", async () => {
+	const first = item(0),
+		gate = deferred<ReflowOutput>();
+	vi.mocked(buildReflowPage).mockReturnValueOnce(gate.promise);
+	session.update([first], [], true);
+	await vi.waitFor(() => expect(buildReflowPage).toHaveBeenCalledTimes(1));
+	session.update([{ ...first, translated: "replacement" }], [], true);
+	expect(vi.mocked(buildReflowPage).mock.calls[0][5]?.aborted).toBe(true);
+	gate.resolve(result(vi.mocked(buildReflowPage).mock.calls[0][2]));
+	await settled();
+	expect(render).toHaveBeenCalledTimes(1);
+	const url = session.decorate([first])[0].reflowPreview;
+	session.update(
+		[{ ...first, status: "running", translated: undefined }],
+		[],
+		true,
+	);
+	expect(session.decorate([first])[0].reflowPreview).toBeUndefined();
+	expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
+});
+
+it("finalizes the whole PDF while rendering only changed layouts", async () => {
+	const items = [item(0), item(1)];
+	session.update(items, [], true);
+	await settled();
+	const urls = session.decorate(items).map((i) => i.reflowPreview);
+	vi.mocked(buildReflowPdf).mockImplementationOnce(async (_e, _d, ir) => {
+		const built = result(ir);
+		built.pages[1].paragraphs[0].scale = 0.85;
+		return built;
+	});
+	session.update(items, [], false);
+	expect(session.output).toBeNull();
+	await settled();
+	expect(render).toHaveBeenCalledTimes(3);
+	expect(session.decorate(items)[0].reflowPreview).toBe(urls[0]);
+	expect(session.decorate(items)[1].reflowPreview).not.toBe(urls[1]);
+	expect(session.output).toEqual(new Uint8Array([1, 2]));
+	session.update(
+		items.map((i) => ({ ...i })),
+		[],
+		false,
+	);
+	await settled();
+	expect(buildReflowPdf).toHaveBeenCalledTimes(1);
+});
+
+it("publishes each final page before the remaining pages finish rendering", async () => {
+	const gate = deferred<Blob>(),
+		items = [item(0), item(1)];
+	render.mockImplementationOnce(() => ({ toPromise: async () => new Blob() }));
+	render.mockImplementationOnce(() => ({ toPromise: () => gate.promise }));
+	session.update(items, [], false);
+	await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(2));
+	expect(session.decorate(items)[0].reflowPreview).toBeTruthy();
+	expect(session.decorate(items)[1].reflowPreview).toBeUndefined();
+	expect(session.output).toBeNull();
+	gate.resolve(new Blob());
+	await settled();
+	expect(session.output).not.toBeNull();
+});
+
+it("clears obsolete export bytes and ignores a late result after disposal", async () => {
+	const items = [item(0)];
+	session.update(items, [], false);
+	await settled();
+	const url = session.decorate(items)[0].reflowPreview;
+	const gate = deferred<ReflowOutput>();
+	vi.mocked(buildReflowPdf).mockReturnValueOnce(gate.promise);
+	session.update([{ ...items[0], translated: "new" }], [], false);
+	expect(session.output).toBeNull();
+	await vi.waitFor(() => expect(buildReflowPdf).toHaveBeenCalledTimes(2));
+	session.dispose();
+	gate.resolve(result(vi.mocked(buildReflowPdf).mock.calls[1][2]));
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(render).toHaveBeenCalledTimes(1);
+	expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
+	expect(session.output).toBeNull();
+	expect(failed).not.toHaveBeenCalled();
+});
+
+it("continues other pages after a build failure without retrying every batch", async () => {
+	vi.mocked(buildReflowPage).mockRejectedValueOnce(new Error("bad page"));
+	const items = [item(0), item(1)];
+	session.update(items, [], true);
+	await settled();
+	expect(failed).toHaveBeenCalledTimes(1);
+	expect(session.decorate(items)[1].reflowPreview).toBeTruthy();
+	session.update(items, [], true);
+	await settled();
+	expect(buildReflowPage).toHaveBeenCalledTimes(2);
+});
+
+it("invalidates a page when its IR changes even if the translated text is unchanged", async () => {
+	const original = item(0);
+	session.update([original], [], true);
+	await settled();
+	const url = session.decorate([original])[0].reflowPreview;
+	const changed = item(0);
+	session.update([changed], [], true);
+	await settled();
+	expect(buildReflowPage).toHaveBeenCalledTimes(2);
+	expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
+	expect(session.decorate([changed])[0].reflowPreview).not.toBe(url);
+});
+
+it("closes a preview document and suppresses late images when cleared during rendering", async () => {
+	const gate = deferred<Blob>(),
+		first = item(0);
+	render.mockImplementationOnce(() => ({ toPromise: () => gate.promise }));
+	session.update([first], [], true);
+	await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
+	session.update([], [], false);
+	gate.resolve(new Blob());
+	await vi.waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+	expect(URL.createObjectURL).not.toHaveBeenCalled();
+	expect(session.output).toBeNull();
+	expect(failed).not.toHaveBeenCalled();
+	// The same content is eligible again after a user clears and restarts it.
+	session.update([first], [], true);
+	await settled();
+	expect(session.decorate([first])[0].reflowPreview).toBeTruthy();
+});

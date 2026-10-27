@@ -159,13 +159,9 @@ export function usePdfLayoutTranslate({
 	}>({ status: "idle", items: [] });
 	const layoutTranslateJobRef = useRef(layoutTranslateJob);
 	layoutTranslateJobRef.current = layoutTranslateJob;
-	const updateReflowItems = useCallback(
-		(items: LayoutTranslateItem[]) =>
-			setLayoutTranslateJob((prev) => ({ ...prev, items })),
-		[],
-	);
 	const {
 		prepare: prepareReflow,
+		reflowItems,
 		reflowBusy,
 		reflowReady,
 		exportTranslatedPdf,
@@ -174,7 +170,7 @@ export function usePdfLayoutTranslate({
 		layoutRawRegions,
 		layoutTranslateJob.items,
 		layoutTranslateJob.status === "running",
-		updateReflowItems,
+		docId,
 	);
 	const layoutTranslateAbortRef = useRef<AbortController | null>(null);
 	const hiddenPageIndexesRef = useRef(new Set<number>());
@@ -719,12 +715,12 @@ export function usePdfLayoutTranslate({
 	>(new Map());
 	const layoutTranslateItemsByPage = useMemo(() => {
 		const grouped = groupLayoutTranslateItemsByPage(
-			layoutTranslateJob.items,
+			reflowItems,
 			layoutTranslateByPageRef.current,
 		);
 		layoutTranslateByPageRef.current = grouped;
 		return grouped;
-	}, [layoutTranslateJob.items]);
+	}, [reflowItems]);
 
 	const layoutTranslatePageStateByPage = useMemo(() => {
 		const states = new Map<number, { active: boolean; running: boolean }>();

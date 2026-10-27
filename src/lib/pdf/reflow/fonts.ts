@@ -1,4 +1,5 @@
 import { appCacheDir, join } from "@tauri-apps/api/path";
+import { logOp } from "@/lib/core/logger";
 import { readVaultBytes, writeVaultBytes } from "@/lib/vault/fs";
 import type { FontKey } from "./types";
 export type ReflowFontBytes = Record<FontKey, Uint8Array>;
@@ -39,7 +40,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 let pending: Promise<ReflowFontBytes> | undefined;
 export function loadReflowFonts(): Promise<ReflowFontBytes> {
 	if (pending) return pending;
-	pending = (async () => {
+	pending = logOp("pdf.reflow.fonts", undefined, async () => {
 		const root = await join(await appCacheDir(), "pdf-fonts", revision);
 		const entries = await Promise.all(
 			(Object.entries(assets) as [FontKey, [string, string]][]).map(
@@ -68,7 +69,7 @@ export function loadReflowFonts(): Promise<ReflowFontBytes> {
 			),
 		);
 		return Object.fromEntries(entries) as ReflowFontBytes;
-	})().catch((error) => {
+	}).catch((error) => {
 		pending = undefined;
 		throw error;
 	});
