@@ -203,6 +203,7 @@ mod tests {
         assert!(get("paper_paths").is_some());
         assert!(get("paper_tag_set").is_some());
         assert!(get("paper_tag_list").is_some());
+        assert!(get("paper.notes.fetch").is_some());
         assert!(get("vault_list").is_some());
         assert!(get("import.pdf").is_some());
         assert!(get("no.such.op").is_none());

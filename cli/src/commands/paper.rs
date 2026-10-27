@@ -8,6 +8,7 @@ use agentero_core::features::catalog;
 use agentero_core::features::catalog::papers::{self, PaperRecord, PaperTag};
 use agentero_core::features::import::pdf_parse::{self, PaperParseBodyArgs};
 use agentero_core::features::import::{self, skipped_preparation_line, PaperDownloadAssetsArgs};
+use agentero_core::features::paper::discovery::coolpapers::{self, FetchNotesRequest};
 use clap::{Subcommand, ValueHint};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -113,6 +114,21 @@ pub enum PaperCmd {
         #[arg(value_hint = ValueHint::DirPath)]
         r#ref: String,
     },
+    /// NOTES.md operations.
+    Notes {
+        #[command(subcommand)]
+        cmd: NotesCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum NotesCmd {
+    /// Fetch the Cool Papers (papers.cool) Kimi analysis and append it to NOTES.md.
+    Fetch {
+        /// Vault-relative path or paper id.
+        #[arg(value_hint = ValueHint::DirPath)]
+        r#ref: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -212,7 +228,54 @@ pub async fn run(cmd: PaperCmd, globals: &GlobalOpts) -> Result<Value, CliError>
         PaperCmd::Parse { r#ref, force } => parse(globals, &r#ref, force).await,
         PaperCmd::Move { from, dest_parent } => move_paper(globals, &from, &dest_parent),
         PaperCmd::Open { r#ref } => open_in_app(globals, &r#ref),
+        PaperCmd::Notes { cmd } => run_notes(cmd, globals).await,
     }
+}
+
+async fn run_notes(cmd: NotesCmd, globals: &GlobalOpts) -> Result<Value, CliError> {
+    match cmd {
+        NotesCmd::Fetch { r#ref } => fetch_notes(globals, &r#ref).await,
+    }
+}
+
+async fn fetch_notes(globals: &GlobalOpts, ref_: &str) -> Result<Value, CliError> {
+    let vault = resolve_vault(globals)?;
+    let paper = resolve_paper(&vault, ref_, globals)?;
+    let result = coolpapers::fetch_notes(FetchNotesRequest {
+        vault: &vault,
+        paper_rel: &paper.path,
+        catalog_id: Some(paper.id.as_str()),
+        source_url: paper.source_url.as_deref(),
+        arxiv_id: paper.arxiv_id.as_deref(),
+        title: Some(paper.title.as_str()),
+    })
+    .await?;
+    let style = globals.style;
+    let line = if !result.found {
+        format!(
+            "{} {}  not found on papers.cool",
+            style.dim("notes"),
+            style.path(&paper.path)
+        )
+    } else if !result.appended {
+        format!(
+            "{} {}  already in NOTES.md",
+            style.ok("notes"),
+            style.path(&paper.path)
+        )
+    } else {
+        format!(
+            "{} {}  {}",
+            style.ok("notes"),
+            style.path(&paper.path),
+            style.dim(result.url.as_deref().unwrap_or(""))
+        )
+    };
+    let mut v = to_value(&result)?;
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("lines".into(), json!([line]));
+    }
+    Ok(v)
 }
 
 /// Resolve the paper folder, then hand off to the desktop open pipeline.
