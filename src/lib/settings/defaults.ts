@@ -97,9 +97,6 @@ export const INSTITUTION_PROXY_PRESETS = [
 	{ id: "ustc", kind: "wengine", prefix: "https://webvpn.ustc.edu.cn" },
 	{ id: "xjtu", kind: "wengine", prefix: "https://webvpn.xjtu.edu.cn" },
 	{ id: "neu", kind: "wengine", prefix: "https://webvpn.neu.edu.cn" },
-	{ id: "zjnu", kind: "wengine", prefix: "https://webvpn.zjnu.edu.cn" },
-	{ id: "sjzu", kind: "wengine", prefix: "https://webvpn.sjzu.edu.cn" },
-	{ id: "zqu", kind: "wengine", prefix: "https://webvpn.zqu.edu.cn" },
 ] as const satisfies readonly InstitutionProxyPreset[];
 
 /**
