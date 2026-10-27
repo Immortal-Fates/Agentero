@@ -130,18 +130,6 @@ export function GeneralPane({
 			institutionProxyCookie: institutionProxyCookieDraft.trim(),
 		});
 	}, [institutionProxyPrefixDraft, institutionProxyCookieDraft, patch]);
-	const openInstitutionLogin = useCallback(async () => {
-		commitInstitutionProxy();
-		try {
-			await callResult(() =>
-				commands.institutionProxyLoginOpen(institutionProxyPrefixDraft),
-			);
-		} catch (error) {
-			notifyError(t("general.institutionProxy.loginFailed"), {
-				description: errorText(error),
-			});
-		}
-	}, [commitInstitutionProxy, institutionProxyPrefixDraft, t]);
 	const testInstitutionProxy = useCallback(async () => {
 		setInstitutionProxyTesting(true);
 		setInstitutionProxyResult(undefined);
@@ -164,6 +152,24 @@ export function GeneralPane({
 			setInstitutionProxyTesting(false);
 		}
 	}, [t]);
+	const openInstitutionLogin = useCallback(async () => {
+		commitInstitutionProxy();
+		try {
+			const captured = await callResult(() =>
+				commands.institutionProxyLoginOpen(institutionProxyPrefixDraft),
+			);
+			if (captured) void testInstitutionProxy();
+		} catch (error) {
+			notifyError(t("general.institutionProxy.loginFailed"), {
+				description: errorText(error),
+			});
+		}
+	}, [
+		commitInstitutionProxy,
+		institutionProxyPrefixDraft,
+		t,
+		testInstitutionProxy,
+	]);
 	const institutionProxyPresets = useMemo(
 		() =>
 			INSTITUTION_PROXY_PRESETS.map((preset) => ({

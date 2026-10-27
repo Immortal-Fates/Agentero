@@ -43,8 +43,9 @@ export const commands = {
 	/**
 	 *  Open the configured gateway in a dedicated webview for interactive SSO.
 	 *  Async is required when creating a window from WebView2 on Windows.
+	 *  Resolves once the login window closes; `true` when a cookie was captured.
 	 */
-	institutionProxyLoginOpen: (prefix: string) => typedError<null, string>(__TAURI_INVOKE("institution_proxy_login_open", { prefix })),
+	institutionProxyLoginOpen: (prefix: string) => typedError<boolean, string>(__TAURI_INVOKE("institution_proxy_login_open", { prefix })),
 	builtinProviderStatus: () => __TAURI_INVOKE<ApiResult<BuiltinProviderStatus>>("builtin_provider_status"),
 	layoutModelStatus: () => __TAURI_INVOKE<ApiResult<LayoutModelStatus>>("layout_model_status"),
 	layoutRemoteAnalyzePdf: (args: LayoutRemoteAnalyzePdfArgs) => __TAURI_INVOKE<ApiResult<LayoutRemoteAnalyzePdfResult>>("layout_remote_analyze_pdf", { args }),

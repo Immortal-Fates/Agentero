@@ -25,9 +25,10 @@ fn proxy_gateway_url(prefix: &str) -> Result<Url, String> {
 
 /// Open the configured gateway in a dedicated webview for interactive SSO.
 /// Async is required when creating a window from WebView2 on Windows.
+/// Resolves once the login window closes; `true` when a cookie was captured.
 #[tauri::command]
 #[specta::specta]
-pub async fn institution_proxy_login_open(app: AppHandle, prefix: String) -> Result<(), String> {
+pub async fn institution_proxy_login_open(app: AppHandle, prefix: String) -> Result<bool, String> {
     let url = proxy_gateway_url(&prefix)?;
     let login_url = if prefix.trim_end().ends_with('=') {
         proxy_gateway_url(&format!(
@@ -49,21 +50,16 @@ pub async fn institution_proxy_login_open(app: AppHandle, prefix: String) -> Res
             .build()
             .map_err(|e| e.to_string())?;
     }
-    let monitor_app = app.clone();
-    let monitor_prefix = prefix.trim().to_string();
-    tauri::async_runtime::spawn(async move {
-        monitor_institution_login(monitor_app, monitor_prefix).await;
-    });
-    Ok(())
+    Ok(monitor_institution_login(app, prefix.trim().to_string()).await)
 }
 
-async fn monitor_institution_login(app: AppHandle, prefix: String) {
+async fn monitor_institution_login(app: AppHandle, prefix: String) -> bool {
     use agentero_core::features::paper::import::download::probe_institution_proxy;
     use std::time::Duration;
 
     let gateway_url = match proxy_gateway_url(&prefix) {
         Ok(url) => url,
-        Err(_) => return,
+        Err(_) => return false,
     };
     let mut last_cookie = app
         .state::<AppSettingsStore>()
@@ -74,7 +70,7 @@ async fn monitor_institution_login(app: AppHandle, prefix: String) {
     loop {
         interval.tick().await;
         let Some(window) = app.get_webview_window(PROXY_LOGIN_WINDOW) else {
-            return;
+            return false;
         };
         let url = gateway_url.clone();
         let cookie =
@@ -110,7 +106,7 @@ async fn monitor_institution_login(app: AppHandle, prefix: String) {
         if let Some(window) = app.get_webview_window(PROXY_LOGIN_WINDOW) {
             let _ = window.close();
         }
-        return;
+        return true;
     }
 }
 
