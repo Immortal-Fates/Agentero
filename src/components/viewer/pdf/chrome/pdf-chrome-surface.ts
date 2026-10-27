@@ -23,9 +23,10 @@ export const PDF_CHROME_VIS_HIDE =
 /**
  * Left outline / references / figures panel.
  * Heavier material than chips; enters from the left (spatial consistency).
+ * Reserve the bottom 4rem for the page / zoom bar and a clear gap.
  */
 export const PDF_SIDE_PANEL =
-	"absolute inset-y-0 left-0 z-20 w-80 select-none border-r border-border/50 bg-background/90 pt-11 pb-2 shadow-lg backdrop-blur-xl backdrop-saturate-150 supports-backdrop-blur:bg-background/75 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-2 motion-safe:duration-200 motion-reduce:animate-none";
+	"absolute top-0 bottom-16 left-0 z-20 w-80 select-none border-r border-border/50 bg-background/90 pt-11 pb-2 shadow-lg backdrop-blur-xl backdrop-saturate-150 supports-backdrop-blur:bg-background/75 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-2 motion-safe:duration-200 motion-reduce:animate-none";
 
 /** Icon-only selection menu — glassier than long-form cards. */
 export const PDF_SELECTION_MENU =
