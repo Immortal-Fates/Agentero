@@ -293,8 +293,8 @@ pub async fn adopt_paper_folder(
     if let Some(cache) = opts.cache {
         cache.invalidate(vault, &rel);
     }
-    crate::features::lifecycle::emit_paper_imported(opts.app, vault, &record.id);
-    crate::features::lifecycle::emit_paper_assets_ready(opts.app, vault, &record.id);
+    crate::features::lifecycle::emit_paper_imported(opts.app, vault, &record.id, &record.path);
+    crate::features::lifecycle::emit_paper_assets_ready(opts.app, vault, &record.id, &record.path);
     // Deferred recognition owns the follow-ups (rename/merge + parse), exactly
     // like picker/drop imports without dialog metadata.
     if let Some(app) = opts.app {

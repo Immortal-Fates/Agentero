@@ -67,8 +67,12 @@ import { pinActiveSelection } from "@/lib/agent/selection-store";
 import { closeTopOverlay } from "@/lib/core/overlay-stack";
 import { isMacOS, isTauri } from "@/lib/core/tauri";
 import { doctorSetDirtyPaths } from "@/lib/doctor/api";
+import {
+	isCommittedRefreshPath,
+	noteExternalLibraryPaths,
+	noteTreePaths,
+} from "@/lib/lifecycle/refresh-wave";
 import { openMagicWand } from "@/lib/paper/import-actions";
-import { scheduleLibraryRefresh } from "@/lib/paper/library-store";
 import { UI_SCALE_PRESETS } from "@/lib/settings";
 import { getSettings, patchSettings } from "@/lib/settings/react-store";
 import {
@@ -105,7 +109,7 @@ import {
 	revealSelectedInFinder,
 } from "@/lib/vault/actions";
 import { isRemoteVaultHandle } from "@/lib/vault/remote/remote-vault";
-import { scheduleTreeRefresh, vaultStore } from "@/lib/vault/store";
+import { vaultStore } from "@/lib/vault/store";
 import { renameMayAffectWikiTargets } from "@/lib/wiki";
 import { handleExternalRename } from "@/lib/wiki/actions";
 import {
@@ -340,8 +344,10 @@ export default function App() {
 	useVaultFileEvents({
 		vaultPath,
 		onDiskChange: (absPath) => void applyDiskChange(absPath),
-		onStructuralChange: scheduleTreeRefresh,
-		onLibraryChange: scheduleLibraryRefresh,
+		onStructuralChange: (paths) => {
+			noteTreePaths(paths.filter((path) => !isCommittedRefreshPath(path)));
+		},
+		onLibraryChange: noteExternalLibraryPaths,
 		onWikiChange: scheduleWikiRebuild,
 		shouldIgnoreEvent: shouldIgnoreInternalRenameEvent,
 		onExternalRename: (rename, payload) => {

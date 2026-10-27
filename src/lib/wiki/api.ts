@@ -1057,3 +1057,14 @@ export async function rebuildWikiIndex(
 ): Promise<RebuildResult> {
 	return callApiResult(() => commands.graphRebuild(vaultPath), WIKI_CALL_OPTS);
 }
+
+/** Fold known files or one paper folder into the warm index. */
+export async function applyWikiPaths(
+	vaultPath: string,
+	paths: string[],
+): Promise<RebuildResult> {
+	return callApiResult(
+		() => commands.graphApplyPaths({ vaultPath, paths }),
+		WIKI_CALL_OPTS,
+	);
+}

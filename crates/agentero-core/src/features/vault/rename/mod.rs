@@ -92,9 +92,12 @@ impl Default for ExternalRenameRepairStore {
     }
 }
 
-/// Rebuild the old snapshot, execute one local rename transaction, then rebuild
-/// the index only after success. Callers can attach one dependent commit while
-/// the filesystem transaction is still recoverable (for example catalog paths).
+/// Plan a local rename from the current index, then retarget that index to the
+/// moved paths. A cold index is rebuilt once before planning. After a
+/// successful move the index remaps the old path prefix and re-reads only the
+/// Markdown the transaction changed, plus a listing of the destination — it
+/// does not walk the rest of the vault. Callers can attach one dependent
+/// commit while the filesystem transaction is still recoverable.
 pub fn run_local_rename_transaction<F>(
     vault_root: &Path,
     index: &mut WikiIndex,
@@ -112,21 +115,34 @@ where
             "vault path is not valid UTF-8",
         )
     })?;
-    index.rebuild(vault_path).map_err(|error| {
-        WikiRenameError::new(
-            WikiRenameErrorCode::IndexStale,
-            format!("could not build pre-move wiki snapshot: {error}"),
-        )
-    })?;
+    if !index.is_warm_for(vault_path) {
+        index.rebuild(vault_path).map_err(|error| {
+            WikiRenameError::new(
+                WikiRenameErrorCode::IndexStale,
+                format!("could not build pre-move wiki snapshot: {error}"),
+            )
+        })?;
+    } else {
+        // Saved notes are not a vault walk: only paths recorded since the last
+        // index update are re-read, then link rewrite is planned from that.
+        index.refresh_pending_sources(vault_path).map_err(|error| {
+            WikiRenameError::new(
+                WikiRenameErrorCode::IndexStale,
+                format!("could not refresh saved wiki sources: {error}"),
+            )
+        })?;
+    }
     let transaction = WikiRenameTransaction::plan(vault_root, index, from, to)?;
     transaction.reject_dirty_paths(dirty_paths)?;
     let result = transaction.execute(commit)?;
-    index.rebuild(vault_path).map_err(|error| {
-        WikiRenameError::new(
-            WikiRenameErrorCode::CommitFailed,
-            format!("move succeeded but wiki index rebuild failed: {error}"),
-        )
-    })?;
+    index
+        .refresh_after_move(vault_path, from, to, &result.updated_sources)
+        .map_err(|error| {
+            WikiRenameError::new(
+                WikiRenameErrorCode::CommitFailed,
+                format!("move succeeded but wiki index update failed: {error}"),
+            )
+        })?;
     Ok(result)
 }
 
@@ -240,6 +256,93 @@ mod tests {
             fs::read_to_string(root.join("notes/Source.md")).unwrap(),
             "[[archive/Final#Overview|Alias]] [target](../archive/Final.md#Overview)\n"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn local_rename_rewrites_links_from_a_warm_index_and_sees_inner_pdf_rename() {
+        let root = temp_vault();
+        write(&root, "notes/Source.md", "[[papers/old/NOTES#Overview]]\n");
+        write(&root, "papers/old/NOTES.md", "# Overview\n");
+        write(&root, "papers/old/old.pdf", "%PDF-1.4\n");
+        let mut index = snapshot(&root);
+        let vault = root.to_str().expect("utf8 vault");
+        assert!(index.is_warm_for(vault));
+
+        fs::rename(
+            root.join("papers/old/old.pdf"),
+            root.join("papers/old/new.pdf"),
+        )
+        .expect("rename pdf inside the folder before the move");
+        let result = run_local_rename_transaction(
+            &root,
+            &mut index,
+            "papers/old",
+            "papers/new",
+            &[],
+            || Ok(()),
+        )
+        .expect("rename folder");
+        assert_eq!(result.updated_sources, vec!["notes/Source.md"]);
+        assert_eq!(
+            fs::read_to_string(root.join("notes/Source.md")).unwrap(),
+            "[[papers/new/NOTES#Overview]]\n"
+        );
+        assert!(index.document("papers/new/NOTES.md").is_some());
+        assert!(index.document("papers/new/new.pdf").is_some());
+        assert!(index.document("papers/new/old.pdf").is_none());
+        assert!(index.document("papers/old/NOTES.md").is_none());
+        let outgoing = index.get_outgoing(vault, "notes/Source.md");
+        assert_eq!(
+            outgoing
+                .outgoing
+                .iter()
+                .filter_map(|edge| edge.target_path.as_deref())
+                .collect::<Vec<_>>(),
+            vec!["papers/new/NOTES.md"]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn warm_rename_rewrites_a_link_saved_after_the_index_was_built() {
+        let root = temp_vault();
+        write(&root, "notes/Source.md", "before\n");
+        write(&root, "notes/Target.md", "# Overview\n");
+        let mut index = snapshot(&root);
+        let saved = root.join("notes/Source.md");
+        fs::write(&saved, "[[notes/Target]]\n").unwrap();
+        index.note_saved_source(root.to_str().unwrap(), &saved.to_string_lossy());
+        run_local_rename_transaction(
+            &root,
+            &mut index,
+            "notes/Target.md",
+            "archive/Renamed.md",
+            &[],
+            || Ok(()),
+        )
+        .expect("rename sees the saved link");
+        assert_eq!(fs::read_to_string(saved).unwrap(), "[[archive/Renamed]]\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rename_plan_accepts_a_canonical_spelling_of_the_same_vault() {
+        let root = temp_vault();
+        write(&root, "notes/Target.md", "# Overview\n");
+        let index = snapshot(&root);
+        let canonical = crate::fs::canonicalize_best_effort(&root);
+        let canonical_text = canonical.to_str().expect("utf8 canonical vault");
+        assert!(index.describes_vault(canonical_text));
+        if canonical != root {
+            WikiRenameTransaction::plan(
+                &canonical,
+                &index,
+                "notes/Target.md",
+                "archive/Renamed.md",
+            )
+            .expect("canonical vault spelling still describes this index");
+        }
         let _ = fs::remove_dir_all(root);
     }
 }

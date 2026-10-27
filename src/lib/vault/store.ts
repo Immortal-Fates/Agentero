@@ -16,6 +16,7 @@ import {
 	collectMarkdownRelPaths,
 	collectTreeRefreshTargets,
 	collectWikiTargetRelPaths,
+	directoryIsLoaded,
 	type FileNode,
 	getRecentVaults,
 	getSavedVaultPath,
@@ -24,6 +25,7 @@ import {
 	loadVaultTree,
 	removeTreeNode,
 	replaceTreeNodeChildren,
+	upsertTreeChild,
 } from "@/lib/vault";
 import { watchRefreshDelayMs } from "@/lib/vault/shell-activity";
 import { toVaultRelative } from "@/lib/wiki";
@@ -299,6 +301,56 @@ export async function loadDirChildren(dirPath: string): Promise<void> {
  * changed paths map onto loaded tree nodes; falls back to a full rebuild
  * otherwise (change at the vault root, too many targets, remote vault).
  */
+function parentPath(path: string): string {
+	return path.replace(/[/\\][^/\\]+$/, "");
+}
+
+/**
+ * List only these directories and splice each into its loaded parent.
+ * A missing parent is left for {@link scheduleTreeRefresh}; a path that is
+ * not a directory is skipped. This does not re-list `papers/`.
+ */
+export async function refreshKnownDirectories(
+	absPaths: string[],
+): Promise<void> {
+	const vault = getVaultPath();
+	if (!vault || !isTauri() || absPaths.length === 0) return;
+	let tree = vaultStore.getState().tree;
+	const fallback: string[] = [];
+	for (const abs of absPaths) {
+		const parent = parentPath(abs);
+		if (!parent || parent === abs || !directoryIsLoaded(tree, parent)) {
+			fallback.push(abs);
+			continue;
+		}
+		try {
+			const children = await listVaultDirChildren(vault, abs);
+			const name = abs.split(/[/\\]/).pop() || abs;
+			tree = upsertTreeChild(tree, parent, {
+				id: abs,
+				name,
+				path: abs,
+				kind: "directory",
+				children,
+				childrenPending: false,
+			});
+		} catch {
+			// A file create/delete, or a directory that is already gone. The
+			// targeted tree refresh lists the loaded parent and applies it.
+			fallback.push(abs);
+		}
+	}
+	setTree(tree);
+	if (fallback.length > 0) scheduleTreeRefresh(fallback);
+}
+
+export function removeTreePaths(absPaths: string[]): void {
+	if (absPaths.length === 0) return;
+	let tree = vaultStore.getState().tree;
+	for (const path of absPaths) tree = removeTreeNode(tree, path);
+	setTree(tree);
+}
+
 export function scheduleTreeRefresh(changedAbsPaths?: string[]): void {
 	// Callers without path info (rescan, manual) force a full rebuild.
 	if (!changedAbsPaths?.length) treeRefreshPaths.add("");

@@ -434,6 +434,52 @@ export function pendingDirsAmongExpanded(
 	return out;
 }
 
+/**
+ * Insert or replace one child under a loaded parent. Other children stay,
+ * so a new paper does not re-list `papers/`.
+ */
+export function upsertTreeChild(
+	nodes: FileNode[],
+	parentPath: string,
+	child: FileNode,
+): FileNode[] {
+	const parentKey = normalizePathKey(parentPath);
+	const childKey = normalizePathKey(child.path);
+	const walk = (list: FileNode[]): FileNode[] =>
+		list.map((node) => {
+			if (
+				normalizePathKey(node.path) === parentKey &&
+				node.kind === "directory"
+			) {
+				const children = (node.children ?? []).filter(
+					(existing) => normalizePathKey(existing.path) !== childKey,
+				);
+				children.push(child);
+				sortNodes(children);
+				return { ...node, children, childrenPending: false };
+			}
+			if (node.children?.length) {
+				return { ...node, children: walk(node.children) };
+			}
+			return node;
+		});
+	return walk(nodes);
+}
+
+export function directoryIsLoaded(nodes: FileNode[], path: string): boolean {
+	const key = normalizePathKey(path);
+	const walk = (list: FileNode[]): boolean => {
+		for (const node of list) {
+			if (normalizePathKey(node.path) === key) {
+				return node.kind === "directory" && !node.childrenPending;
+			}
+			if (node.children?.length && walk(node.children)) return true;
+		}
+		return false;
+	};
+	return walk(nodes);
+}
+
 /** Immutable replace of a directory node's children (by absolute path). */
 export function replaceTreeNodeChildren(
 	nodes: FileNode[],

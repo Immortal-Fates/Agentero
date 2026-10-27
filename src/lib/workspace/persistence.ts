@@ -17,7 +17,8 @@ import {
 } from "@/lib/vault";
 import { primeSeedCache } from "@/lib/vault/seed-cache";
 import { getVaultPath } from "@/lib/vault/store";
-import { trackSelfWrittenPath } from "@/lib/wiki/store";
+import { applyWikiPaths } from "@/lib/wiki/api";
+import { bumpWikiIndexRevision, trackSelfWrittenPath } from "@/lib/wiki/store";
 import { getTabs, setTabs } from "@/lib/workspace/store";
 import {
 	type DocTab,
@@ -271,8 +272,20 @@ function persistTextLike(
 			try {
 				await writeVaultFile(path, content);
 				// The watcher echo of this write must not re-trigger a full Wiki
-				// rebuild on every autosave (#270).
+				// rebuild on every autosave (#270). The saved file itself is
+				// folded into the index here so a later rename sees the new links.
 				trackSelfWrittenPath(path);
+				if (isMarkdownPath(path)) {
+					const vault = getVaultPath();
+					if (vault) {
+						try {
+							await applyWikiPaths(vault, [path]);
+							bumpWikiIndexRevision();
+						} catch {
+							// The watcher recorded the path; rename re-reads it.
+						}
+					}
+				}
 				persistOutcomes[kind](path, content);
 				return true;
 			} catch (e) {

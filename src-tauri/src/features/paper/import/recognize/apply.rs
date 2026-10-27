@@ -72,7 +72,12 @@ fn meta_update_in_place(
 /// Shared handle bundle threaded through the apply paths.
 struct ApplyCtx<'a> {
     app: Option<&'a AppHandle>,
+    /// Filesystem root. Job runners pass the canonical path.
     vault: &'a Path,
+    /// Vault identity for frontend events. Callers pass the same string the
+    /// UI used to open the vault, which may differ from `vault` by `\\?\` or
+    /// a symlink prefix.
+    event_vault: &'a Path,
     cache: Option<&'a CapsCache>,
 }
 
@@ -80,12 +85,18 @@ struct ApplyCtx<'a> {
 pub(crate) async fn apply_probe_result(
     app: Option<&AppHandle>,
     vault: &Path,
+    event_vault: &Path,
     cache: Option<&CapsCache>,
     index: Arc<Mutex<WikiIndex>>,
     path_rel: &str,
     probe: &PdfIdentProbe,
 ) -> Result<RecognizeApply, AppError> {
-    let ctx = ApplyCtx { app, vault, cache };
+    let ctx = ApplyCtx {
+        app,
+        vault,
+        event_vault,
+        cache,
+    };
     let path_rel = path_rel.replace('\\', "/");
     let Some(mut record) = papers::get_by_path(vault, &path_rel)? else {
         return Ok(RecognizeApply::Skipped("paper-missing"));
@@ -229,7 +240,7 @@ async fn rename_to_canonical(
             crate::core::usage::rename_path_best_effort(&vault.to_string_lossy(), from_rel, to_rel);
             emit_paper_renamed(
                 app,
-                vault,
+                ctx.event_vault,
                 PaperRenamedEvent {
                     old_paper_id: placeholder_id_from_path(from_rel),
                     new_paper_id: base,
@@ -314,7 +325,7 @@ fn merge_placeholder_into(
 
     emit_paper_renamed(
         app,
-        vault,
+        ctx.event_vault,
         PaperRenamedEvent {
             old_paper_id: record.id.clone(),
             new_paper_id: target.id.clone(),
@@ -388,6 +399,7 @@ mod tests {
         let outcome = apply_probe_result(
             None,
             &vault,
+            &vault,
             None,
             index,
             "papers/attention-paper",
@@ -435,6 +447,7 @@ mod tests {
         let outcome = apply_probe_result(
             None,
             &vault,
+            &vault,
             None,
             index,
             "papers/attention-paper",
@@ -460,6 +473,7 @@ mod tests {
 
         let outcome = apply_probe_result(
             None,
+            &vault,
             &vault,
             None,
             index,
@@ -495,6 +509,7 @@ mod tests {
         let outcome = apply_probe_result(
             None,
             &vault,
+            &vault,
             None,
             index,
             "papers/attention-paper",
@@ -516,6 +531,7 @@ mod tests {
 
         let outcome = apply_probe_result(
             None,
+            &vault,
             &vault,
             None,
             index,

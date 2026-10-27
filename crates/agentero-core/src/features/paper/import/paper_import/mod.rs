@@ -229,7 +229,7 @@ pub async fn paper_commit(
         return Err(e);
     }
 
-    crate::features::lifecycle::emit_paper_imported(opts.app, vault, &meta.id);
+    crate::features::lifecycle::emit_paper_imported(opts.app, vault, &meta.id, &path_rel);
 
     let arxiv_request = crate::features::paper::source::arxiv_request(&meta);
     let (assets, assets_pending) = match opts.assets {
@@ -249,7 +249,9 @@ pub async fn paper_commit(
             .await
             {
                 Ok(assets) => {
-                    crate::features::lifecycle::emit_paper_assets_ready(opts.app, vault, &meta.id);
+                    crate::features::lifecycle::emit_paper_assets_ready(
+                        opts.app, vault, &meta.id, &path_rel,
+                    );
                     assets
                 }
                 Err(e) => {
@@ -266,7 +268,9 @@ pub async fn paper_commit(
             (assets, false)
         }
         AssetsPolicy::CopyPdf { .. } => {
-            crate::features::lifecycle::emit_paper_assets_ready(opts.app, vault, &meta.id);
+            crate::features::lifecycle::emit_paper_assets_ready(
+                opts.app, vault, &meta.id, &path_rel,
+            );
             let assets = AssetDownloadResult {
                 pdf: true,
                 ..Default::default()
@@ -533,8 +537,8 @@ async fn merge_pdf_into_existing(
     if let Some(c) = cache {
         c.invalidate(vault, &existing.path);
     }
-    crate::features::lifecycle::emit_paper_imported(app, vault, &existing.id);
-    crate::features::lifecycle::emit_paper_assets_ready(app, vault, &existing.id);
+    crate::features::lifecycle::emit_paper_imported(app, vault, &existing.id, &existing.path);
+    crate::features::lifecycle::emit_paper_assets_ready(app, vault, &existing.id, &existing.path);
 
     let caps = cache
         .map(|c| c.caps_for(vault, &existing.path))

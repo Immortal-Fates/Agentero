@@ -167,6 +167,7 @@ impl FsWatchController {
                             deadline = None;
                         }
                         Ok(Some(Ok(event))) => {
+                            note_markdown_for_rename(&app, &watch_root, &event);
                             if burst_at.is_none() {
                                 burst_at = Some(Instant::now());
                             }
@@ -259,6 +260,27 @@ fn caps_paper_dirs(vault_root: &str, path: &str) -> Vec<String> {
         current = parent;
     }
     dirs
+}
+
+/// Record Markdown writes before the UI debounce, without taking the wiki
+/// index lock. Rename planning re-reads just these paths, including saves
+/// whose watcher echo deliberately does not rebuild the index.
+fn note_markdown_for_rename(app: &AppHandle, vault: &str, event: &Event) {
+    if event.paths.is_empty() {
+        return;
+    }
+    let Some(state) = app.try_state::<crate::features::markdown::wiki::WikiIndexState>() else {
+        return;
+    };
+    for path in &event.paths {
+        let Some(text) = path.to_str() else {
+            continue;
+        };
+        if is_ignored(text) || is_agentero_atomic_temp(text) {
+            continue;
+        }
+        state.enqueue_saved_source(vault, text);
+    }
 }
 
 /// Drop cached `PaperCaps` for folders an external write touched, so the next

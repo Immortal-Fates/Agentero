@@ -2,6 +2,7 @@ use crate::app::command_util::{lock_wiki_index, try_vault};
 use crate::core::blocking::run_blocking;
 use crate::core::error::{map_err, ApiResult, AppError};
 use crate::features::markdown::wiki::heading_rename::run_heading_rename_transaction;
+use crate::features::markdown::wiki::index::WikiPathApply;
 use crate::features::markdown::wiki::models::{
     BacklinksResponse, InternalLinkSyntax, RebuildResult, WikiEmbedResponse,
     WikiRenameHeadingResult, WikiResolveResponse, WikiSearchCandidate, WikiSearchCandidateKind,
@@ -155,6 +156,58 @@ pub async fn graph_rebuild(
             }
             Err(e) => {
                 let err = AppError::message(e);
+                op.finish_err(&err);
+                map_err(err)
+            }
+        }
+    })
+    .await)
+}
+
+#[derive(Debug, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphApplyPathsArgs {
+    pub vault_path: String,
+    /// Absolute or vault-relative files and paper folders to fold into the index.
+    pub paths: Vec<String>,
+}
+
+/// Update the wiki index from known paths. A cold index, or a path that is not
+/// a file or a single paper folder, falls back to [`graph_rebuild`].
+#[tauri::command]
+#[specta::specta]
+pub async fn graph_apply_paths(
+    index: State<'_, WikiIndexState>,
+    args: GraphApplyPathsArgs,
+) -> Result<ApiResult<RebuildResult>, String> {
+    use crate::core::log_util::OpTimer;
+
+    let index = index.handle();
+    Ok(run_blocking(move || {
+        let op = OpTimer::start("graph_apply");
+        let mut guard = lock_wiki_index!(index; op);
+        match guard.apply_known_paths(&args.vault_path, &args.paths) {
+            Ok(WikiPathApply::Applied(result)) => {
+                op.finish_ok();
+                ApiResult::ok(result)
+            }
+            Ok(WikiPathApply::NeedsRebuild) => {
+                op.finish_ok_extra("fallback=rebuild");
+                let rebuild = OpTimer::start("graph_rebuild");
+                match guard.rebuild(&args.vault_path) {
+                    Ok(result) => {
+                        rebuild.finish_ok();
+                        ApiResult::ok(result)
+                    }
+                    Err(error) => {
+                        let err = AppError::message(error);
+                        rebuild.finish_err(&err);
+                        map_err(err)
+                    }
+                }
+            }
+            Err(error) => {
+                let err = AppError::message(error);
                 op.finish_err(&err);
                 map_err(err)
             }

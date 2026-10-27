@@ -407,6 +407,66 @@ pub async fn paper_rescan(args: PaperRescanArgs) -> ApiResult<PaperRescanResult>
 
 #[derive(Debug, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
+pub struct PaperEnsureRowsArgs {
+    pub vault_path: String,
+    /// Absolute or vault-relative paths under `papers/`.
+    pub paths: Vec<String>,
+}
+
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperEnsureRowsResult {
+    /// Rows inserted. Existing rows are left as they are.
+    pub count: usize,
+    /// True when a path could not be pinned to one paper folder and the
+    /// command rebuilt the catalog from `papers/`.
+    pub rescanned: bool,
+}
+
+/// Ensure catalog rows for watcher paths. Falls back to a full rescan only
+/// when a path under `papers/` is not one paper folder.
+#[tauri::command]
+#[specta::specta]
+pub async fn paper_ensure_rows(args: PaperEnsureRowsArgs) -> ApiResult<PaperEnsureRowsResult> {
+    use crate::features::paper::catalog::papers::PaperRowsTouch;
+
+    run_blocking(move || {
+        use crate::core::log_util::OpTimer;
+
+        let started = std::time::Instant::now();
+        let op = OpTimer::start("paper_ensure");
+        let vault = try_vault!(&args.vault_path, op);
+        match papers::ensure_rows_for_paths(&vault, &args.paths) {
+            Ok(PaperRowsTouch::Ensured { count }) => {
+                op.finish_ok_extra(format!("count={count}"));
+                ApiResult::ok(PaperEnsureRowsResult {
+                    count,
+                    rescanned: false,
+                })
+            }
+            Ok(PaperRowsTouch::Rescanned { count }) => {
+                let ms = started.elapsed().as_millis();
+                op.finish_ok_extra(format!("fallback=rescan count={count}"));
+                log::info!(
+                    target: "agentero::op",
+                    "op end paper_rescan ok=true duration_ms={ms} fallback=ensure count={count}"
+                );
+                ApiResult::ok(PaperEnsureRowsResult {
+                    count,
+                    rescanned: true,
+                })
+            }
+            Err(error) => {
+                op.finish_err(&error);
+                map_err(error)
+            }
+        }
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PaperPageCountsArgs {
     pub vault_path: String,
 }

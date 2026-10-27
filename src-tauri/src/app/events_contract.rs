@@ -290,6 +290,8 @@ pub struct SyncProgressEvent {
 pub struct PaperFactPayload {
     pub vault_id: String,
     pub paper_id: String,
+    /// Vault-relative paper folder. Empty when the emitter only knows the id.
+    pub path: String,
     pub timestamp: i64,
 }
 
@@ -1243,8 +1245,18 @@ fn paper_fact_mirror_matches_core_emit_shape() {
     use tauri_specta::Event as _;
     let hooks = std::sync::Arc::new(CaptureHooks::default());
     let app = agentero_core::app_handle::AppHandle::with_hooks(hooks.clone());
-    emit_paper_imported(Some(&app), Path::new("/tmp/vault"), "paper-1");
-    emit_paper_assets_ready(Some(&app), Path::new("/tmp/vault"), "paper-1");
+    emit_paper_imported(
+        Some(&app),
+        Path::new("/tmp/vault"),
+        "paper-1",
+        "papers/paper-1",
+    );
+    emit_paper_assets_ready(
+        Some(&app),
+        Path::new("/tmp/vault"),
+        "paper-1",
+        "papers/paper-1",
+    );
     let captured = hooks.captured.lock().expect("hooks lock");
     let events: Vec<&str> = captured.iter().map(|(e, _)| e.as_str()).collect();
     assert_eq!(
@@ -1256,6 +1268,7 @@ fn paper_fact_mirror_matches_core_emit_shape() {
         &serde_json::to_value(&PaperFactPayload {
             vault_id: "/tmp/vault".to_string(),
             paper_id: "paper-1".to_string(),
+            path: "papers/paper-1".to_string(),
             timestamp: 0,
         })
         .unwrap(),

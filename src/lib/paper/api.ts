@@ -165,6 +165,20 @@ export async function rescanPapers(vaultPath: string): Promise<number> {
 }
 
 /**
+ * Ensure catalog rows for watcher paths under `papers/`. The host rescans
+ * the library only when a path is not one paper folder.
+ */
+export async function ensurePaperRows(
+	vaultPath: string,
+	paths: string[],
+): Promise<{ count: number; rescanned: boolean }> {
+	if (!isTauri() || paths.length === 0) return { count: 0, rescanned: false };
+	return callApi(() => commands.paperEnsureRows({ vaultPath, paths }), {
+		fallback: "paper_ensure_rows failed",
+	});
+}
+
+/**
  * Cached PDF page counts keyed by vault-relative paper path (catalog table
  * `pdf_page_counts`). Lets the reading heatmap skip reopening every PDF.
  * Best-effort: cache misses/failures just fall back to reading the PDF.

@@ -16,7 +16,7 @@ type VaultFileEventsParams = {
 	/** Refresh the file tree after a structural change (create/delete/rename). */
 	onStructuralChange: (changedAbsPaths: string[]) => void;
 	/** Refresh catalog-backed Library state after external paper/catalog changes. */
-	onLibraryChange?: () => void;
+	onLibraryChange?: (paths: string[]) => void;
 	/**
 	 * Any touched path (content or structural). Used to (debounced) rebuild the
 	 * wiki / backlinks / graph index so it never goes stale after external writes.
@@ -90,7 +90,7 @@ export function useVaultFileEvents({
 			const h = handlersRef.current;
 			if (h.shouldIgnoreEvent?.(payload)) return;
 			if (h.onLibraryChange && payloadAffectsLibrary(payload)) {
-				h.onLibraryChange();
+				h.onLibraryChange(payload.paths);
 			}
 			if (payload.rename) {
 				await h.onExternalRename?.(payload.rename, payload);

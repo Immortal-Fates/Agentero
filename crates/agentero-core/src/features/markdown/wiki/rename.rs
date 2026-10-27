@@ -132,7 +132,13 @@ impl WikiRenameTransaction {
         let vault_root = vault_root.into();
         crate::fs::ensure_vault_dir(&vault_root)
             .map_err(|e| WikiRenameError::new(WikiRenameErrorCode::InvalidPath, e.to_string()))?;
-        if index.vault_path.as_deref() != vault_root.to_str() {
+        let Some(vault_text) = vault_root.to_str() else {
+            return Err(WikiRenameError::new(
+                WikiRenameErrorCode::InvalidPath,
+                "vault path is not valid UTF-8",
+            ));
+        };
+        if !index.describes_vault(vault_text) {
             return Err(WikiRenameError::new(
                 WikiRenameErrorCode::IndexStale,
                 "wiki index does not describe this vault",

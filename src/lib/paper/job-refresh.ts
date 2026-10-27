@@ -2,7 +2,8 @@
  * Refresh the library (debounced, quiet) when JobCenter jobs that mutate the
  * catalog or assets settle. The file watcher already refreshes the tree for
  * on-disk changes; catalog edits (e.g. `body_source` after a download or
- * `PAPER.md` parse) are watcher-ignored, so the library needs this nudge.
+ * `PAPER.md` parse) are watcher-ignored, so the library reloads its rows.
+ * Import and recognition join the same wave instead of rescanning `papers/`.
  *
  * Stays on raw `job:changed` rather than the `job:completed` / `job:failed`
  * lifecycle events because `cancelled` and `skipped` also count as settled
@@ -14,7 +15,7 @@ import { events } from "@/lib/core/bindings";
 import { notifyWarning } from "@/lib/core/notify";
 import { isTerminalJobState, type JobKind } from "@/lib/core/tasks";
 import { listenEventSafe } from "@/lib/core/tauri-events";
-import { scheduleLibraryRefresh } from "@/lib/paper/library-store";
+import { noteCommittedLibraryList } from "@/lib/lifecycle/refresh-wave";
 
 const REFRESH_ON_KINDS: ReadonlySet<JobKind> = new Set([
 	"downloadAssets",
@@ -44,6 +45,6 @@ export function startJobCompletionRefresh(): () => void {
 				);
 			}
 		}
-		scheduleLibraryRefresh();
+		noteCommittedLibraryList();
 	});
 }

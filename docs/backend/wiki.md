@@ -21,8 +21,8 @@
 - 反链 / 出链查询
 - `graph_get_graph` 等（双链 nodes / edges / center / depth，供索引/调试）— 见 [api.md](api.md)
 - 嵌入目标解析（供前端 `![[...]]`）
-- 链接感知重命名/移动；标题重命名事务。同 Vault 的 `paper_move` / CLI `paper move` / 本地 Connector 共用 core `catalog/move_paper.rs`，统一调用既有 `run_local_rename_transaction`：先重建/校验索引，保护 dirty paths，再执行移动、改链与 Catalog 提交；失败沿用补偿机制。CLI 使用新索引，不依赖 UI 重建来修复链接。
-- 索引：`.md` 变更防抖重建（前端调度 + Host 重建）
+- 链接感知重命名/移动；标题重命名事务。同 Vault 的 `paper_move` / CLI `paper move` / 本地 Connector 共用 core `catalog/move_paper.rs`，统一调用既有 `run_local_rename_transaction`：索引已热则先重读保存后尚未纳入索引的 Markdown，再规划改写，否则先重建一次；路径比较认同一资料库的规范写法（`\\?\`、`/var` 与 `/private/var`）。保护 dirty paths，再执行移动、改链与 Catalog 提交；失败沿用补偿机制。CLI 使用这次事务更新后的索引，不依赖 UI 再翻一遍库。
+- 索引：`.md` 变更防抖后按路径更新（前端调度 + Host `graph_apply_paths`）
 - 只读语义检查：`WikiIndex::check_links` 按全库、Markdown 文件或目录返回状态计数与问题 occurrence；CLI 暴露为 `agentero doctor wiki [<source>] --json`
 
 解析、resolve、嵌入投影、前端导航与显式标题重命名共享“唯一连续后缀”规则。完整路径自然也是自身后缀；不存在或有歧义的 path 保持既有 `invalidFragment` / `ambiguous` 结果，不回退到任意同名叶标题。标题重命名根据已解析的 canonical path 计算后缀在完整路径中的偏移，只改写引用实际包含的被改名段。
@@ -31,7 +31,8 @@
 
 `WikiIndex::rebuild` 是增量流水线，语义与全量重建等价：
 
-- **指纹热路径**：每次 rebuild 先 walk + stat 出全库 `(path, size, mtime)` 指纹。若与内存中上一次构建完全一致，直接返回上次结果；若部分变化，仅重读变更文件，未变文件复用内存中的解析产物（documents + occurrences）。rename 事务前后的两次 rebuild 因此在生产中都是廉价的新鲜度检查。
+- **指纹热路径**：全库 `graph_rebuild` 先列出并 stat 全库 `(path, size, mtime)` 指纹。若与内存中上一次构建完全一致，直接返回上次结果；若部分变化，仅重读变更文件，未变文件复用内存中的解析产物（documents + occurrences）。打开 Vault、Doctor、以及调用方没给出路径或索引还是冷的时候走这条。
+- **已知路径**：`graph_apply_paths` 在索引已经描述当前 Vault 时，只 stat / 读取调用方给出的文件；论文目录则只列那一个目录。路径接受同一资料库的规范写法（`\\?\`、`/var` 与 `/private/var`），不会因为前缀对不上被当成库外路径。然后在内存里对全部链接重新 resolve，这样新笔记的标题 alias 仍能点亮库里原有的 `[[标题]]`。对不上清单（冷索引、Vault 根、非单篇目录）时退回全库 `graph_rebuild`。文件监视器把保存过的 Markdown 记在索引锁外面的队列里，rename 规划时再并入；监视线程不等待 `graph_rebuild` / `graph_apply_paths`。本地 rename 在索引已热时不再前后各翻一遍库：改名前直接用当前索引规划改写，改名后按旧路径前缀更新内存清单，并只重读事务改过字的 Markdown 与移动目标目录。
 - **Resolve 查找表**：`resolve.rs::DocumentLookup` 按精确路径 / ASCII 小写路径 / 路径段后缀 / stem / alias 预分桶，把逐 occurrence 的线性扫描（O(E×D)）降到哈希查找（≈O(E)），解析优先级与线性实现逐字节等价（有对照测试）。
 - **快照只存解析产物**：`.sqlite` 缓存（schema v3）按文件粒度存 documents 与 occurrences（`(source, ordinal)` 主键），行级 SHA-256 校验替代整份 JSON 快照哈希。resolve 结果**不**入库——加载时对完整文档集重跑解析，因此“别的文件改变了某条链接的解析结果”不会让缓存变脏。
 - **增量写盘**：磁盘缓存与内存快照同步时，持久化只 upsert/delete 变更文件的行；缓存缺失、schema/parser 版本不符或上次写盘失败则整体重写。
@@ -54,7 +55,7 @@ agentero doctor wiki [Vault 相对文件或目录] --json
 
 ```text
 Vault Markdown 变更
-  → 防抖 scheduleWikiRebuild
+  → 防抖后按变更路径 `graph_apply_paths`（冷索引或路径对不上清单时才 `graph_rebuild`）
   → Host 解析 wikilink
   → 前端状态栏反链刷新，或 CLI 只读诊断
 ```
