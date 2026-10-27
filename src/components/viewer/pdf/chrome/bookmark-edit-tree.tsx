@@ -117,7 +117,7 @@ export function BookmarkEditTree({
 								setDragId(null);
 							}}
 							className={cn(
-								"group flex min-h-8 items-center rounded border-y border-transparent",
+								"group flex min-h-8 min-w-0 w-full items-center rounded border-y border-transparent",
 								dragId === node.id && "opacity-40",
 								drop?.id === node.id &&
 									(drop.position === "inside"
@@ -185,7 +185,7 @@ export function BookmarkEditTree({
 								<Pencil className="size-3.5" />
 							</Button>
 							{page !== null && (
-								<span className="px-1 text-muted-foreground text-xs tabular-nums">
+								<span className="shrink-0 px-1 text-muted-foreground text-xs tabular-nums">
 									{page + 1}
 								</span>
 							)}
