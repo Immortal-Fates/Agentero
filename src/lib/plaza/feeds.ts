@@ -13,7 +13,7 @@ import { lookupSubmit } from "@/lib/paper/import-actions";
 /** Wire shapes from the generated bindings (feeds.sqlite rows). */
 export type { FeedItem, FeedSub };
 
-export type FeedFilter = "all" | "paper" | "other";
+export type FeedFilter = "all" | "paper" | "other" | "unread";
 
 export const ARXIV_FEED_CHIPS = [
 	"cs.AI",
@@ -403,4 +403,13 @@ export function hostErrorKey(message: string): FeedErrorKey | null {
 	return code in FEED_ERROR_KEYS
 		? FEED_ERROR_KEYS[code as keyof typeof FEED_ERROR_KEYS]
 		: null;
+}
+
+export async function feedsSetRead(
+	id: string,
+	read: boolean,
+): Promise<FeedItem> {
+	return callApi(() => commands.feedsSetRead({ id, read }), {
+		fallback: "feeds.markFailed",
+	});
 }

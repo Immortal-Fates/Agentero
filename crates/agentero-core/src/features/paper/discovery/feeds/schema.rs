@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
 
-pub const SCHEMA_VERSION: i32 = 4;
+pub const SCHEMA_VERSION: i32 = 5;
 pub const ITEMS_PER_FEED: i64 = 200;
 
 const DDL_V1: &str = r#"
@@ -76,7 +76,7 @@ pub fn ensure_feeds_at(db_path: &Path) -> Result<Connection, AppError> {
 
 /// Migration ladder, applied by [`crate::sqlite::run_migrations`] (per-step
 /// version re-read, stamping, `newer than app` guard).
-const MIGRATION_STEPS: [MigrationStep; 4] = [
+const MIGRATION_STEPS: [MigrationStep; 5] = [
     MigrationStep::batch(1, DDL_V1),
     // SQLite ADD COLUMN is not fully batch-safe across existing cols; run
     // one-by-one ignore dupes.
@@ -86,6 +86,7 @@ const MIGRATION_STEPS: [MigrationStep; 4] = [
     // artifact cleanup, placeholder restore fix); cached bodies from
     // older versions may show broken math. Re-resolve on next open.
     MigrationStep::batch(4, "UPDATE items SET body_markdown = NULL"),
+    MigrationStep::batch(5, "ALTER TABLE items ADD COLUMN read_at TEXT"),
 ];
 
 fn migrate(conn: &Connection) -> Result<(), AppError> {
@@ -138,6 +139,30 @@ fn set_schema_version(conn: &Connection, version: i32) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migrates_v4_preserving_cached_body_and_import_state() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL_V1).unwrap();
+        conn.execute_batch(MIGRATE_V1_TO_V2).unwrap();
+        set_schema_version(&conn, 4).unwrap();
+        conn.execute_batch("INSERT INTO subscriptions (id, url, title, added_at) VALUES ('s', 'https://example.com/feed', 'Feed', '2026-10-27T00:00:00.000Z');
+            INSERT INTO items (id, subscription_id, guid, title, first_seen_at, body_markdown, imported_at)
+            VALUES ('i', 's', 'g', 'Title', '2026-10-27T00:00:00.000Z', '# Saved body', '2026-10-27T00:00:00.000Z');").unwrap();
+        migrate(&conn).unwrap();
+        let (body, imported, read): (String, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT body_markdown, imported_at, read_at FROM items WHERE id = 'i'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(body, "# Saved body");
+        assert!(imported.is_some());
+        assert!(read.is_none());
+        migrate(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION);
+    }
 
     #[test]
     fn creates_schema() {
@@ -225,6 +250,8 @@ mod tests {
                  ('i2', 's1', 'g2', 'two', 'garbage-date', '2026-08-03T11:00:00.500Z', '2026-08-03T12:00:00Z');",
             )
             .unwrap();
+            conn.execute_batch("ALTER TABLE items DROP COLUMN read_at")
+                .unwrap();
             conn.execute(
                 "UPDATE schema_meta SET value = '2' WHERE key = 'schema_version'",
                 [],
@@ -232,7 +259,7 @@ mod tests {
             .unwrap();
         }
         let conn = ensure_feeds_at(&db).expect("migrate v3");
-        assert_eq!(schema_version(&conn).unwrap(), 4);
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION);
 
         let sub: (String, Option<String>) = conn
             .query_row(
@@ -292,15 +319,9 @@ mod tests {
         };
         assert_eq!(order, vec!["i2", "i1"]);
 
-        // Idempotent re-run.
-        conn.execute(
-            "UPDATE schema_meta SET value = '2' WHERE key = 'schema_version'",
-            [],
-        )
-        .unwrap();
-        drop(conn);
-        let conn = ensure_feeds_at(&db).expect("re-migrate");
-        assert_eq!(schema_version(&conn).unwrap(), 4);
+        // Timestamp normalization itself remains idempotent.
+        migrate_v3(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION);
         let added: String = conn
             .query_row(
                 "SELECT added_at FROM subscriptions WHERE id = 's1'",
@@ -334,6 +355,8 @@ mod tests {
                  VALUES ('i1', 's1', 'g1', 'one', '2026-08-03T10:00:01.000Z', '# old body', 'https://doi.org/10.1/x');",
             )
             .unwrap();
+            conn.execute_batch("ALTER TABLE items DROP COLUMN read_at")
+                .unwrap();
             conn.execute(
                 "UPDATE schema_meta SET value = '3' WHERE key = 'schema_version'",
                 [],
@@ -341,7 +364,7 @@ mod tests {
             .unwrap();
         }
         let conn = ensure_feeds_at(&db).expect("migrate v4");
-        assert_eq!(schema_version(&conn).unwrap(), 4);
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION);
         let (body, paper_url): (Option<String>, Option<String>) = conn
             .query_row(
                 "SELECT body_markdown, paper_url FROM items WHERE id = 'i1'",

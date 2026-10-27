@@ -280,7 +280,13 @@
 				"fetch": "Could not fetch this feed.",
 				"body": "Could not read the feed body.",
 				"opFailed": "The feed operation failed."
-			}
+			},
+			"hideRead": "Hide read items",
+			"emptyUnread": "No unread items.",
+			"read": "Read",
+			"unread": "Unread",
+			"markRead": "Mark as read",
+			"markUnread": "Mark as unread"
 		},
 		"skills": {
 			"title": "Skill picks",

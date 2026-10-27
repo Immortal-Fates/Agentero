@@ -97,3 +97,10 @@ Windows 上地址是 `http://agentero-html.localhost/t/...`。`sandbox="allow-sc
 - 广场各站专属代理(固定 origin,不做任意 host):`docs/development/plaza.md`
 - PDF 划词(持久化 marks 的对照实现):[pdf.md](pdf.md)
 - Host 契约：[../backend/api.md](../backend/api.md) §3.6.3
+
+
+## RSS 与网页入库边界
+
+当前 Translator 返回 `webpage` 时可映射为 `html` 条目，Connector / Zotero 迁移复用同一数据模型；打开网页条目可同时使用 `NOTES.md`。这不保证任意 URL 都能解析，也不等于正文已经离线归档。RSS 普通网页目前尚未提供收藏入库入口。后续设计与验收清单见 [网页收藏入库（#821）](../development/webpage-library.md)。
+
+订阅列表已支持打开详情自动标记已读、灰色标题、隐藏已读和恢复未读；阅读状态只写订阅缓存，不创建 Vault 条目。具体边界见 [订阅读取状态](../development/plaza-feeds.md#订阅读取状态已实现)。

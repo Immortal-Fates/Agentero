@@ -10,6 +10,8 @@ import {
 	Download,
 	ExternalLink,
 	Loader2,
+	Mail,
+	MailOpen,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -56,10 +58,12 @@ export function PlazaFeedItemRow({
 	item,
 	hideSource,
 	onOpen,
+	onToggleRead,
 }: {
 	item: FeedItem;
 	hideSource: boolean;
 	onOpen: (item: FeedItem) => void;
+	onToggleRead: (item: FeedItem) => void;
 }) {
 	const { t, i18n } = useTranslation("sidebar");
 	const when = formatFeedWhen(item.publishedAt, i18n.language);
@@ -77,13 +81,22 @@ export function PlazaFeedItemRow({
 				type="button"
 				onClick={() => onOpen(item)}
 				className={cn(
-					"block w-full min-w-0 pr-8 text-left",
+					"block w-full min-w-0 pr-16 text-left",
+					item.readAt && "text-muted-foreground",
 					"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
 				)}
 			>
+				<span className="sr-only">
+					{t(item.readAt ? "plaza.feeds.read" : "plaza.feeds.unread")}
+				</span>
 				{hideSource ? (
 					<div className="flex items-baseline gap-2">
-						<span className="min-w-0 truncate font-medium text-sm">
+						<span
+							className={cn(
+								"min-w-0 truncate text-sm",
+								!item.readAt && "font-medium",
+							)}
+						>
 							{item.title}
 						</span>
 						{when ? (
@@ -94,7 +107,11 @@ export function PlazaFeedItemRow({
 					</div>
 				) : (
 					<>
-						<div className="truncate font-medium text-sm">{item.title}</div>
+						<div
+							className={cn("truncate text-sm", !item.readAt && "font-medium")}
+						>
+							{item.title}
+						</div>
 						<div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
 							<span className="truncate">{item.subscriptionTitle}</span>
 							{when ? (
@@ -112,6 +129,9 @@ export function PlazaFeedItemRow({
 					</p>
 				) : null}
 			</button>
+			<div className="absolute top-2 right-10">
+				<FeedReadButton item={item} onClick={() => onToggleRead(item)} />
+			</div>
 			{href ? (
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -142,12 +162,14 @@ export function PlazaFeedItemDetail({
 	onBack,
 	onImported,
 	onResolved,
+	onToggleRead,
 }: {
 	item: FeedItem;
 	hideSource: boolean;
 	onBack: () => void;
 	onImported: (next: FeedItem) => void;
 	onResolved: (next: FeedItem) => void;
+	onToggleRead: () => void;
 }) {
 	const { t, i18n } = useTranslation("sidebar");
 	const [busy, setBusy] = useState(false);
@@ -215,6 +237,7 @@ export function PlazaFeedItemDetail({
 						.filter(Boolean)
 						.join(" · ")}
 				</span>
+				<FeedReadButton item={item} onClick={onToggleRead} />
 				{resolving ? (
 					<Loader2
 						className="size-3.5 shrink-0 animate-spin text-muted-foreground"
@@ -307,5 +330,38 @@ export function PlazaFeedItemDetail({
 				</div>
 			) : null}
 		</div>
+	);
+}
+
+function FeedReadButton({
+	item,
+	onClick,
+}: {
+	item: FeedItem;
+	onClick: () => void;
+}) {
+	const { t } = useTranslation("sidebar");
+	const label = t(
+		item.readAt ? "plaza.feeds.markUnread" : "plaza.feeds.markRead",
+	);
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					aria-label={label}
+					onClick={onClick}
+				>
+					{item.readAt ? (
+						<MailOpen className="size-3.5 text-muted-foreground" aria-hidden />
+					) : (
+						<Mail className="size-3.5" aria-hidden />
+					)}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
 	);
 }

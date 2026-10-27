@@ -140,6 +140,7 @@ macro_rules! common_commands {
             crate::features::paper::discovery::feeds::commands::feeds_rename,
             crate::features::paper::discovery::feeds::commands::feeds_refresh,
             crate::features::paper::discovery::feeds::commands::feeds_items,
+            crate::features::paper::discovery::feeds::commands::feeds_set_read,
             crate::features::paper::discovery::feeds::commands::feeds_mark_imported,
             crate::features::paper::discovery::scratch::plaza_scratch_prepare,
             crate::features::paper::discovery::scratch::plaza_scratch_stats,

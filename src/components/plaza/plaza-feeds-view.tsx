@@ -6,8 +6,8 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TFunction } from "i18next";
-import { EllipsisVertical, Pin, Plus, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { EllipsisVertical, EyeOff, Pin, Plus, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	PlazaFeedItemDetail,
@@ -45,6 +45,7 @@ import {
 	feedsRemove,
 	feedsRename,
 	feedsSetPinned,
+	feedsSetRead,
 	hostErrorKey,
 } from "@/lib/plaza/feeds";
 
@@ -283,6 +284,11 @@ function AddForm({
 export function PlazaFeedsView({ className }: { className?: string }) {
 	const { t } = useTranslation("sidebar");
 	const [subs, setSubs] = useState<FeedSub[]>([]);
+	const [hideRead, setHideRead] = useState(false);
+	const hideReadRef = useRef(hideRead);
+	hideReadRef.current = hideRead;
+	const itemsRequest = useRef(0);
+	const readPending = useRef(new Set<string>());
 	const [items, setItems] = useState<FeedItem[]>([]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -296,13 +302,15 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 	const closeSubMenu = useCallback(() => setSubMenu(null), []);
 
 	const loadItems = useCallback(
-		async (subscriptionId: string | null) => {
+		async (subscriptionId: string | null, closeDetail = true) => {
+			const request = ++itemsRequest.current;
+			if (closeDetail) setOpenItem(null);
 			try {
 				const rows = await feedsItems({
 					subscriptionId: subscriptionId ?? undefined,
+					filter: hideReadRef.current ? "unread" : "all",
 				});
-				setItems(rows);
-				setOpenItem(null);
+				if (request === itemsRequest.current) setItems(rows);
 			} catch (error) {
 				toastHostError(errorText(error), t);
 			}
@@ -321,8 +329,7 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 				const next = await feedsList();
 				if (cancelled) return;
 				setSubs([...next].sort(compareFeedSubs));
-				const rows = await feedsItems({ filter: "all" });
-				if (!cancelled) setItems(rows);
+				await loadItems(selectedIdRef.current, false);
 			} catch (error) {
 				if (!cancelled) {
 					toastHostError(errorText(error), t);
@@ -334,7 +341,7 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 		return () => {
 			cancelled = true;
 		};
-	}, [t]);
+	}, [loadItems, t]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -343,7 +350,7 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 				const result = await feedsRefresh({ staleOnly: true });
 				if (cancelled) return;
 				setSubs([...result.subscriptions].sort(compareFeedSubs));
-				await loadItems(selectedIdRef.current);
+				await loadItems(selectedIdRef.current, false);
 			} catch {
 				/* stale refresh is best-effort */
 			}
@@ -419,9 +426,48 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 	}, []);
 
 	const applyItem = useCallback((next: FeedItem) => {
-		setItems((prev) => prev.map((row) => (row.id === next.id ? next : row)));
-		setOpenItem(next);
+		setItems((prev) =>
+			prev.map((row) =>
+				row.id === next.id ? { ...next, readAt: row.readAt } : row,
+			),
+		);
+		setOpenItem((current) =>
+			current?.id === next.id ? { ...next, readAt: current.readAt } : current,
+		);
 	}, []);
+
+	const setRead = useCallback(
+		async (item: FeedItem, read: boolean) => {
+			if (readPending.current.has(item.id)) return;
+			readPending.current.add(item.id);
+			try {
+				const next = await feedsSetRead(item.id, read);
+				setItems((rows) =>
+					rows.map((row) =>
+						row.id === item.id ? { ...row, readAt: next.readAt } : row,
+					),
+				);
+				setOpenItem((current) =>
+					current?.id === item.id
+						? { ...current, readAt: next.readAt }
+						: current,
+				);
+			} catch (error) {
+				toastHostError(errorText(error), t);
+			} finally {
+				readPending.current.delete(item.id);
+			}
+		},
+		[t],
+	);
+
+	const openFeedItem = useCallback(
+		(item: FeedItem) => {
+			setOpenItem(item);
+			if (!item.readAt) void setRead(item, true);
+		},
+		[setRead],
+	);
 
 	const onPin = useCallback(
 		async (id: string, pinned: boolean) => {
@@ -454,8 +500,12 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 		}
 	}, [applySub, renameTarget, renameTitle, t]);
 
+	const visibleItems = useMemo(
+		() => (hideRead ? items.filter((item) => !item.readAt) : items),
+		[hideRead, items],
+	);
 	const virtualizer = useVirtualizer({
-		count: items.length,
+		count: visibleItems.length,
 		getScrollElement: () => listRef.current,
 		estimateSize: () => 92,
 		overscan: 8,
@@ -464,7 +514,7 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 	const selected = selectedId
 		? (subs.find((row) => row.id === selectedId) ?? null)
 		: null;
-	const emptyItems = !loading && items.length === 0;
+	const emptyItems = !loading && visibleItems.length === 0;
 	const hasSubs = subs.length > 0;
 
 	return (
@@ -584,11 +634,38 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 						</div>
 					</nav>
 					<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+						<div className="flex shrink-0 justify-end border-b px-2 py-1">
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										aria-pressed={hideRead}
+										className={cn(
+											hideRead && "bg-accent text-accent-foreground",
+										)}
+										aria-label={t("plaza.feeds.hideRead")}
+										onClick={() => {
+											hideReadRef.current = !hideRead;
+											setHideRead(!hideRead);
+											void loadItems(selectedId, false);
+										}}
+									>
+										<EyeOff className="size-3.5" aria-hidden />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>{t("plaza.feeds.hideRead")}</TooltipContent>
+							</Tooltip>
+						</div>
 						{openItem ? (
 							<PlazaFeedItemDetail
 								item={openItem}
 								hideSource={selectedId !== null}
-								onBack={() => setOpenItem(null)}
+								onBack={() => {
+									setOpenItem(null);
+									if (hideRead) void loadItems(selectedId);
+								}}
+								onToggleRead={() => void setRead(openItem, !openItem.readAt)}
 								onImported={applyItem}
 								onResolved={applyItem}
 							/>
@@ -596,7 +673,11 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 							<div className="flex flex-1 items-center justify-center p-6 text-center text-muted-foreground text-sm">
 								{selected?.lastError
 									? formatHostError(selected.lastError, t)
-									: t("plaza.feeds.emptyItems")}
+									: t(
+											hideRead
+												? "plaza.feeds.emptyUnread"
+												: "plaza.feeds.emptyItems",
+										)}
 							</div>
 						) : (
 							<div
@@ -608,7 +689,7 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 									style={{ height: virtualizer.getTotalSize() }}
 								>
 									{virtualizer.getVirtualItems().map((virtualRow) => {
-										const item = items[virtualRow.index];
+										const item = visibleItems[virtualRow.index];
 										return (
 											<div
 												key={item.id}
@@ -622,7 +703,10 @@ export function PlazaFeedsView({ className }: { className?: string }) {
 												<PlazaFeedItemRow
 													item={item}
 													hideSource={selectedId !== null}
-													onOpen={setOpenItem}
+													onOpen={openFeedItem}
+													onToggleRead={(item) =>
+														void setRead(item, !item.readAt)
+													}
 												/>
 											</div>
 										);

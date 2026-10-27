@@ -411,6 +411,7 @@ export const commands = {
 	feedsRename: (args: FeedsRenameArgs) => __TAURI_INVOKE<ApiResult<FeedSub>>("feeds_rename", { args }),
 	feedsRefresh: (args: FeedsRefreshArgs) => __TAURI_INVOKE<ApiResult<FeedRefreshResult>>("feeds_refresh", { args }),
 	feedsItems: (args: FeedsItemsArgs) => __TAURI_INVOKE<ApiResult<FeedItemsPage>>("feeds_items", { args }),
+	feedsSetRead: (args: FeedsSetReadArgs) => __TAURI_INVOKE<ApiResult<FeedItem>>("feeds_set_read", { args }),
 	feedsMarkImported: (args: FeedsIdArgs) => __TAURI_INVOKE<ApiResult<FeedItem>>("feeds_mark_imported", { args }),
 	plazaScratchPrepare: (args: PlazaScratchPrepareArgs) => __TAURI_INVOKE<ApiResult<PlazaScratchEntry[]>>("plaza_scratch_prepare", { args }),
 	plazaScratchStats: () => __TAURI_INVOKE<ApiResult<ScratchStats>>("plaza_scratch_stats"),
@@ -2998,6 +2999,7 @@ export type FeedItem = {
 	contentHtml: string | null,
 	paperUrl: string | null,
 	importedAt: string | null,
+	readAt: string | null,
 	bodyMarkdown: string | null,
 };
 
@@ -3057,6 +3059,11 @@ export type FeedsRenameArgs = {
 export type FeedsSetPinnedArgs = {
 	id: string,
 	pinned: boolean,
+};
+
+export type FeedsSetReadArgs = {
+	id: string,
+	read: boolean,
 };
 
 /**  Payload for the `vault:file-changed` event (consumed by the renderer). */
