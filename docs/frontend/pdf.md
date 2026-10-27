@@ -23,7 +23,7 @@ viewport 始终上报滚动容器的真实尺寸，使放大或与笔记分屏�
 
 滚动路径开销（触控板一帧内可触发多次 scroll）另有两处收敛：viewport 滚动指标按动画帧合并后再 `setViewportScrollMetrics`（每次提交仍推出 scroller layout；挂载窗口未变时不再 `setState`，见下段）；layout hover 命中框与 Eye 调试框按 `hoverableLayoutRegionsByPage` / `rawLayoutRegionsByPage` 预先分页缓存，页渲染只做 `Map.get`，不再每页重跑一遍全文档 NMS。PDF viewport 的延迟跳转请求同样按帧合并，并在用户滚轮先发生时取消；虚拟页重排、缩放布局和双栏同步产生的程序化滚动不会触发取消；虚拟页节点换入换出时关闭浏览器 scroll anchoring，避免 Windows/WebView2 将阅读位置校正到首尾页（见 [bug_fix/pdf-windows-scroll-endpoint-jump.md](../bug_fix/pdf-windows-scroll-endpoint-jump.md)）。
 
-双栏对照左右各挂一套 EmbedPDF，各自使用上游瓦片任务生命周期；两栏同一区域会各自出图，滚回已卸载的页面也会重新生成高清瓦片。`@embedpdf/plugin-scroll` patch 在挂载窗口（间距、总尺寸、页序与页尺寸）没变时跳过 scroller 的 `setState`，纯滚动不再让已挂载页整页重渲染。译文栏跳过整页底图 `AgenteroRenderLayer`，只留 `TilingLayer`，空档由页面壳垫色。译文段落的浏览器度量按框和文本缓存，一帧大约只量 5ms，页面滚出就取消还没做的度量。layout 比较器直接位于 scroll patch 内、各订阅维护自己的上次布局；不再经 `globalThis` 桥接应用模块，也不复制整个 Scroller。
+双栏对照左右各挂一套 EmbedPDF，各自使用上游瓦片任务生命周期；两栏同一区域会各自出图，滚回已卸载的页面也会重新生成高清瓦片。`@embedpdf/plugin-scroll` patch 在挂载窗口（间距、总尺寸、页序与页尺寸）没变时跳过 scroller 的 `setState`，纯滚动不再让已挂载页整页重渲染。译文栏跳过整页底图 `AgenteroRenderLayer`，只留 `TilingLayer`，空档由页面壳垫色。译文段落的浏览器度量按框和文本缓存，一帧大约只量 5ms，页面滚出就取消还没做的度量。layout 比较器直接位于 scroll patch 内、各订阅维护自己的上次布局；不再经 `globalThis` 桥接应用模块，也不复制整个 Scroller。全文翻译流式期间批次 `onUpdate` 合并到一帧一次（rAF，非 DOM 宿主退化为同步直通），终局结果直接取代仍排队的合并项；重排预览会话仅在预览发布/吊销、busy 翻转或产出更新时通知重渲染，批次到达本身不再触发，页签名中的 regions 以对象身份参与比较、按 regions 数组缓存分页分组。
 
 页面纸张壳（正文与双栏译文）保留 `ring-1` 细边框，不使用整页 `shadow-sm` 模糊阴影。Linux / WebKitGTK 的 0.12.0 实测中，单独去掉该阴影可显著减少滚动长帧；无需调整位图分辨率或滚动调度。复现、测量边界和版本回归检查见 [PDF 页面阴影与 WebKitGTK 滚动停顿](../bug_fix/pdf-webkit-page-shadow.md)。
 

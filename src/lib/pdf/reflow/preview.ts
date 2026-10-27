@@ -24,6 +24,34 @@ function identity(value: object | undefined): number {
 	return id;
 }
 
+/** Import from the caller so `regions ?? NO_REGIONS` keeps one array identity. */
+export const NO_REGIONS: PdfLayoutRegion[] = [];
+const EMPTY_PAGE_REGIONS: PdfLayoutRegion[] = [];
+const regionsByPageCache = new WeakMap<
+	PdfLayoutRegion[],
+	Map<number, PdfLayoutRegion[]>
+>();
+/**
+ * Group regions per page once per regions-array identity. Region objects are
+ * immutable within one array, so their identity numbers form the page part of
+ * the input key without re-serializing every region on every batch.
+ */
+function regionsByPageOf(
+	regions: PdfLayoutRegion[],
+): Map<number, PdfLayoutRegion[]> {
+	let grouped = regionsByPageCache.get(regions);
+	if (!grouped) {
+		grouped = new Map();
+		for (const region of regions) {
+			const list = grouped.get(region.pageIndex) ?? [];
+			list.push(region);
+			grouped.set(region.pageIndex, list);
+		}
+		regionsByPageCache.set(regions, grouped);
+	}
+	return grouped;
+}
+
 /** One serial queue per open document; unrelated batches never cancel a ready page. */
 export class ReflowPreviewSession {
 	private inputs = new Map<number, PageInput>();
@@ -33,6 +61,8 @@ export class ReflowPreviewSession {
 	private queue: Promise<void> = Promise.resolve();
 	private finalKey = "";
 	private disposed = false;
+	/** Set when decorated state (previews, busy, output) changed since the last notify. */
+	private dirty = false;
 	output: Uint8Array | null = null;
 
 	constructor(
@@ -44,6 +74,17 @@ export class ReflowPreviewSession {
 
 	get busy(): boolean {
 		return this.jobs.size > 0;
+	}
+
+	/**
+	 * `update()` runs on every coalesced translation batch. Notifying then would
+	 * re-decorate all items while nothing preview-visible changed; only a
+	 * preview publish/revoke, a busy transition, or a new export output does.
+	 */
+	private notify(): void {
+		if (this.disposed || !this.dirty) return;
+		this.dirty = false;
+		this.changed();
 	}
 
 	decorate(items: LayoutTranslateItem[]): LayoutTranslateItem[] {
@@ -63,6 +104,7 @@ export class ReflowPreviewSession {
 		running: boolean,
 	): void {
 		if (this.disposed) return;
+		const regionsByPage = regionsByPageOf(regions);
 		const groups = new Map<number, LayoutTranslateItem[]>();
 		for (const item of items) {
 			const group = groups.get(item.pageIndex) ?? [];
@@ -82,7 +124,7 @@ export class ReflowPreviewSession {
 							i.translated,
 							identity(i.reflow),
 						]),
-						regions.filter((r) => r.pageIndex === index),
+						(regionsByPage.get(index) ?? EMPTY_PAGE_REGIONS).map(identity),
 					]),
 					items: group,
 					ready:
@@ -112,12 +154,14 @@ export class ReflowPreviewSession {
 				job.abort.abort();
 				this.jobs.delete(index);
 				this.attempted.delete(index);
+				this.dirty = true;
 			}
 		}
 		for (const [index, preview] of this.previews) {
 			if (this.inputs.get(index)?.key !== preview.key) {
 				URL.revokeObjectURL(preview.url);
 				this.previews.delete(index);
+				this.dirty = true;
 			}
 		}
 		for (const index of this.attempted.keys()) {
@@ -176,7 +220,7 @@ export class ReflowPreviewSession {
 				this.output = built.bytes;
 			});
 		}
-		this.changed();
+		this.notify();
 	}
 
 	private enqueue(
@@ -188,6 +232,7 @@ export class ReflowPreviewSession {
 		this.attempted.set(index, key);
 		const job = { key, abort: new AbortController() };
 		this.jobs.set(index, job);
+		this.dirty = true;
 		this.queue = this.queue.then(async () => {
 			const signal = job.abort.signal;
 			try {
@@ -197,7 +242,11 @@ export class ReflowPreviewSession {
 				if (!signal.aborted) this.failed(error);
 			} finally {
 				if (this.jobs.get(index) === job) this.jobs.delete(index);
-				if (!this.disposed) this.changed();
+				if (!this.disposed) {
+					// Busy / output may have transitioned even when the job aborted.
+					this.dirty = true;
+					this.notify();
+				}
 			}
 		});
 	}
@@ -244,7 +293,8 @@ export class ReflowPreviewSession {
 					layout: page,
 				});
 				if (previous) URL.revokeObjectURL(previous.url);
-				this.changed();
+				this.dirty = true;
+				this.notify();
 			}
 		} finally {
 			await this.engine.closeDocument(preview).toPromise();

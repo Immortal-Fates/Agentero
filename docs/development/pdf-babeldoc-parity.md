@@ -405,6 +405,19 @@ ResNet weight layer 完整提取、独立图标签不跨空间合并、隐藏/�
 - 此项不改变上述覆盖与算法等价路线，也不把已有整篇验证用时当成用户真实服务延迟。
 
 
+## 翻译流式渲染开销收敛（2026-10-27）
+
+翻译进行中滚动卡顿（#770 / #798 / #838 后续）的三处收敛：
+
+- **字体解析缓存**：pdf-lib 每次 `embedFont` 都会重新 `fontkit.create` 完整解析字体字节；页级预览每页都重嵌 CJK 字体对（`subset: false`，约 20 MB/字重），解析在主线程重复执行。`embedReflowFonts` 改为注册带 WeakMap 缓存的 fontkit 包装（键为 `loadReflowFonts()` 返回的稳定字节实例），跨构建共享解析结果。字体**写出**（save 序列化 + 传给 PDFium worker）仍按页重复，见剩余项。
+- **批次 publish 合帧**：`runLayoutRegionTranslate` 每批 settle 一次 `onUpdate`，每次都整体替换 items 状态并让所有挂载页重渲染。`use-pdf-layout-translate` 把中间 publish 合并到一帧一次（rAF；无 rAF 的宿主退化 setTimeout，再退化为同步直通）；终局/失败路径 `cancel()` 丢弃仍在排队的合并项，晚到的陈旧 flush 由 `signal.aborted` 挡住。
+- **预览会话按需通知**：`ReflowPreviewSession.update()` 每批都会 `changed()` 触发一次全量 re-decorate；改为 dirty 门控，仅在预览发布/吊销、busy 翻转或导出产出变化时通知。页签名的 regions 部分从「每批全量 JSON.stringify 该页 regions」改为对象身份号（regions 数组按 WeakMap 缓存分页分组，调用方 `regions ?? NO_REGIONS` 保持数组身份稳定）。
+
+验证：2394 项测试通过（含 `pdf-layout-translate-lifecycle` 的合并/取消/迟到结果语义）；TypeScript、Biome、`pnpm build` 通过。单页构建的端到端提速仍待真实服务实测（用 `pdf.reflow.page` / `pdf.reflow.fonts` 阶段日志对比）。
+
+剩余项：`pdf.save()` 字体字节逐页重复拷贝与 worker 传输（需输出容器级缓存或独立渲染引擎）、逐公式 PDF 克隆、长文档预览内存、整篇分析/字符提取门槛。
+
+
 ## 逐页重排预览（2026-10-27，#838）
 
 - 翻译状态与预览缓存分离；按页签名去重，串行执行，仅取消输入已变的页。

@@ -10,7 +10,7 @@ import type {
 } from "@/lib/pdf/layout/types";
 import { interleaveReflowPdf } from "@/lib/pdf/reflow/export";
 import { loadReflowFonts } from "@/lib/pdf/reflow/fonts";
-import { ReflowPreviewSession } from "@/lib/pdf/reflow/preview";
+import { NO_REGIONS, ReflowPreviewSession } from "@/lib/pdf/reflow/preview";
 import { prepareReflowItems } from "@/lib/pdf/reflow/service";
 import { writeVaultBytes } from "@/lib/vault/fs";
 export type ReflowContext = () => {
@@ -69,7 +69,7 @@ export function usePdfReflow(
 	// Re-run when the owning session is recreated, even if inputs are unchanged.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: session lifetime dependencies
 	useEffect(() => {
-		session.current?.update(items, regions ?? [], running);
+		session.current?.update(items, regions ?? NO_REGIONS, running);
 	}, [items, regions, running, engine, document, documentKey, t]);
 	const reflowItems = useMemo(() => {
 		// Revision changes when an individual preview is published.
