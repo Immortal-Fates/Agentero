@@ -55,6 +55,14 @@ Demo 完整包内容（`--empty` 除外）：
 
 每次生成会**重建** `catalog.sqlite`（避免重复跑脚本留下旧 schema）。依赖本机 `sqlite3` CLI。
 
+## CI 与提交前检查
+
+提交前的 lint-staged 对暂存的 TypeScript、JavaScript（含 `.mjs` / `.cjs`）等文件运行 `biome check --write`，统一检查格式、lint 与 import 顺序。`pnpm format:ts` 仅格式化，不能代替完整检查。
+
+CI 的 TypeScript quality 任务分别显示发布同步测试、ACP adapter staging、Biome、类型检查和依赖边界检查；测试分片独立运行。Release 复用同一 CI 工作流检查 tag 对应的提交，全部通过后才创建 Draft Release 和构建产物。CI 使用只读仓库权限，并按调用工作流与 ref 隔离 concurrency，避免普通 CI 与 Release 的验证互相取消。
+
+当前桌面 Rust 检查在 macOS 运行；Windows / Linux 桌面完整编译仍由 Release 构建覆盖，尚未加入日常 CI。
+
 ## 前端测试
 
 运行 TypeScript 单元测试：

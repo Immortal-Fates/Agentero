@@ -1,13 +1,17 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   ts:
@@ -48,30 +52,25 @@ jobs:
               process.exit(1);
             }
           "
-      - name: Run TypeScript checks
-        run: |
-          set -euo pipefail
-          case "${{ matrix.task }}" in
-            quality)
-              node --test scripts/sync-atomgit-release.test.mjs
-              # Stage the bundled ACP adapter trees so a broken staging script
-              # (or a hostile upstream release) fails the PR, not the release build.
-              pnpm adapters:stage
-              pnpm exec biome ci .
-              pnpm typecheck
-              pnpm deps:check
-              ;;
-            test-1)
-              pnpm exec vitest run --shard=1/2
-              ;;
-            test-2)
-              pnpm exec vitest run --shard=2/2
-              ;;
-            *)
-              echo "::error::Unknown TypeScript CI task: ${{ matrix.task }}"
-              exit 1
-              ;;
-          esac
+      - name: Test release synchronization
+        if: matrix.task == 'quality'
+        run: node --test scripts/sync-atomgit-release.test.mjs
+      - name: Stage bundled ACP adapters
+        if: matrix.task == 'quality'
+        # Exercise staging before release builds consume these trees.
+        run: pnpm adapters:stage
+      - name: Check formatting and lint
+        if: matrix.task == 'quality'
+        run: pnpm exec biome ci .
+      - name: Check TypeScript types
+        if: matrix.task == 'quality'
+        run: pnpm typecheck
+      - name: Check dependency boundaries
+        if: matrix.task == 'quality'
+        run: pnpm deps:check
+      - name: Run frontend tests
+        if: matrix.task != 'quality'
+        run: pnpm exec vitest run --shard=${{ matrix.task == 'test-1' && '1/2' || '2/2' }}
 
   # The release APK build is the only thing that compiles the mobile cfg, so
   # target-gated `#[cfg]` drift (e.g. PDFium features left enabled on Android)
