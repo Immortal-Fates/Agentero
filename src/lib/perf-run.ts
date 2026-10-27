@@ -1,6 +1,6 @@
 /**
- * One-shot desktop run. Kept out of `perf.ts` so span helpers do not import
- * the workspace.
+ * One-shot desktop run. Kept outside `lib/core` so opening a vault does not
+ * pull workspace or vault into the core leaf.
  */
 
 import {
