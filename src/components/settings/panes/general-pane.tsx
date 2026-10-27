@@ -36,7 +36,7 @@ import { clearUsage } from "@/lib/activity";
 import { commands, events } from "@/lib/core/bindings";
 import { copyTextToClipboard } from "@/lib/core/clipboard";
 import { errorText } from "@/lib/core/error";
-import { callApi } from "@/lib/core/ipc";
+import { callApi, callResult } from "@/lib/core/ipc";
 import { notifyError, notifySuccess } from "@/lib/core/notify";
 import { openExternalUrl } from "@/lib/core/open-external";
 import { isTauri } from "@/lib/core/tauri";
@@ -124,6 +124,35 @@ export function GeneralPane({
 			institutionProxyCookie: institutionProxyCookieDraft.trim(),
 		});
 	}, [institutionProxyPrefixDraft, institutionProxyCookieDraft, patch]);
+	const openInstitutionLogin = useCallback(async () => {
+		commitInstitutionProxy();
+		try {
+			await callResult(() =>
+				commands.institutionProxyLoginOpen(institutionProxyPrefixDraft),
+			);
+		} catch (error) {
+			notifyError(t("general.institutionProxy.loginFailed"), {
+				description: errorText(error),
+			});
+		}
+	}, [commitInstitutionProxy, institutionProxyPrefixDraft, t]);
+	const captureInstitutionCookie = useCallback(async () => {
+		try {
+			const cookie = await callResult(() =>
+				commands.institutionProxyCookieCapture(institutionProxyPrefixDraft),
+			);
+			setInstitutionProxyCookieDraft(cookie);
+			patch({ institutionProxyCookie: cookie });
+			localStorage.removeItem(
+				`institution-proxy-checked:${institutionProxyPrefixDraft}`,
+			);
+			notifySuccess(t("general.institutionProxy.captureDone"));
+		} catch (error) {
+			notifyError(t("general.institutionProxy.captureFailed"), {
+				description: errorText(error),
+			});
+		}
+	}, [institutionProxyPrefixDraft, patch, t]);
 	const testInstitutionProxy = useCallback(async () => {
 		setInstitutionProxyTesting(true);
 		setInstitutionProxyResult(undefined);
@@ -134,6 +163,9 @@ export function GeneralPane({
 					? { status: "ok", message: result.data ?? "" }
 					: { status: "fail", message: result.error?.message ?? "failed" },
 			);
+			if (result.error?.code === "institution_proxy_auth_required") {
+				notifyError(t("general.institutionProxy.cookieExpired"));
+			}
 		} catch (error) {
 			setInstitutionProxyResult({
 				status: "fail",
@@ -142,7 +174,7 @@ export function GeneralPane({
 		} finally {
 			setInstitutionProxyTesting(false);
 		}
-	}, []);
+	}, [t]);
 	const institutionProxyPresets = useMemo(
 		() =>
 			INSTITUTION_PROXY_PRESETS.map((preset) => ({
@@ -528,6 +560,9 @@ export function GeneralPane({
 					}
 					cookiePlaceholder={t("general.institutionProxy.cookiePlaceholder")}
 					cookieLabel={t("general.institutionProxy.cookieLabel")}
+					cookieDescription={t("general.institutionProxy.cookieDescription")}
+					loginLabel={t("general.institutionProxy.login")}
+					captureLabel={t("general.institutionProxy.capture")}
 					testLabel={t("general.institutionProxy.test")}
 					testingLabel={t("general.institutionProxy.testing")}
 					presetsLabel={t("general.institutionProxy.presetsLabel")}
@@ -537,6 +572,8 @@ export function GeneralPane({
 					onPresetSelect={selectInstitutionProxyPreset}
 					onCommit={commitInstitutionProxy}
 					onTest={() => void testInstitutionProxy()}
+					onLogin={() => void openInstitutionLogin()}
+					onCapture={() => void captureInstitutionCookie()}
 					testing={institutionProxyTesting}
 					probeStatus={institutionProxyProbeStatus}
 					probeLabel={institutionProxyProbeLabel}

@@ -204,6 +204,8 @@ agentero import id 1706.03762 --parent papers/nlp --json
 
 付费文献 PDF 兜底：CLI 启动时读取桌面同一份 `settings.json` 的机构代理三字段（`institutionProxyType` / `institutionProxyPrefix` / `institutionProxyCookie`）并注入进程级下载链，因此 `import id` 与 `paper download` 在 OA 链路全未命中时会按桌面配置的 EZProxy/WebVPN 网关重写请求（见 [settings.md](settings.md)）。未配置时保持直连、不带 Cookie。
 
+CLI 没有单独的 Cookie 配置命令；在桌面设置页登录并读取 Cookie 后，CLI 自动复用。无桌面环境时可编辑共享配置文件的上述三字段。
+
 ### 导入本地 PDF
 
 `import pdf` 将本地裸 PDF 文件导入 Vault。CLI 默认会同步执行元数据识别（LiteParse probe → Zotero recognizer → DOI/arXiv 权威解析），识别成功后直接以规范 ID（如 bare arXiv ID 或 DOI slug）命名论文目录 `{parent}/{canonical_id}/`，填充真实标题、作者、年份及摘要并写入 `catalog.sqlite` 与 `NOTES.md`。若未识别出权威标识符，则回退至文件名派生元数据。可使用 `--no-recognize` 跳过识别：

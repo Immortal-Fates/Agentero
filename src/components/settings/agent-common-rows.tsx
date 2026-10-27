@@ -160,8 +160,11 @@ export function InstitutionProxyRow({
 	prefixPlaceholder,
 	cookiePlaceholder,
 	cookieLabel,
+	cookieDescription,
 	testLabel,
 	testingLabel,
+	loginLabel,
+	captureLabel,
 	presetsLabel,
 	presets,
 	onPrefixChange,
@@ -169,6 +172,8 @@ export function InstitutionProxyRow({
 	onPresetSelect,
 	onCommit,
 	onTest,
+	onLogin,
+	onCapture,
 	testing,
 	probeStatus,
 	probeLabel,
@@ -182,8 +187,11 @@ export function InstitutionProxyRow({
 	prefixPlaceholder?: string;
 	cookiePlaceholder?: string;
 	cookieLabel: string;
+	cookieDescription: string;
 	testLabel: string;
 	testingLabel: string;
+	loginLabel: string;
+	captureLabel: string;
 	presetsLabel: string;
 	presets: readonly InstitutionProxyPresetOption[];
 	onPrefixChange: (v: string) => void;
@@ -191,6 +199,8 @@ export function InstitutionProxyRow({
 	onPresetSelect: (preset: InstitutionProxyPresetOption) => void;
 	onCommit: () => void;
 	onTest: () => void;
+	onLogin: () => void;
+	onCapture: () => void;
 	testing: boolean;
 	probeStatus: ProbeStatus;
 	probeLabel: string;
@@ -279,7 +289,11 @@ export function InstitutionProxyRow({
 					</Button>
 				</div>
 			</SettingsRow>
-			<SettingsRow label={cookieLabel} htmlFor={`${htmlFor}-cookie`}>
+			<SettingsRow
+				label={cookieLabel}
+				description={cookieDescription}
+				htmlFor={`${htmlFor}-cookie`}
+			>
 				<div className="flex items-center gap-2">
 					<Input
 						id={`${htmlFor}-cookie`}
@@ -298,6 +312,24 @@ export function InstitutionProxyRow({
 						disabled={!isTauri()}
 						className="h-8 w-64 max-w-[18rem] font-mono text-xs"
 					/>
+					<Button
+						type="button"
+						variant="outline"
+						size="xs"
+						disabled={!isTauri() || !prefix.trim()}
+						onClick={onLogin}
+					>
+						{loginLabel}
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="xs"
+						disabled={!isTauri() || !prefix.trim()}
+						onClick={onCapture}
+					>
+						{captureLabel}
+					</Button>
 				</div>
 			</SettingsRow>
 		</>

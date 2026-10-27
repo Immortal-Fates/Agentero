@@ -9,6 +9,7 @@ import { loadCustomProperties } from "@/lib/paper/custom-properties-store";
 import { useTheme } from "next-themes";
 import { useEffect } from "react";
 import { useSettings, useVaultStore } from "@/hooks/use-app-stores";
+import { useInstitutionProxyHealth } from "@/hooks/use-institution-proxy-health";
 import { useUiRequest } from "@/hooks/use-ui-request";
 import { useVaultOpenRequest } from "@/hooks/use-vault-open-request";
 import { applyLocale } from "@/i18n";
@@ -36,6 +37,7 @@ import { validateRestoredVault } from "@/lib/vault/actions";
 import { setTree, setTreeLoading } from "@/lib/vault/store";
 
 export function useAppBootstrap(): void {
+	useInstitutionProxyHealth();
 	const { setTheme } = useTheme();
 	// CLI / deep-link: agentero open <path> → vault:open-request
 	useVaultOpenRequest();

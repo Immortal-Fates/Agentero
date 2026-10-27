@@ -40,6 +40,16 @@ export const commands = {
 	 *  PDF. Returns a short human-readable result for the settings UI.
 	 */
 	institutionProxyProbe: () => __TAURI_INVOKE<ApiResult<string>>("institution_proxy_probe"),
+	/**
+	 *  Open the configured gateway in a dedicated webview for interactive SSO.
+	 *  Async is required when creating a window from WebView2 on Windows.
+	 */
+	institutionProxyLoginOpen: (prefix: string) => typedError<null, string>(__TAURI_INVOKE("institution_proxy_login_open", { prefix })),
+	/**
+	 *  Read only the configured gateway's cookies, including HttpOnly cookies.
+	 *  The login webview is deliberately separate from the app's own webview.
+	 */
+	institutionProxyCookieCapture: (prefix: string) => typedError<string, string>(__TAURI_INVOKE("institution_proxy_cookie_capture", { prefix })),
 	builtinProviderStatus: () => __TAURI_INVOKE<ApiResult<BuiltinProviderStatus>>("builtin_provider_status"),
 	layoutModelStatus: () => __TAURI_INVOKE<ApiResult<LayoutModelStatus>>("layout_model_status"),
 	layoutRemoteAnalyzePdf: (args: LayoutRemoteAnalyzePdfArgs) => __TAURI_INVOKE<ApiResult<LayoutRemoteAnalyzePdfResult>>("layout_remote_analyze_pdf", { args }),

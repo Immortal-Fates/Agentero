@@ -7,7 +7,77 @@
 
 use crate::core::error::{map_err, ApiResult};
 use crate::features::system::settings::{AppSettings, AppSettingsStore, SettingsGetResult};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, Url, WebviewUrl, WebviewWindowBuilder};
+
+const PROXY_LOGIN_WINDOW: &str = "institution-proxy-login";
+
+fn proxy_gateway_url(prefix: &str) -> Result<Url, String> {
+    let url = Url::parse(prefix.trim()).map_err(|e| e.to_string())?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("institution proxy must be an HTTPS gateway URL".into());
+    }
+    Ok(url)
+}
+
+/// Open the configured gateway in a dedicated webview for interactive SSO.
+/// Async is required when creating a window from WebView2 on Windows.
+#[tauri::command]
+#[specta::specta]
+pub async fn institution_proxy_login_open(app: AppHandle, prefix: String) -> Result<(), String> {
+    let url = proxy_gateway_url(&prefix)?;
+    let login_url = if prefix.trim_end().ends_with('=') {
+        proxy_gateway_url(&format!(
+            "{}{}",
+            prefix.trim(),
+            urlencoding::encode("https://doi.org/10.1038/nature12373")
+        ))?
+    } else {
+        url
+    };
+    let title = login_url.host_str().unwrap_or_default().to_string();
+    if let Some(window) = app.get_webview_window(PROXY_LOGIN_WINDOW) {
+        window.navigate(login_url).map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    } else {
+        WebviewWindowBuilder::new(&app, PROXY_LOGIN_WINDOW, WebviewUrl::External(login_url))
+            .title(title)
+            .inner_size(1000.0, 750.0)
+            .build()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Read only the configured gateway's cookies, including HttpOnly cookies.
+/// The login webview is deliberately separate from the app's own webview.
+#[tauri::command]
+#[specta::specta]
+pub async fn institution_proxy_cookie_capture(
+    app: AppHandle,
+    prefix: String,
+) -> Result<String, String> {
+    let url = proxy_gateway_url(&prefix)?;
+    let window = app
+        .get_webview_window(PROXY_LOGIN_WINDOW)
+        .ok_or("open the institution login window first")?;
+    let cookies = tauri::async_runtime::spawn_blocking(move || window.cookies_for_url(url))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    let header = cookies
+        .into_iter()
+        .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
+        .collect::<Vec<_>>()
+        .join("; ");
+    if header.is_empty() {
+        return Err("no gateway cookies found; finish signing in first".into());
+    }
+    Ok(header)
+}
 
 #[tauri::command]
 #[specta::specta]
@@ -112,7 +182,9 @@ pub fn settings_set(
 pub async fn institution_proxy_probe(app: AppHandle) -> ApiResult<String> {
     let store = app.state::<AppSettingsStore>();
     let Some((kind, prefix, cookie)) = store.institution_proxy() else {
-        return ApiResult::ok("prefix not configured".into());
+        return ApiResult::err(agentero_core::error::AppError::message(
+            "prefix not configured",
+        ));
     };
     match agentero_core::features::paper::import::download::probe_institution_proxy(
         kind, &prefix, &cookie,
@@ -120,7 +192,14 @@ pub async fn institution_proxy_probe(app: AppHandle) -> ApiResult<String> {
     .await
     {
         Ok(n) => ApiResult::ok(format!("ok ({n} bytes)")),
-        Err(e) => ApiResult::ok(format!("failed: {e}")),
+        Err(e) => ApiResult::err(agentero_core::error::AppError::domain(
+            if e.contains("authentication required") || e.contains("HTTP 401") {
+                "institution_proxy_auth_required"
+            } else {
+                "institution_proxy_probe_failed"
+            },
+            e,
+        )),
     }
 }
 

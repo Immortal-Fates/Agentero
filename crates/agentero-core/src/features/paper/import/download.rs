@@ -272,11 +272,24 @@ pub async fn probe_institution_proxy(
             wengine_rewrite(prefix, target).ok_or_else(|| "wengine rewrite failed".to_string())?
         }
     };
-    let bytes = fetch_bytes_checked(&rewritten, cookie.trim()).await?;
+    let (bytes, final_url) = fetch_bytes_checked_with_url(&rewritten, cookie.trim()).await?;
     if bytes.len() >= 4 && &bytes[..4] == b"%PDF" {
         return Ok(bytes.len());
     }
-    Err("response was HTML, not a PDF (cookie expired or institution not subscribed?)".into())
+    let login_redirect = reqwest::Url::parse(&final_url).is_ok_and(|url| {
+        let path = url.path().to_ascii_lowercase();
+        let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+        ["/login", "/auth", "/cas", "/sso"]
+            .iter()
+            .any(|part| path.contains(part))
+            || ["login.", "sso.", "cas.", "passport."]
+                .iter()
+                .any(|part| host.starts_with(part))
+    });
+    if login_redirect {
+        return Err("authentication required: gateway redirected to login".into());
+    }
+    Err("response was HTML, not a PDF (institution may not subscribe to this journal)".into())
 }
 
 /// Like [`fetch_bytes_checked`] but also returns the final URL after
@@ -317,12 +330,6 @@ async fn fetch_bytes_checked_with_url(
     let final_url = res.url().to_string();
     let bytes = res.bytes().await.map_err(|e| e.to_string())?.to_vec();
     Ok((bytes, final_url))
-}
-
-async fn fetch_bytes_checked(url: &str, cookie: &str) -> Result<Vec<u8>, String> {
-    fetch_bytes_checked_with_url(url, cookie)
-        .await
-        .map(|(bytes, _)| bytes)
 }
 
 /// Upper bound for the network asset phase of one paper import.
