@@ -178,6 +178,8 @@ liteparse 在**运行时 `dlopen`** PDFium，而 `liteparse-pdfium-sys` 的 buil
 
 ### 文件夹自动收录（auto-ingest，#549）
 
+直接放到 `papers/` 根目录的独立 PDF 也会自动收录（含应用关闭期间放入的文件）。等待文件尺寸稳定后，为它创建与文件名同名的资料文件夹，再移动原 PDF 并复用 `adopt_paper_folder`：NOTES、Catalog、元数据识别及后续正文/版面解析与已有导入流程一致，使用设置中的解析引擎；成功的版面结果写入 `source/layout.json`，重开时复用。已有同名文件夹不会被合并或覆盖，新目录追加 `-2` 等后缀。此流程同样受 `auto_ingest` 开关控制；移动失败只清理本次创建的空目录，后续收录失败保留文件夹供重试。`notes/` 等目录中的普通 PDF 不受影响。
+
 在 `papers/` 下直接新建文件夹并拖入 PDF（含外部文件管理器操作），应用会就地收录为论文条目，无需走导入对话框：
 
 - **触发**：vault FS watcher 收到 create/rename 批次且路径归属 `papers/` 直接子文件夹（`src-tauri/src/features/paper/ingest/`）；应用未运行期间创建的文件夹由前端 `vault:opened` 时 fire-and-forget 调 `paper_ingest_reconcile` 补扫。
