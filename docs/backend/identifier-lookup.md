@@ -733,7 +733,7 @@ arXiv URL 推导：
 ### Phase C — 体验打磨
 
 - [x] 入库后刷新文件树；可打开 paper；树选中并滚到新论文行
-- [x] 入库后 `graph_rebuild` 并刷新 Backlinks/Graph
+- [x] 入库后更新双链索引并刷新 Backlinks/Graph
 - [x] 与文件树选中态同步目标 `parent_dir`
 - [x] 论文库 UI：`paper_list` 表格 + 虚拟 Library 节点（见 [`../frontend/library.md`](../frontend/library.md)）
 - [x] 单篇 / Library 批量补下缺失 PDF 与 arXiv TeX（`job_download_assets_enqueue`）

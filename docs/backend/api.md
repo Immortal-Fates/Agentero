@@ -1291,6 +1291,14 @@ Agent：`agent_run_once` / `agent_warm` 在 vault 为 `remote:…` 时经 SSH `b
 - **行为**：递归遍历 `papers/`，遇该目录下一层有文件 `NOTES.md` 或 `metadata.json` 即为 paper 叶子（`PAPER.md` 与 `source/`、`assets/`、`marks/`、`attachments/` 本身不是身份标记）；有 sidecar 则按其恢复，否则创建最小化 paper 记录并 `upsert` 进 catalog。不删行、不改磁盘文件。
 - **前端**：`src/lib/paper/api.ts` → `rescanPapers`；论文库空态「重新扫描 papers/」按钮。
 
+#### `paper_ensure_rows`
+
+按调用方给出的路径补 catalog 行。路径能落到单篇论文目录时调用 `ensure_row_for_path`（已有行不改写）；`papers/` 根目录、组织夹或其它对不上单篇的路径退回 `paper_rescan`。
+
+- **参数**（invoke 字段名 `args`）：`{ vaultPath: string; paths: string[] }`。路径可以是绝对路径或 Vault 相对路径。
+- **返回**：`{ ok: true; data: { count: number; rescanned: boolean } }`。`count` 是新写入的行数；`rescanned` 为真表示这次退回了全库扫描。
+- **前端**：`src/lib/paper/api.ts` → `ensurePaperRows`。文件监听在 `papers/` 下的外部变更走这里；应用自己刚提交的导入和改名只 `paper_list`。
+
 > **Catalog 行删除**：不再有独立的 `paper_delete` command；删除走 `path_trash`（`trashPaths`），catalog 行随回收站快照清理（底层 `papers::delete_under_path`，CLI `agentero paper rm` 亦复用）。
 
 #### `paper_move`
@@ -2095,7 +2103,15 @@ Host 以 `expectedContent + headingPath + headingLine` 复核保存态标题身�
 }
 ```
 
-snapshot 保存所有 Wiki target 的 size+mtime stat 指纹（不读文件内容），以及 documents 与 resolved occurrences。schema/parser version、Vault identity 或 snapshot integrity hash 不匹配时丢弃旧 snapshot 并冷重建；指纹部分不一致时增量重建（只重新解析变化的 Markdown，未变文件复用缓存解析结果，链接解析全量重跑）；cache 写失败只记录 warning，内存 rebuild 仍成功。
+snapshot 保存所有 Wiki target 的 size+mtime stat 指纹（不读文件内容），以及 documents 与 resolved occurrences。schema/parser version、Vault identity 或 snapshot integrity hash 不匹配时丢弃旧 snapshot 并冷重建；指纹部分不一致时增量重建（只重新解析变化的 Markdown，未变文件复用缓存解析结果，链接解析全量重跑）；cache 写失败只记录 warning，内存 rebuild 仍成功。全库列举本身仍随 Vault 规模增长；已知路径的更新走 `graph_apply_paths`。
+
+#### `graph_apply_paths`
+
+索引已经描述当前 Vault 时，只检查并读取 `paths` 里的文件（论文目录只列那一个目录），更新对应 document，再在内存里重新 resolve 全部链接。没给路径、索引是冷的、路径在 Vault 外、或目录不是单篇论文时，本命令退回 `graph_rebuild`（日志里仍是 `graph_rebuild`）。
+
+- **参数**（invoke 字段名 `args`）：`{ vaultPath: string; paths: string[] }`。
+- **返回**：与 `graph_rebuild` 相同的 `{ indexedFiles, edges, nodes }`。
+- **前端**：`src/lib/wiki/api.ts` → `applyWikiPaths`。导入、改名和文件监听的防抖刷新走这里；打开 Vault、Doctor 和显式全量重建仍走 `graph_rebuild`。
 
 ### 3.8b Vault Doctor
 

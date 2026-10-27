@@ -170,7 +170,7 @@ liteparse 在**运行时 `dlopen`** PDFium，而 `liteparse-pdfium-sys` 的 buil
 
 ## 本地 PDF
 
-- 魔棒多选或拖到 `papers/` 组织夹 → **即时导入**：复制 PDF + catalog + NOTES shell 立刻完成（秒级），论文马上出现在树/论文库；元数据识别在后台进行（见下），识别完成后自动改名/补全。
+- 魔棒多选或拖到 `papers/` 组织夹 → **即时导入**：复制 PDF + catalog + NOTES shell 立刻完成（秒级）。论文库只重读 catalog 行，文件树只刷新涉及的目录，双链只更新新论文目录和被改写的笔记；同一批导入（含后台识别改名）合并成一次刷新，不按篇数重扫整个库。元数据识别在后台进行（见下），识别完成后自动改名/补全。外部放进 `papers/` 且能对应到单篇目录时补一行 catalog；对不上单篇时才整库 rescan。
 - PDF 拖入窗口其它区域也入库到当前 Papers 目标，避免 WebView 导航；识别与版面分析在后台继续。
 - 标识符去重与合并（#406）：导入前按对话框给出的 `id` / DOI / arXiv / PMID / ISBN 查 catalog；命中已有条目时不新建文件夹——原条目缺主 PDF `{id}.pdf` 时，本 PDF 直接成为主 PDF（常见于 PMID 入库后手动补全文）；否则放入 `{paper}/attachments/`（同名自动 `-2` 后缀），并回填 catalog 缺失的标识符列；前端返回 `status: "deduped"` 并 Toast 提示。
 
