@@ -193,6 +193,11 @@ export const commands = {
 	 */
 	wikiRenameHeading: (args: WikiRenameHeadingArgs) => typedError<ApiResult<WikiRenameHeadingResult>, string>(__TAURI_INVOKE("wiki_rename_heading", { args })),
 	graphRebuild: (vaultPath: string) => typedError<ApiResult<RebuildResult>, string>(__TAURI_INVOKE("graph_rebuild", { vaultPath })),
+	/**
+	 *  Update the wiki index from known paths. A cold index, or a path that is not
+	 *  a file or a single paper folder, falls back to [`graph_rebuild`].
+	 */
+	graphApplyPaths: (args: GraphApplyPathsArgs) => typedError<ApiResult<RebuildResult>, string>(__TAURI_INVOKE("graph_apply_paths", { args })),
 	doctorCheck: (args: DoctorCheckArgs) => __TAURI_INVOKE<ApiResult<DoctorReport_Serialize>>("doctor_check", { args }),
 	doctorApplyAliases: (args: DoctorApplyAliasesArgs) => typedError<ApiResult<AliasRepairResult>, string>(__TAURI_INVOKE("doctor_apply_aliases", { args })),
 	doctorIgnoreAliases: (args: DoctorIgnoreAliasesArgs) => __TAURI_INVOKE<ApiResult<DoctorVaultState>>("doctor_ignore_aliases", { args }),
@@ -375,6 +380,11 @@ export const commands = {
 	 *  on disk but missing from the catalog (added externally, or a lost row).
 	 */
 	paperRescan: (args: PaperRescanArgs) => __TAURI_INVOKE<ApiResult<PaperRescanResult>>("paper_rescan", { args }),
+	/**
+	 *  Ensure catalog rows for watcher paths. Falls back to a full rescan only
+	 *  when a path under `papers/` is not one paper folder.
+	 */
+	paperEnsureRows: (args: PaperEnsureRowsArgs) => __TAURI_INVOKE<ApiResult<PaperEnsureRowsResult>>("paper_ensure_rows", { args }),
 	/**  Cached PDF page counts keyed by vault-relative paper path. */
 	paperPageCounts: (args: PaperPageCountsArgs) => __TAURI_INVOKE<ApiResult<{ [key in string]: number }>>("paper_page_counts", { args }),
 	/**  Persist newly discovered PDF page counts (heatmap page-count cache). */
@@ -3111,6 +3121,12 @@ export type FsDirEntry = {
 	path: string,
 };
 
+export type GraphApplyPathsArgs = {
+	vaultPath: string,
+	/**  Absolute or vault-relative files and paper folders to fold into the index. */
+	paths: string[],
+};
+
 export type HostDoctorReport = HostDoctorReport_Serialize | HostDoctorReport_Deserialize;
 
 export type HostDoctorReport_Deserialize = {
@@ -4036,6 +4052,22 @@ export type PaperCommitResult = {
 	assetMessages: string[],
 	/**  True when assets are still downloading in the background (`Deferred`). */
 	assetsPending: boolean,
+};
+
+export type PaperEnsureRowsArgs = {
+	vaultPath: string,
+	/**  Absolute or vault-relative paths under `papers/`. */
+	paths: string[],
+};
+
+export type PaperEnsureRowsResult = {
+	/**  Rows inserted. Existing rows are left as they are. */
+	count: number,
+	/**
+	 *  True when a path could not be pinned to one paper folder and the
+	 *  command rebuilt the catalog from `papers/`.
+	 */
+	rescanned: boolean,
 };
 
 export type PaperExportArgs = {

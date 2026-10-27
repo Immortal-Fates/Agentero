@@ -6,6 +6,11 @@
  */
 
 import { createStore } from "zustand/vanilla";
+import {
+	clearRefreshWave,
+	noteWikiPath,
+	registerWikiRevisionBump,
+} from "@/lib/lifecycle/refresh-wave";
 import type { VaultFileChangedPayload } from "@/lib/vault/fs-watch";
 import { watchRefreshDelayMs } from "@/lib/vault/shell-activity";
 import { getVaultPath } from "@/lib/vault/store";
@@ -76,11 +81,9 @@ export async function rebuildWikiAndNotify(path: string): Promise<void> {
 	}
 }
 
-/** Debounced wiki/backlinks/graph rebuild after on-disk changes. */
+/** Debounced embed refresh for autosave echoes. External paths join the refresh wave. */
 let wikiRebuildTimer: ReturnType<typeof setTimeout> | null = null;
-/** Watcher paths collected for the current debounced Wiki rebuild. */
-const wikiRebuildPaths = new Set<string>();
-/** Self-write echoes that only refresh mounted embeds, skipping the rebuild. */
+/** Self-write echoes that only refresh mounted embeds, skipping the index update. */
 const wikiEchoEmbedPaths = new Set<string>();
 
 /**
@@ -90,27 +93,22 @@ const wikiEchoEmbedPaths = new Set<string>();
  */
 export function scheduleWikiRebuild(absPath: string): void {
 	if (!isWikiTargetPath(absPath)) return;
-	// Autosave/⌘S echo: the app already knows about this write, so a full
-	// rebuild would just re-index content it wrote itself (#270).
-	if (isSelfWrittenPath(absPath)) wikiEchoEmbedPaths.add(absPath);
-	else wikiRebuildPaths.add(absPath);
-	if (wikiRebuildTimer) clearTimeout(wikiRebuildTimer);
-	wikiRebuildTimer = setTimeout(() => {
-		wikiRebuildTimer = null;
-		const changedPaths = [...wikiRebuildPaths];
-		wikiRebuildPaths.clear();
-		const echoPaths = [...wikiEchoEmbedPaths];
-		wikiEchoEmbedPaths.clear();
-		const vault = getVaultPath();
-		if (!vault) return;
-		if (changedPaths.length === 0) {
+	// Autosave/⌘S echo: the editor already has this write, so the watcher
+	// only refreshes mounted embeds (#270).
+	if (isSelfWrittenPath(absPath)) {
+		wikiEchoEmbedPaths.add(absPath);
+		if (wikiRebuildTimer) clearTimeout(wikiRebuildTimer);
+		wikiRebuildTimer = setTimeout(() => {
+			wikiRebuildTimer = null;
+			const echoPaths = [...wikiEchoEmbedPaths];
+			wikiEchoEmbedPaths.clear();
+			if (!getVaultPath() || echoPaths.length === 0) return;
 			notifyWikiEmbedTargets(echoPaths);
-			return;
-		}
-		void rebuildWikiAndNotify(vault).finally(() =>
-			notifyWikiEmbedTargets([...changedPaths, ...echoPaths]),
-		);
-	}, watchRefreshDelayMs("wiki"));
+		}, watchRefreshDelayMs("wiki"));
+		return;
+	}
+	if (!getVaultPath()) return;
+	noteWikiPath(absPath);
 }
 
 /** Paths this app just wrote to disk; their watcher echoes skip the rebuild. */
@@ -194,8 +192,8 @@ export function clearWikiVaultState(): void {
 		clearTimeout(wikiRebuildTimer);
 		wikiRebuildTimer = null;
 	}
-	wikiRebuildPaths.clear();
 	wikiEchoEmbedPaths.clear();
+	clearRefreshWave();
 	selfWrittenPaths.clear();
 	internalRenamePaths.clear();
 	wikiStore.setState({
@@ -205,3 +203,5 @@ export function clearWikiVaultState(): void {
 		externalRenameFailure: null,
 	});
 }
+
+registerWikiRevisionBump(bumpWikiIndexRevision);

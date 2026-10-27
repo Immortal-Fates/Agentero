@@ -67,8 +67,11 @@ import { pinActiveSelection } from "@/lib/agent/selection-store";
 import { closeTopOverlay } from "@/lib/core/overlay-stack";
 import { isMacOS, isTauri } from "@/lib/core/tauri";
 import { doctorSetDirtyPaths } from "@/lib/doctor/api";
+import {
+	isCommittedRefreshPath,
+	noteExternalLibraryPaths,
+} from "@/lib/lifecycle/refresh-wave";
 import { openMagicWand } from "@/lib/paper/import-actions";
-import { scheduleLibraryRefresh } from "@/lib/paper/library-store";
 import { UI_SCALE_PRESETS } from "@/lib/settings";
 import { getSettings, patchSettings } from "@/lib/settings/react-store";
 import {
@@ -340,8 +343,11 @@ export default function App() {
 	useVaultFileEvents({
 		vaultPath,
 		onDiskChange: (absPath) => void applyDiskChange(absPath),
-		onStructuralChange: scheduleTreeRefresh,
-		onLibraryChange: scheduleLibraryRefresh,
+		onStructuralChange: (paths) => {
+			const external = paths.filter((path) => !isCommittedRefreshPath(path));
+			if (external.length > 0) scheduleTreeRefresh(external);
+		},
+		onLibraryChange: noteExternalLibraryPaths,
 		onWikiChange: scheduleWikiRebuild,
 		shouldIgnoreEvent: shouldIgnoreInternalRenameEvent,
 		onExternalRename: (rename, payload) => {

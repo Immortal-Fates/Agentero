@@ -14,10 +14,13 @@ import { notifySuccess } from "@/lib/core/notify";
 import { isTauri } from "@/lib/core/tauri";
 import { lifecycle } from "@/lib/lifecycle";
 import {
+	noteCommittedLibraryList,
+	noteCommittedPaths,
+	noteCommittedRename,
+} from "@/lib/lifecycle/refresh-wave";
+import {
 	clearLibraryVaultState,
 	refreshLibrary,
-	runLibraryRefresh,
-	scheduleLibraryRefresh,
 } from "@/lib/paper/library-store";
 import { clearAnnotationsVaultState } from "@/lib/pdf/annotations-store";
 import { clearLayoutVaultState } from "@/lib/pdf/layout/store";
@@ -38,24 +41,10 @@ import {
 } from "@/lib/vault/store";
 import { remapMovedWorkspacePaths } from "@/lib/wiki/actions";
 import {
-	bumpWikiIndexRevision,
 	clearWikiVaultState,
-	rebuildWikiAndNotify,
 	trackInternalRenamePaths,
 } from "@/lib/wiki/store";
 import { syncRenamedPaperTabs } from "@/lib/workspace/actions";
-
-/** Batch imports emit one `paper:imported` per paper; merge the rebuilds. */
-let importWikiTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleImportWikiRebuild(vault: string): void {
-	if (importWikiTimer) clearTimeout(importWikiTimer);
-	importWikiTimer = setTimeout(() => {
-		importWikiTimer = null;
-		if (isRemoteVaultHandle(vault) || getVaultPath() !== vault) return;
-		void rebuildWikiAndNotify(vault);
-	}, 300);
-}
 
 export function registerLifecycleHandlers(): () => void {
 	const offs = [
@@ -124,23 +113,18 @@ export function registerLifecycleHandlers(): () => void {
 		lifecycle.on("paper:imported", ({ vaultId, paperId }) => {
 			// `app.emit` broadcasts to every window; only react to the active vault.
 			if (vaultId !== getVaultPath()) return;
-			// `paperId` is the folder basename, so point the targeted refresh at
-			// `papers/` (re-listed eagerly by the Host, org subfolders included)
-			// instead of rebuilding the whole tree, which would re-mark lazily
-			// expanded folders as pending and cascade extra listings.
-			scheduleTreeRefresh(
-				paperId ? [joinVaultPath(vaultId, `papers/${paperId}`)] : undefined,
-			);
-			scheduleImportWikiRebuild(vaultId);
-			scheduleLibraryRefresh();
-			// A tab opened while assets were still downloading keeps
-			// pdfUrl: null and would show "no paper" forever; re-resolve the
-			// tab resources now that the import has settled.
+			// The catalog row is already committed. Hold the list refresh and a
+			// path-scoped wiki update until this import wave, including
+			// recognition renames, goes idle.
 			if (paperId) {
+				noteCommittedPaths([joinVaultPath(vaultId, `papers/${paperId}`)]);
 				void syncRenamedPaperTabs(
 					vaultId,
 					joinVaultPath(vaultId, `papers/${paperId}`),
 				);
+			} else {
+				noteCommittedLibraryList();
+				scheduleTreeRefresh();
 			}
 		}),
 		lifecycle.on("paper:renamed", (event) => {
@@ -154,14 +138,9 @@ export function registerLifecycleHandlers(): () => void {
 			trackInternalRenamePaths([fromAbs, toAbs], Date.now() + 2000);
 			if (outcome === "renamed") {
 				remapMovedWorkspacePaths(fromAbs, toAbs, oldPath, newPath);
-				bumpWikiIndexRevision();
-				scheduleImportWikiRebuild(vaultId);
 				void syncRenamedPaperTabs(vaultId, toAbs);
-				void runLibraryRefresh();
-				void refreshTree(vaultId, { quiet: true });
 			}
-			scheduleTreeRefresh([fromAbs, toAbs]);
-			scheduleLibraryRefresh();
+			noteCommittedRename(fromAbs, toAbs);
 			if (outcome === "merged") {
 				notifySuccess(
 					i18n.t("sidebar:papersLibrary.recognizeMerged", {
@@ -172,10 +151,6 @@ export function registerLifecycleHandlers(): () => void {
 		}),
 	];
 	return () => {
-		if (importWikiTimer) {
-			clearTimeout(importWikiTimer);
-			importWikiTimer = null;
-		}
 		for (const off of offs) off();
 	};
 }

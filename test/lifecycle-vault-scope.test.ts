@@ -60,6 +60,11 @@ vi.mock("@/lib/core/logger", () => ({
 vi.mock("@/lib/agent/agent-session-store", () => ({
 	clearAgentVaultState: mocks.clearAgentVaultState,
 }));
+vi.mock("@/lib/lifecycle/refresh-wave", () => ({
+	noteCommittedLibraryList: vi.fn(),
+	noteCommittedPaths: vi.fn(),
+	noteCommittedRename: vi.fn(),
+}));
 vi.mock("@/lib/paper/library-store", () => ({
 	clearLibraryVaultState: mocks.clearLibraryVaultState,
 	refreshLibrary: mocks.refreshLibrary,

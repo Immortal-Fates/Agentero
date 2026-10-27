@@ -1,9 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { noteWikiPath } from "@/lib/lifecycle/refresh-wave";
 import { getVaultPath } from "@/lib/vault/store";
 import { rebuildWikiIndex } from "@/lib/wiki";
 import { subscribeWikiEmbedTarget } from "@/lib/wiki/embed-refresh";
 import { scheduleWikiRebuild, trackSelfWrittenPath } from "@/lib/wiki/store";
 
+const mocks = vi.hoisted(() => ({
+	noteWikiPath: vi.fn(),
+}));
+
+vi.mock("@/lib/lifecycle/refresh-wave", () => ({
+	noteWikiPath: mocks.noteWikiPath,
+	registerWikiRevisionBump: vi.fn(),
+	clearRefreshWave: vi.fn(),
+}));
 vi.mock("@/lib/wiki", () => ({
 	rebuildWikiIndex: vi.fn(async () => ({ added: 0, removed: 0 })),
 }));
@@ -29,40 +39,37 @@ describe("wiki self-write echo filter", () => {
 		await vi.advanceTimersByTimeAsync(900);
 
 		expect(rebuildWikiIndex).not.toHaveBeenCalled();
+		expect(noteWikiPath).not.toHaveBeenCalled();
 		expect(embedListener).toHaveBeenCalledTimes(1);
 		unsubscribe();
 	});
 
-	it("still rebuilds for external changes", async () => {
+	it("hands external changes to the path-scoped refresh wave", async () => {
 		scheduleWikiRebuild("/vault/notes/External.md");
 		await vi.advanceTimersByTimeAsync(900);
 
-		expect(rebuildWikiIndex).toHaveBeenCalledTimes(1);
-		expect(rebuildWikiIndex).toHaveBeenCalledWith("/vault");
+		expect(rebuildWikiIndex).not.toHaveBeenCalled();
+		expect(noteWikiPath).toHaveBeenCalledTimes(1);
+		expect(noteWikiPath).toHaveBeenCalledWith("/vault/notes/External.md");
 	});
 
-	it("rebuilds once and refreshes all embeds on a mixed self/external batch", async () => {
+	it("refreshes the self-write embed and forwards only the external path", async () => {
 		trackSelfWrittenPath("/vault/notes/SelfBatch.md");
 		const selfListener = vi.fn();
-		const externalListener = vi.fn();
 		const unsubscribeSelf = subscribeWikiEmbedTarget(
 			"/vault/notes/SelfBatch.md",
 			selfListener,
-		);
-		const unsubscribeExternal = subscribeWikiEmbedTarget(
-			"/vault/notes/ExternalBatch.md",
-			externalListener,
 		);
 
 		scheduleWikiRebuild("/vault/notes/SelfBatch.md");
 		scheduleWikiRebuild("/vault/notes/ExternalBatch.md");
 		await vi.advanceTimersByTimeAsync(900);
 
-		expect(rebuildWikiIndex).toHaveBeenCalledTimes(1);
+		expect(rebuildWikiIndex).not.toHaveBeenCalled();
+		expect(noteWikiPath).toHaveBeenCalledTimes(1);
+		expect(noteWikiPath).toHaveBeenCalledWith("/vault/notes/ExternalBatch.md");
 		expect(selfListener).toHaveBeenCalledTimes(1);
-		expect(externalListener).toHaveBeenCalledTimes(1);
 		unsubscribeSelf();
-		unsubscribeExternal();
 	});
 
 	it("stops suppressing once the self-write TTL expired", async () => {
@@ -72,7 +79,7 @@ describe("wiki self-write echo filter", () => {
 		scheduleWikiRebuild("/vault/notes/Expired.md");
 		await vi.advanceTimersByTimeAsync(900);
 
-		expect(rebuildWikiIndex).toHaveBeenCalledTimes(1);
+		expect(noteWikiPath).toHaveBeenCalledWith("/vault/notes/Expired.md");
 	});
 
 	it("does not rebuild when no vault is open", async () => {
@@ -82,5 +89,6 @@ describe("wiki self-write echo filter", () => {
 		await vi.advanceTimersByTimeAsync(900);
 
 		expect(rebuildWikiIndex).not.toHaveBeenCalled();
+		expect(noteWikiPath).not.toHaveBeenCalled();
 	});
 });
