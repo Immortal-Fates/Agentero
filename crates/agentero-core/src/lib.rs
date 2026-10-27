@@ -21,6 +21,7 @@ pub mod json;
 pub mod log_util;
 pub mod ops;
 pub mod paths;
+pub mod perf;
 pub mod plugins;
 pub mod process;
 pub mod remote;

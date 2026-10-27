@@ -8,6 +8,7 @@ use crate::app::command_util::try_vault;
 use crate::core::blocking::run_blocking;
 use crate::core::error::{map_err, ApiResult, AppError};
 use crate::core::fs::{ensure_vault_dir, resolve_paper_dir};
+use crate::core::log_util::OpTimer;
 use crate::features::paper::catalog::papers::{self, PaperRecord};
 use crate::features::paper::catalog::{probe_paper_caps, CapsCache};
 use crate::features::pdf::marks::activity as reading_activity;
@@ -136,21 +137,29 @@ pub async fn paper_list(
 ) -> Result<ApiResult<Vec<PaperListRow>>, String> {
     let cache = cache.inner().clone();
     Ok(run_blocking(move || {
-        let vault = try_vault!(&args.vault_path);
+        let op = OpTimer::start("paper_list");
+        let vault = try_vault!(&args.vault_path, op);
         // Projection intentionally differs from `remote_paper_list` (raw
         // `PaperRecord`, no has_pdf probe, no id dedupe) — known drift kept
         // for wire stability; see `docs/backend/remote.md`.
         match papers::list_all_unique_by_id(&vault) {
-            Ok(rows) => ApiResult::ok(
-                rows.into_iter()
+            Ok(rows) => {
+                let out: Vec<_> = rows
+                    .into_iter()
                     .map(|paper| {
                         let has_pdf =
                             !paper.path.is_empty() && cache.caps_for(&vault, &paper.path).has_pdf();
                         PaperListRow { paper, has_pdf }
                     })
-                    .collect(),
-            ),
-            Err(e) => map_err(e),
+                    .collect();
+                let count = out.len();
+                op.finish_ok_extra(format!("count={count}"));
+                ApiResult::ok(out)
+            }
+            Err(e) => {
+                op.finish_err(&e);
+                map_err(e)
+            }
         }
     })
     .await)

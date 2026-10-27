@@ -15,6 +15,8 @@ import { useVaultOpenRequest } from "@/hooks/use-vault-open-request";
 import { applyLocale } from "@/i18n";
 import { startActivityTracking } from "@/lib/activity";
 import { commands } from "@/lib/core/bindings";
+import { perfActive } from "@/lib/core/perf";
+import { startPerfRun } from "@/lib/core/perf-run";
 import { startTaskRuntime } from "@/lib/core/tasks";
 import { isTauri } from "@/lib/core/tauri";
 import { initLifecycleBridge, lifecycle } from "@/lib/lifecycle";
@@ -76,7 +78,10 @@ export function useAppBootstrap(): void {
 		});
 	}, [uiScale, interfaceFontFamily, monoFontFamily]);
 
-	useEffect(() => startActivityTracking(), []);
+	useEffect(() => {
+		if (perfActive()) return;
+		return startActivityTracking();
+	}, []);
 
 	// Validate the restored local Vault before restoring its tree and tabs, then
 	// announce readiness — app:ready must not claim a validation that is still
@@ -139,5 +144,9 @@ export function useAppBootstrap(): void {
 			disposeConnector();
 			disposeRefresh();
 		};
+	}, []);
+
+	useEffect(() => {
+		startPerfRun();
 	}, []);
 }

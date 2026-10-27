@@ -6,6 +6,7 @@
 import { track } from "@/lib/activity";
 import { commands } from "@/lib/core/bindings";
 import { callApi } from "@/lib/core/ipc";
+import { perfOp } from "@/lib/core/perf";
 import { isTauri } from "@/lib/core/tauri";
 
 export type SearchHit = {
@@ -36,24 +37,30 @@ export async function searchVault(opts: {
 	if (!isTauri()) return EMPTY;
 	const query = opts.query.trim();
 	if (!query) return EMPTY;
-	const wire = await callApi(
-		() =>
-			commands.vaultSearch({
-				vaultPath: opts.vaultPath,
-				query,
-				limit: opts.limit ?? null,
-			}),
-		{ fallback: "vault_search failed" },
-	);
-	const result: VaultSearchResult = {
-		truncated: wire.truncated,
-		hits: wire.hits.map((hit) => ({
-			...hit,
-			paperPath: hit.paperPath ?? undefined,
-		})),
-	};
-	track("search.query", {
-		extra: { q: query, hits: result.hits.length, truncated: result.truncated },
+	return perfOp("vault_search", async () => {
+		const wire = await callApi(
+			() =>
+				commands.vaultSearch({
+					vaultPath: opts.vaultPath,
+					query,
+					limit: opts.limit ?? null,
+				}),
+			{ fallback: "vault_search failed" },
+		);
+		const result: VaultSearchResult = {
+			truncated: wire.truncated,
+			hits: wire.hits.map((hit) => ({
+				...hit,
+				paperPath: hit.paperPath ?? undefined,
+			})),
+		};
+		track("search.query", {
+			extra: {
+				q: query,
+				hits: result.hits.length,
+				truncated: result.truncated,
+			},
+		});
+		return result;
 	});
-	return result;
 }

@@ -1,6 +1,7 @@
 import i18n from "@/i18n";
 import { commands } from "@/lib/core/bindings";
 import { callResult } from "@/lib/core/ipc";
+import { perfActive } from "@/lib/core/perf";
 import { readJsonStorage, writeJsonStorage } from "@/lib/core/storage";
 import { isTauri } from "@/lib/core/tauri";
 import { isRemoteVaultHandle } from "@/lib/vault/remote/remote-vault";
@@ -102,6 +103,8 @@ export function saveVaultPath(path: string | null): void {
 		if (path) {
 			// Always keep window-session binding (local path or live remote handle).
 			sessionStorage.setItem(SESSION_VAULT_KEY, path);
+			// A perf run must not replace the user's last-opened vault.
+			if (perfActive()) return;
 			// Durable "last / recent local" only for real filesystem roots.
 			if (!isRemoteVaultHandle(path)) {
 				localStorage.setItem(LAST_VAULT_KEY, path);

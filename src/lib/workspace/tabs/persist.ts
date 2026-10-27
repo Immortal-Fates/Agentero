@@ -1,3 +1,4 @@
+import { perfActive } from "@/lib/core/perf";
 import {
 	readJsonStorage,
 	removeStorageKey,
@@ -188,6 +189,9 @@ export function loadPersistedTabs(): PersistedTabs | null {
  * Empty / missing layout clears storage.
  */
 export function savePersistedTabs(layout: unknown | null): void {
+	// A perf run shares WebView storage with the daily app. Do not replace
+	// the user's open tabs, and do not clear them when this process starts empty.
+	if (perfActive()) return;
 	if (layout == null || typeof layout !== "object") {
 		removeStorageKey(TABS_STORAGE_KEY);
 		return;

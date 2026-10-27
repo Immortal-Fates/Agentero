@@ -47,11 +47,16 @@ pub fn run() {
     // panics at connect time unless a process-wide default is installed.
     let _ = rustls::crypto::ring::default_provider().install_default();
     let mut builder = tauri::Builder::default();
+    if let Some(script) = agentero_core::perf::init_script() {
+        builder = builder.append_invoke_initialization_script(script);
+    }
 
     // Single-instance must be the first plugin so second-instance argv (deep
     // links on Windows/Linux) is forwarded before other plugins run.
+    // Perf runs skip it so a measurement process does not attach to the
+    // already-open app.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
+    if !agentero_core::perf::enabled() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             crate::app::open_request::handle_argv_urls(app, &argv);
             if let Some(win) = app.get_webview_window("main") {
@@ -354,9 +359,12 @@ pub fn run() {
         );
         // Prefetch PP-DocLayoutV3 into XDG as a JobCenter `modelDownload` job;
         // the tasks-panel projection shows progress, concurrent triggers dedupe.
-        crate::features::paper::analyze::layout::model_assets::spawn_background_download(
-            app.handle().clone(),
-        );
+        // Perf runs skip it so a startup measurement is not mixed with a download.
+        if !agentero_core::perf::enabled() {
+            crate::features::paper::analyze::layout::model_assets::spawn_background_download(
+                app.handle().clone(),
+            );
+        }
         // Native menu is macOS-only; the renderer re-syncs the locale on mount.
         #[cfg(target_os = "macos")]
         {
@@ -398,7 +406,7 @@ pub fn run() {
         );
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
+        if !agentero_core::perf::enabled() {
             let telemetry = Arc::clone(
                 app.state::<Arc<crate::core::telemetry::Telemetry>>()
                     .inner(),

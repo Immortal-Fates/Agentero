@@ -15,6 +15,7 @@ import {
 } from "@/lib/core/bindings";
 import { callApi, callApiResult } from "@/lib/core/ipc";
 import { normalizeRelPath } from "@/lib/core/path";
+import { perfOp } from "@/lib/core/perf";
 import { isTauri } from "@/lib/core/tauri";
 import type {
 	PaperLibraryRow,
@@ -125,20 +126,25 @@ export async function listPapers(
 	vaultPath: string,
 ): Promise<PaperLibraryRow[]> {
 	if (!isTauri()) return [];
-	const { isRemoteVaultHandle, remotePaperList, remoteSessionIdFromHandle } =
-		await import("@/lib/vault/remote/remote-vault");
-	if (isRemoteVaultHandle(vaultPath)) {
-		const sessionId = remoteSessionIdFromHandle(vaultPath);
-		if (!sessionId) return [];
-		// Remote listings are bare records: nothing probes the remote host for
-		// a local PDF, so the row says "unknown" rather than "missing".
-		const rows = (await remotePaperList(sessionId)) as PaperRecordWire[];
-		return rows.map((row) => ({ ...paperFromWire(row), has_pdf: undefined }));
-	}
-	const rows = await callApiResult(() => commands.paperList({ vaultPath }), {
-		fallback: "paper_list failed",
+	return perfOp("paper_list", async () => {
+		const { isRemoteVaultHandle, remotePaperList, remoteSessionIdFromHandle } =
+			await import("@/lib/vault/remote/remote-vault");
+		if (isRemoteVaultHandle(vaultPath)) {
+			const sessionId = remoteSessionIdFromHandle(vaultPath);
+			if (!sessionId) return [];
+			// Remote listings are bare records: nothing probes the remote host for
+			// a local PDF, so the row says "unknown" rather than "missing".
+			const rows = (await remotePaperList(sessionId)) as PaperRecordWire[];
+			return rows.map((row) => ({
+				...paperFromWire(row),
+				has_pdf: undefined,
+			}));
+		}
+		const rows = await callApiResult(() => commands.paperList({ vaultPath }), {
+			fallback: "paper_list failed",
+		});
+		return rows.map(paperFromWire);
 	});
-	return rows.map(paperFromWire);
 }
 
 /** Rebuild catalog rows from papers/ on disk (recover disk-only papers). */

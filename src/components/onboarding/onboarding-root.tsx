@@ -23,6 +23,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useSettings, useVaultStore } from "@/hooks/use-app-stores";
+import { perfActive } from "@/lib/core/perf";
 import { isMobileApp, isTauri } from "@/lib/core/tauri";
 import { cn } from "@/lib/core/utils";
 import { listenOnboardingRequest } from "@/lib/onboarding/api";
@@ -92,6 +93,7 @@ export function OnboardingRoot() {
 		() =>
 			isTauri() &&
 			!isMobileApp() &&
+			!perfActive() &&
 			!settings.onboardingDone &&
 			!vaultPath &&
 			recentVaults.length === 0,

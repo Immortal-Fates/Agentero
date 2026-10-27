@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { onboardingStore } from "@/components/onboarding/onboarding-store";
 import { useSettings, useVaultStore } from "@/hooks/use-app-stores";
+import { perfActive } from "@/lib/core/perf";
 import { isMobileApp, isTauri } from "@/lib/core/tauri";
 import { listenTourRequest } from "@/lib/onboarding/api";
 import { patchSettings } from "@/lib/settings/react-store";
@@ -139,6 +140,7 @@ export function useFeatureTour(): void {
 	// onboarding wizard is closed. Waiting for the wizard to dismiss prevents the
 	// highlight tour from racing with the onboarding overlay.
 	useEffect(() => {
+		if (perfActive()) return;
 		if (!isTauri() || isMobileApp()) return;
 		if (!vaultPath || featureTourDone || startedRef.current || onboardingOpen)
 			return;
