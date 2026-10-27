@@ -492,10 +492,11 @@ export function GeneralPane({
 						patch({ networkProxyEnabled })
 					}
 				/>
+			</SettingsGroup>
+			<SettingsGroup>
 				<SettingsRow
 					label={t("general.institutionProxy.typeLabel")}
 					htmlFor="institution-proxy-type"
-					className="mb-3"
 				>
 					<Select
 						value={settings.institutionProxyType}
@@ -567,7 +568,7 @@ export function GeneralPane({
 				{t("general.sections.integrations")}
 			</SettingsSectionLabel>
 			<ConnectorSettingsBlock settings={settings} patch={patch} />
-			<WordSettings />
+			<SettingsSectionLabel>{t("general.sections.mcp")}</SettingsSectionLabel>
 			<McpSettingsBlock
 				settings={settings}
 				patch={patch}
@@ -880,6 +881,7 @@ function ConnectorSettingsBlock({
 					disabled={busy}
 				/>
 			</SettingsRow>
+			<WordSettings />
 		</SettingsGroup>
 	);
 }
@@ -951,90 +953,93 @@ function McpSettingsBlock({
 	const url = status?.url ?? null;
 
 	return (
-		<SettingsGroup>
-			<SettingsRow label={t("general.mcp.label")} htmlFor="mcp-enabled">
-				<Switch
-					id="mcp-enabled"
-					checked={settings.mcpEnabled}
-					disabled={busy || disabled}
-					onCheckedChange={(v) => void onToggle(v)}
-				/>
-			</SettingsRow>
-			<SettingsRow
-				label={t("general.mcp.exposeText.label")}
-				description={t("general.mcp.exposeText.description")}
-				htmlFor="mcp-expose-paper-text"
-			>
-				<Switch
-					id="mcp-expose-paper-text"
-					checked={settings.mcpExposePaperText}
-					disabled={disabled}
-					onCheckedChange={(mcpExposePaperText) =>
-						patch({ mcpExposePaperText })
-					}
-				/>
-			</SettingsRow>
-			<SettingsRow
-				label={
-					<>
-						{t("general.mcp.portLabel")}
-						{status?.listening ? (
-							<span className="ml-1.5">
-								<StatusDot tone="ok" label={t("common:listening")} />
-							</span>
-						) : null}
-					</>
-				}
-				htmlFor="mcp-port"
-			>
-				<div className="flex items-center gap-2">
-					<Input
-						id="mcp-port"
-						type="number"
-						min={1}
-						max={65535}
-						className="h-8 w-28"
-						defaultValue={settings.mcpPort}
-						onBlur={(e) => void onPortBlur(e.currentTarget.value)}
+		<>
+			<SettingsGroup>
+				<SettingsRow label={t("general.mcp.label")} htmlFor="mcp-enabled">
+					<Switch
+						id="mcp-enabled"
+						checked={settings.mcpEnabled}
 						disabled={busy || disabled}
+						onCheckedChange={(v) => void onToggle(v)}
 					/>
-					{url ? (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									className="size-8"
-									aria-label={t("general.mcp.copyUrl")}
-									onClick={() => {
-										void copyTextToClipboard(url).then((ok) => {
-											if (!ok) return;
-											setCopied(true);
-											window.setTimeout(() => setCopied(false), 1500);
-										});
-									}}
-								>
-									<Copy className="size-4" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								{copied ? t("general.mcp.copied") : t("general.mcp.copyUrl")}
-							</TooltipContent>
-						</Tooltip>
-					) : null}
-				</div>
-			</SettingsRow>
+				</SettingsRow>
+				<SettingsRow
+					label={t("general.mcp.exposeText.label")}
+					htmlFor="mcp-expose-paper-text"
+				>
+					<Switch
+						id="mcp-expose-paper-text"
+						checked={settings.mcpExposePaperText}
+						disabled={disabled}
+						onCheckedChange={(mcpExposePaperText) =>
+							patch({ mcpExposePaperText })
+						}
+					/>
+				</SettingsRow>
+				<SettingsRow
+					label={
+						<>
+							{t("general.mcp.portLabel")}
+							{status?.listening ? (
+								<span className="ml-1.5">
+									<StatusDot tone="ok" label={t("common:listening")} />
+								</span>
+							) : null}
+						</>
+					}
+					htmlFor="mcp-port"
+				>
+					<div className="flex items-center gap-2">
+						<Input
+							id="mcp-port"
+							type="number"
+							min={1}
+							max={65535}
+							className="h-8 w-28"
+							defaultValue={settings.mcpPort}
+							onBlur={(e) => void onPortBlur(e.currentTarget.value)}
+							disabled={busy || disabled}
+						/>
+						{url ? (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										className="size-8"
+										aria-label={t("general.mcp.copyUrl")}
+										onClick={() => {
+											void copyTextToClipboard(url).then((ok) => {
+												if (!ok) return;
+												setCopied(true);
+												window.setTimeout(() => setCopied(false), 1500);
+											});
+										}}
+									>
+										<Copy className="size-4" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>
+									{copied ? t("general.mcp.copied") : t("general.mcp.copyUrl")}
+								</TooltipContent>
+							</Tooltip>
+						) : null}
+					</div>
+				</SettingsRow>
+			</SettingsGroup>
 			{settings.mcpEnabled && (
-				<McpTunnelRows
-					settings={settings}
-					patch={patch}
-					disabled={disabled || busy}
-					mcpListening={status?.listening ?? false}
-					mcpUrl={url}
-				/>
+				<SettingsGroup>
+					<McpTunnelRows
+						settings={settings}
+						patch={patch}
+						disabled={disabled || busy}
+						mcpListening={status?.listening ?? false}
+						mcpUrl={url}
+					/>
+				</SettingsGroup>
 			)}
-		</SettingsGroup>
+		</>
 	);
 }
 
@@ -1170,26 +1175,6 @@ function McpTunnelRows({
 
 	return (
 		<>
-			<SettingsRow label={t("general.mcp.tunnel.label")}>
-				<div className="flex items-center gap-2">
-					<StatusDot tone={tunnelPhaseTone(phase)} label={phaseLabel} />
-					<Button
-						type="button"
-						size="sm"
-						disabled={disabled || busy || binaryMissing || !mcpListening}
-						onClick={() => void (running ? stop() : start())}
-					>
-						{busy ? (
-							<LoaderCircle className="mr-1.5 size-4 animate-spin" />
-						) : (
-							<Power className="mr-1.5 size-4" />
-						)}
-						{running
-							? t("general.mcp.tunnel.stop")
-							: t("general.mcp.tunnel.start")}
-					</Button>
-				</div>
-			</SettingsRow>
 			<SettingsRow
 				label={t("general.mcp.tunnel.apiKeyLabel")}
 				htmlFor="mcp-tunnel-key"

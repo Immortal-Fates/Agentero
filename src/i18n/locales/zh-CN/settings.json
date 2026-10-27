@@ -73,7 +73,8 @@
 			"pdf": "PDF 阅读",
 			"plaza": "广场",
 			"network": "网络",
-			"integrations": "集成"
+			"integrations": "集成",
+			"mcp": "MCP"
 		},
 		"paperTreeLabelMode": {
 			"label": "文件树论文名称",
@@ -180,8 +181,7 @@
 		},
 		"mcp": {
 			"exposeText": {
-				"label": "对外暴露论文正文（MCP）",
-				"description": "开启后 paper_text_get 可用：外部客户端（如 ChatGPT）可读取 PDF 分页文本。默认关闭——正文不会离开本地库。"
+				"label": "对外暴露论文正文（MCP）"
 			},
 			"label": "MCP 服务器",
 			"portLabel": "MCP 端口",
@@ -975,7 +975,6 @@
 	"word": {
 		"damagedField": "引文字段结果为空或已损坏。请恢复文档，或在副本中重新插入引文。",
 		"label": "Zotero Word 插件（macOS 原型）",
-		"hint": "请先开启 Connector 并退出 Zotero。本次会话使用官方 Word 插件，仅支持正文引文，不支持修订模式和脚注。",
 		"search": "搜索论文",
 		"pages": "页码（应用于所选文献）",
 		"style": "引用样式",

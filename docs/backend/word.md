@@ -10,7 +10,7 @@
 
 ## 启用
 
-安装官方 macOS `Zotero.dotm` 和 `Zotero.scpt`，按 Zotero 官方安装路径放置并重启 Word。在 Agentero 打开本地 Vault，开启 Connector，再打开「Zotero Word 插件（macOS 原型）」开关。开关仅对当前进程有效；退出重启后默认关闭。退出 Zotero Desktop 后才能启用。默认端口为 23119；若自定义 Connector 端口，需要用户已有的 `ZoteroPort.txt` 与之匹配。
+安装官方 macOS `Zotero.dotm` 和 `Zotero.scpt`，按 Zotero 官方安装路径放置并重启 Word。在 Agentero 打开本地 Vault，开启「集成」卡片中的 Connector，再打开同一卡片中的「Zotero Word 插件（macOS 原型）」开关。开关仅对当前进程有效；退出重启后默认关闭。退出 Zotero Desktop 后才能启用。默认端口为 23119；若自定义 Connector 端口，需要用户已有的 `ZoteroPort.txt` 与之匹配。
 
 首次驱动 Word 需要 macOS Automation 授权。打包配置提供 AppleEvents usage description 和 hardened-runtime entitlement；开发启动时授权可能归属于启动终端，发布包仍需独立验收。
 

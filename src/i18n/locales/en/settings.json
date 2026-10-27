@@ -73,7 +73,8 @@
 			"pdf": "PDF reading",
 			"plaza": "Plaza",
 			"network": "Network",
-			"integrations": "Integrations"
+			"integrations": "Integrations",
+			"mcp": "MCP"
 		},
 		"paperTreeLabelMode": {
 			"label": "Paper names in file tree",
@@ -180,8 +181,7 @@
 		},
 		"mcp": {
 			"exposeText": {
-				"label": "Expose paper text (MCP)",
-				"description": "Opt-in for paper_text_get: external clients (e.g. ChatGPT) can read the PDF's page text. Off by default — full text then never leaves the vault."
+				"label": "Expose paper text (MCP)"
 			},
 			"label": "MCP server",
 			"portLabel": "MCP port",
@@ -975,7 +975,6 @@
 	"word": {
 		"damagedField": "This citation has an empty or damaged field result. Restore the document or reinsert the citation in a copy.",
 		"label": "Zotero Word plugin (macOS prototype)",
-		"hint": "Enable Connector first and quit Zotero. Uses the official Word plugin for this session. Body citations only; no tracked changes or footnotes.",
 		"search": "Search papers",
 		"pages": "Pages (for selected references)",
 		"style": "Citation style",
