@@ -8,6 +8,7 @@ import type {
 	LayoutTranslateItem,
 	PdfLayoutRegion,
 } from "@/lib/pdf/layout/types";
+import { ReflowBuildEngine } from "@/lib/pdf/reflow/builder";
 import { interleaveReflowPdf } from "@/lib/pdf/reflow/export";
 import { loadReflowFonts } from "@/lib/pdf/reflow/fonts";
 import { NO_REGIONS, ReflowPreviewSession } from "@/lib/pdf/reflow/preview";
@@ -34,8 +35,11 @@ export function usePdfReflow(
 		document = ctx?.document;
 	const prepare = useCallback(
 		async (seed: LayoutTranslateItem[], signal?: AbortSignal) => {
+			const value = session.current;
 			const ctx = current.current.context?.();
 			if (!ctx) return seed;
+			if (value)
+				return value.prepare(seed, current.current.regions ?? [], signal);
 			void loadReflowFonts().catch(() => {});
 			return logOp("pdf.reflow.prepare", undefined, () =>
 				prepareReflowItems(
@@ -51,6 +55,9 @@ export function usePdfReflow(
 	);
 	useEffect(() => {
 		if (!engine || !document || !documentKey) return;
+		// Reflow builds get their own PDFium engine (a private copy of the
+		// document) so streaming previews never queue behind scroll rendering.
+		const build = new ReflowBuildEngine({ engine, document });
 		const value = new ReflowPreviewSession(
 			engine,
 			document,
@@ -59,6 +66,7 @@ export function usePdfReflow(
 				notifyError(t("pdf.layoutTranslate.reflowFailed"), {
 					description: errorText(error),
 				}),
+			build,
 		);
 		session.current = value;
 		return () => {

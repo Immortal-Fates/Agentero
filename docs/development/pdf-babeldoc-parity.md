@@ -405,6 +405,26 @@ ResNet weight layer 完整提取、独立图标签不跨空间合并、隐藏/�
 - 此项不改变上述覆盖与算法等价路线，也不把已有整篇验证用时当成用户真实服务延迟。
 
 
+## 翻译构建专用 PDFium 引擎（2026-10-27，#838 / #798）
+
+重排构建（prepare 字符提取、逐页预览、终局导出）每页要向 PDFium 发几十个串行 RPC（extractPages、逐公式 redact、saveAsCopy、预览渲染），此前全部排在 viewer 引擎的同一条 FIFO 上，翻译流式期间滚动瓦片被构建请求压住（#798 的队列饥饿）。
+
+- `ReflowBuildEngine`（`src/lib/pdf/reflow/builder.ts`）为构建提供专用引擎：懒创建（首个任务时 `saveAsCopy` 源文档 → 起一个 worker 引擎 → `openDocumentBuffer` 私有副本），构建与预览渲染都走专用引擎；worker 不可用或返回 direct 引擎时永久回退共享引擎（行为等同改动前），且绝不销毁共享引擎。
+- `ReflowPreviewSession` 持有 provider（测试可注入）：页任务、终局任务与 `prepare()` 都经 `obtainBuild()` 取目标；`prepareReflowItems` 的整篇字符提取同样移出 viewer 队列。
+- 生命周期：队列排空后 30s 无新任务即释放专用引擎（约 25–35 MB：worker 线性内存 + 文档副本），重启翻译或文档关闭时按需重建；`dispose()` 立即释放。
+
+**基准（`test/pdf-reflow-engine-bench.test.ts`，11 页 / 57 公式区域的 arXiv 论文，worker_threads 复刻应用架构：PDFium 在 worker FIFO、pdf-lib 留主线程、100ms 一次滚动瓦片）**：
+
+| 场景 | 瓦片 p50 | p95 | max | 构建 |
+|---|---|---|---|---|
+| 仅瓦片 | 7ms | 12ms | 12ms | — |
+| 共享引擎（改前） | 8ms | 285ms | 385ms | 42.3s |
+| 专用引擎（改后） | 5ms | 38ms | 3224ms | 41.3s |
+
+p95 降约 7.5 倍且构建吞吐不降；残留的偶发秒级瓦片延迟来自 pdf-lib 主线程同步拷贝（见剩余项），与队列饥饿无关。运行方式：`AGENTERO_BENCH_PDF=<pdf> AGENTERO_BENCH_LAYOUT=<layout.json> pnpm vitest run test/pdf-reflow-engine-bench.test.ts`（默认用系统字体；`AGENTERO_BENCH_FONTS_DIR` 可指定 Noto/SourceHan 目录，`AGENTERO_BENCH_PAGES` 过滤页）。
+
+验证：`test/pdf-reflow-build-engine.test.ts` 覆盖懒创建、idle 释放、worker 失败回退（共享引擎永不销毁）、direct 引擎拒绝、dispose 竞态；`test/pdf-reflow-preview.test.ts` 增加构建路由与 idle 释放用例。
+
 ## 翻译流式渲染开销收敛（2026-10-27）
 
 翻译进行中滚动卡顿（#770 / #798 / #838 后续）的三处收敛：
@@ -415,7 +435,7 @@ ResNet weight layer 完整提取、独立图标签不跨空间合并、隐藏/�
 
 验证：2394 项测试通过（含 `pdf-layout-translate-lifecycle` 的合并/取消/迟到结果语义）；TypeScript、Biome、`pnpm build` 通过。单页构建的端到端提速仍待真实服务实测（用 `pdf.reflow.page` / `pdf.reflow.fonts` 阶段日志对比）。
 
-剩余项：`pdf.save()` 字体字节逐页重复拷贝与 worker 传输（需输出容器级缓存或独立渲染引擎）、逐公式 PDF 克隆、长文档预览内存、整篇分析/字符提取门槛。
+剩余项：`pdf.save()` 字体字节逐页重复拷贝与 worker 传输（需输出容器级缓存）、逐公式 PDF 克隆、长文档预览内存、整篇分析门槛。
 
 
 ## 逐页重排预览（2026-10-27，#838）

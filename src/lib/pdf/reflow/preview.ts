@@ -4,14 +4,20 @@ import type {
 	LayoutTranslateItem,
 	PdfLayoutRegion,
 } from "@/lib/pdf/layout/types";
+import type { ReflowBuildProvider, ReflowBuildTarget } from "./builder";
 import { buildReflowPage, buildReflowPdf, type ReflowOutput } from "./export";
 import { loadReflowFonts } from "./fonts";
-import { reflowDocumentFromItems } from "./service";
+import { prepareReflowItems, reflowDocumentFromItems } from "./service";
 import type { PageLayout } from "./types";
 
 type PageInput = { key: string; items: LayoutTranslateItem[]; ready: boolean };
 type Preview = { key: string; url: string; layout: PageLayout };
 type Job = { key: string; abort: AbortController };
+/**
+ * The dedicated build engine costs ~25–35 MB (PDFium worker + private source
+ * copy). Keep it while translation is streaming, drop it once builds settle.
+ */
+const BUILD_ENGINE_IDLE_MS = 30_000;
 const identities = new WeakMap<object, number>();
 let nextIdentity = 0;
 function identity(value: object | undefined): number {
@@ -61,6 +67,7 @@ export class ReflowPreviewSession {
 	private queue: Promise<void> = Promise.resolve();
 	private finalKey = "";
 	private disposed = false;
+	private buildIdle: ReturnType<typeof setTimeout> | undefined;
 	/** Set when decorated state (previews, busy, output) changed since the last notify. */
 	private dirty = false;
 	output: Uint8Array | null = null;
@@ -70,6 +77,8 @@ export class ReflowPreviewSession {
 		readonly document: PdfDocumentObject,
 		private changed: () => void,
 		private failed: (error: unknown) => void,
+		/** Builds run on this dedicated engine so scroll rendering keeps the viewer queue. */
+		private build?: ReflowBuildProvider,
 	) {}
 
 	get busy(): boolean {
@@ -169,6 +178,7 @@ export class ReflowPreviewSession {
 				this.attempted.delete(index);
 		}
 		if (running) {
+			this.cancelBuildIdle();
 			// The same promise is shared with builders; a failure is reported by the job.
 			void loadReflowFonts().catch(() => {});
 			for (const [index, input] of this.inputs) {
@@ -186,17 +196,18 @@ export class ReflowPreviewSession {
 							.filter((i) => i.status === "done" && i.translated?.trim())
 							.map((i) => [i.id, i.translated ?? ""]),
 					);
+					const target = await this.obtainBuild(signal);
 					const built = await logOp("pdf.reflow.page", { page: index }, () =>
 						buildReflowPage(
-							this.engine,
-							this.document,
+							target.engine,
+							target.document,
 							ir,
 							translations,
 							fonts,
 							signal,
 						),
 					);
-					await this.publish(built, signal, true);
+					await this.publish(target.engine, built, signal, true);
 				});
 			}
 		} else if (finalKey) {
@@ -205,22 +216,58 @@ export class ReflowPreviewSession {
 				signal.throwIfAborted();
 				// Retain untranslated IR paragraphs as obstacles (including fallback text).
 				const ir = reflowDocumentFromItems(this.document, items, regions);
+				const target = await this.obtainBuild(signal);
 				const built = await logOp("pdf.reflow.final", undefined, () =>
 					buildReflowPdf(
-						this.engine,
-						this.document,
+						target.engine,
+						target.document,
 						ir,
 						new Map(selected.map((i) => [i.id, i.translated ?? ""])),
 						fonts,
 						signal,
 					),
 				);
-				await this.publish(built, signal, false);
+				await this.publish(target.engine, built, signal, false);
 				signal.throwIfAborted();
 				this.output = built.bytes;
 			});
 		}
 		this.notify();
+	}
+
+	/** Dedicated build engine when available; the viewer pair is the fallback. */
+	private async obtainBuild(signal: AbortSignal): Promise<ReflowBuildTarget> {
+		if (!this.build) return { engine: this.engine, document: this.document };
+		return this.build.get(signal);
+	}
+
+	/** Start extraction on the dedicated engine so prepare stays off the viewer queue too. */
+	async prepare(
+		seed: LayoutTranslateItem[],
+		regions: PdfLayoutRegion[],
+		signal?: AbortSignal,
+	): Promise<LayoutTranslateItem[]> {
+		void loadReflowFonts().catch(() => {});
+		const target = this.disposed
+			? { engine: this.engine, document: this.document }
+			: await this.obtainBuild(signal ?? new AbortController().signal);
+		return logOp("pdf.reflow.prepare", undefined, () =>
+			prepareReflowItems(target.engine, target.document, seed, regions, signal),
+		);
+	}
+
+	private scheduleBuildIdle(): void {
+		if (!this.build || this.buildIdle !== undefined) return;
+		this.buildIdle = setTimeout(() => {
+			this.buildIdle = undefined;
+			this.build?.idle();
+		}, BUILD_ENGINE_IDLE_MS);
+	}
+
+	private cancelBuildIdle(): void {
+		if (this.buildIdle === undefined) return;
+		clearTimeout(this.buildIdle);
+		this.buildIdle = undefined;
 	}
 
 	private enqueue(
@@ -246,12 +293,15 @@ export class ReflowPreviewSession {
 					// Busy / output may have transitioned even when the job aborted.
 					this.dirty = true;
 					this.notify();
+					// Queue drained: the dedicated engine can settle down.
+					if (!this.jobs.size) this.scheduleBuildIdle();
 				}
 			}
 		});
 	}
 
 	private async publish(
+		engine: PdfEngine,
 		built: ReflowOutput,
 		signal: AbortSignal,
 		single: boolean,
@@ -264,7 +314,7 @@ export class ReflowPreviewSession {
 					JSON.stringify(page),
 		);
 		if (!changed.length) return;
-		const preview = await this.engine
+		const preview = await engine
 			.openDocumentBuffer({
 				id: `reflow-preview-${crypto.randomUUID()}`,
 				content: built.bytes.slice().buffer,
@@ -277,7 +327,7 @@ export class ReflowPreviewSession {
 					"pdf.reflow.render",
 					{ page: page.index },
 					() =>
-						this.engine
+						engine
 							.renderPage(preview, preview.pages[single ? 0 : page.index], {
 								scaleFactor: 2,
 							})
@@ -297,12 +347,14 @@ export class ReflowPreviewSession {
 				this.notify();
 			}
 		} finally {
-			await this.engine.closeDocument(preview).toPromise();
+			await engine.closeDocument(preview).toPromise();
 		}
 	}
 
 	dispose(): void {
 		this.disposed = true;
+		this.cancelBuildIdle();
+		this.build?.dispose();
 		for (const job of this.jobs.values()) job.abort.abort();
 		this.jobs.clear();
 		for (const preview of this.previews.values())
