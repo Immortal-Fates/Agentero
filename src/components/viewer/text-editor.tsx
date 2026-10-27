@@ -5,14 +5,11 @@ import {
 	type Extension,
 	type Text,
 } from "@codemirror/state";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
-import { useStore } from "zustand";
 import { useTextEditorFontSize } from "@/components/viewer/hooks/use-text-editor-font-size";
 import { AskPopover } from "@/components/viewer/pdf/cards/ask-popover";
 import { SelectionMenu } from "@/components/viewer/pdf/cards/selection-menu";
@@ -23,9 +20,13 @@ import {
 	lintDiagnosticsWatcher,
 	TextEditorLintFooter,
 } from "@/components/viewer/text-editor-lint-footer";
+import {
+	editorChrome,
+	editorColorScheme,
+	editorHighlight,
+} from "@/components/viewer/text-editor-theme";
 import { TextEditorToolbar } from "@/components/viewer/text-editor-toolbar";
 import { useTextEditorSelection } from "@/components/viewer/use-text-editor-selection";
-import { commands } from "@/lib/core/bindings";
 import { basenameOf, dirnameOf, normalizePath } from "@/lib/core/path";
 import { texSettingsStore } from "@/lib/tex/config";
 import { insertTexCitation } from "@/lib/tex/editor-intelligence";
@@ -52,14 +53,13 @@ import {
 	texLiveApplyUpdate,
 	texLiveSetDocument,
 } from "@/lib/tex-live/session";
-import { closeTexLive, openTexLive } from "@/lib/workspace/actions";
 import { dockHandle } from "@/lib/workspace/dock-registry";
-import { setActiveTabId, workspaceStore } from "@/lib/workspace/store";
+import { setActiveTabId } from "@/lib/workspace/store";
 import { tabIdForPath } from "@/lib/workspace/tabs";
-import { ensureTexEngines, texCompileStore } from "@/lib/workspace/tex-compile";
 import { bindTexOutline } from "@/lib/workspace/tex-outline-bridge";
 import { registerTextEditorFlusher } from "@/lib/workspace/text-editor-flush";
 import { isTexPath, textLanguageIdForPath } from "@/lib/workspace/viewer";
+import { writingStore } from "@/lib/writing/store";
 
 interface TextEditorProps {
 	panelId?: string;
@@ -76,46 +76,14 @@ interface TextEditorProps {
 	onManualSave?: (path: string) => void;
 	/** Whether the owning tab is the active panel — gates the selection toolbar. */
 	active?: boolean;
-	/** Reading opens live preview as a dock tab. Writing keeps that off. */
-	showLivePreview?: boolean;
+	/** Which surface owns the live-preview buffer (reading dock vs writing). */
+	texLiveOwner?: "reading" | "writing";
 	/** Writing draws lint counts on the PDF bar. */
 	hideLintFooter?: boolean;
-	/** Writing pins source actions in a bar. Reading keeps the hover chip. */
-	toolbarPlacement?: "overlay" | "bar";
 	className?: string;
 }
 
 const AUTOSAVE_DELAY_MS = 800;
-
-// Base chrome rides the app's shadcn design tokens so light/dark both blend
-// with the surrounding surface; syntax colors come from the default light
-// highlight style / oneDark (swapped via compartment). Placed after oneDark
-// so the transparent background wins over its solid panel color.
-const baseTheme = EditorView.theme({
-	"&": {
-		height: "100%",
-		backgroundColor: "transparent",
-		color: "var(--foreground)",
-	},
-	".cm-scroller": {
-		fontFamily: "var(--font-mono)",
-		lineHeight: "1.65",
-	},
-	".cm-gutters": {
-		backgroundColor: "transparent",
-		color: "var(--muted-foreground)",
-		borderRight: "1px solid var(--border)",
-	},
-	".cm-activeLine": {
-		backgroundColor: "color-mix(in oklab, var(--muted) 45%, transparent)",
-	},
-	".cm-activeLineGutter": {
-		backgroundColor: "color-mix(in oklab, var(--muted) 60%, transparent)",
-	},
-	".cm-content": { caretColor: "var(--foreground)" },
-	".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
-	"&.cm-focused": { outline: "none" },
-});
 
 /**
  * Plain-text / code editor (CodeMirror 6) for the `text` fallback mode.
@@ -134,44 +102,13 @@ export function TextEditor({
 	onDirtyChange,
 	onManualSave,
 	active = true,
-	showLivePreview = true,
+	texLiveOwner = "reading",
 	hideLintFooter = false,
-	toolbarPlacement = "overlay",
 	className,
 }: TextEditorProps) {
-	const { t } = useTranslation("settings");
 	const [citationOpen, setCitationOpen] = useState(false);
 	// Font size managed by hook with process-wide persistence (like PDF paper tone).
 	const { fontSize, setFontSize } = useTextEditorFontSize();
-
-	const engines = useStore(texCompileStore, (s) => s.engines);
-	const tabs = useStore(workspaceStore, (s) => s.tabs);
-	const canLive = engines.some((engine) => engine.id === "lualatex");
-	const liveOn = tabs.some(
-		(tab) =>
-			tab.texLive === true &&
-			typeof tab.texRoot === "string" &&
-			isInsideProject(path, dirnameOf(tab.texRoot)),
-	);
-	const [liveStatus, setLiveStatus] = useState<{
-		available: boolean;
-		error: string | null;
-	} | null>(null);
-	useEffect(() => {
-		ensureTexEngines();
-		let cancelled = false;
-		void commands.rtexStatus().then((result) => {
-			if (cancelled) return;
-			setLiveStatus(
-				result.ok && result.data
-					? { available: result.data.available, error: result.data.error }
-					: { available: false, error: result.error?.message ?? null },
-			);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
 
 	// Follow the app theme (system / light / dark preference via next-themes).
 	const { resolvedTheme } = useTheme();
@@ -263,6 +200,9 @@ export function TextEditor({
 						pathRef.current,
 						line.number,
 						position - line.from + 1,
+						writingStore.getState().surface === "writing"
+							? { scope: "writing" }
+							: undefined,
 					);
 					return true;
 				},
@@ -367,11 +307,14 @@ export function TextEditor({
 			selection.selectionListener,
 			lintDiagnosticsWatcher(handleDiagnostics),
 			languageCompartment.current.of(language),
-			themeCompartment.current.of(themeRef.current === "dark" ? oneDark : []),
+			editorChrome,
+			editorHighlight,
+			themeCompartment.current.of(
+				editorColorScheme(themeRef.current === "dark"),
+			),
 			fontSizeCompartment.current.of(
 				EditorView.theme({ "&": { fontSize: `${fontSizeRef.current}px` } }),
 			),
-			baseTheme,
 			EditorView.domEventHandlers({
 				focus(_event, view) {
 					markTexEditorActive(pathRef.current, view);
@@ -415,7 +358,7 @@ export function TextEditor({
 		if (!view) return;
 		const unregisterEditor = registerTexEditor(path, view, {
 			canonical: !panelId || panelId === tabIdForPath(path),
-			owner: showLivePreview ? "reading" : "writing",
+			owner: texLiveOwner,
 			activate: panelId
 				? () => {
 						setActiveTabId(panelId);
@@ -430,7 +373,7 @@ export function TextEditor({
 			unregisterEditor();
 			unregisterBuffer();
 		};
-	}, [path, panelId, showLivePreview]);
+	}, [path, panelId, texLiveOwner]);
 
 	// Mounted TeX buffer owns the sidebar outline and the click-to-jump
 	// target, including while the PDF tab is the one in front. Runs after
@@ -538,11 +481,13 @@ export function TextEditor({
 		});
 	}, [path]);
 
-	// Follow theme switches without rebuilding the editor.
+	// Follow light/dark without rebuilding the editor. Token colors use
+	// light-dark() against this color-scheme, and surface colors are CSS
+	// variables, so a palette change does not need another reconfigure.
 	useEffect(() => {
 		viewRef.current?.dispatch({
 			effects: themeCompartment.current.reconfigure(
-				resolvedTheme === "dark" ? oneDark : [],
+				editorColorScheme(resolvedTheme === "dark"),
 			),
 		});
 	}, [resolvedTheme]);
@@ -619,50 +564,8 @@ export function TextEditor({
 	// PDF card stack); inactive keep-alive panes render no chrome.
 	return (
 		<div
-			className={`group relative flex h-full w-full flex-col overflow-hidden ${className ?? ""}`}
+			className={`relative flex h-full w-full flex-col overflow-hidden ${className ?? ""}`}
 		>
-			<TextEditorToolbar
-				fontSize={fontSize}
-				onFontSizeChange={setFontSize}
-				placement={toolbarPlacement}
-				texTools={
-					isTexPath(path)
-						? {
-								onCitation: () => setCitationOpen(true),
-								onSyncPdf: () => {
-									const view = viewRef.current;
-									if (!view) return;
-									const position = view.state.selection.main.head;
-									const line = view.state.doc.lineAt(position);
-									void syncTexToPdf(
-										path,
-										line.number,
-										position - line.from + 1,
-										showLivePreview ? undefined : { scope: "writing" },
-									);
-								},
-							}
-						: null
-				}
-				livePreview={
-					showLivePreview && isTexPath(path) && (canLive || liveOn)
-						? {
-								disabled: !liveOn && liveStatus?.available !== true,
-								pressed: liveOn,
-								title: liveOn
-									? t("appearance.livePreviewClose")
-									: liveStatus?.available === false
-										? (liveStatus.error ??
-											t("appearance.livePreviewUnavailable"))
-										: t("appearance.livePreview"),
-								onOpen: () => {
-									if (liveOn) void closeTexLive(path);
-									else void openTexLive(path);
-								},
-							}
-						: null
-				}
-			/>
 			{isTexPath(path) ? (
 				<TexCitationPicker
 					path={path}
@@ -675,7 +578,18 @@ export function TextEditor({
 					}}
 				/>
 			) : null}
-			<div ref={hostRef} className="min-h-0 w-full flex-1 overflow-hidden" />
+			{/* The chip anchors to the editor viewport, so the lint footer and
+			panel edges never affect its position. */}
+			<div className="relative min-h-0 w-full flex-1 overflow-hidden">
+				<TextEditorToolbar
+					fontSize={fontSize}
+					onFontSizeChange={setFontSize}
+					texTools={
+						isTexPath(path) ? { onCitation: () => setCitationOpen(true) } : null
+					}
+				/>
+				<div ref={hostRef} className="h-full w-full overflow-hidden" />
+			</div>
 			{hasLintSources && !hideLintFooter ? (
 				<TextEditorLintFooter
 					path={path}

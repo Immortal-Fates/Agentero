@@ -1,3 +1,4 @@
+import { loadCustomProperties } from "@/lib/paper/custom-properties-store";
 /**
  * Central lifecycle handler registration. The bus runs handlers serially in
  * registration order, so cross-handler ordering lives in this file.
@@ -70,6 +71,7 @@ export function registerLifecycleHandlers(): () => void {
 		lifecycle.on("vault:opened", async ({ vaultId }) => {
 			void refreshTree(vaultId);
 			void refreshLibrary();
+			void loadCustomProperties(vaultId);
 			seedVaultSkills(vaultId);
 			if (isTauri() && !isRemoteVaultHandle(vaultId)) {
 				// Establish the Host scope before later handlers activate plugins.

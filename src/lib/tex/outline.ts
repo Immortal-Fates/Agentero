@@ -22,13 +22,14 @@ type OutlineNode = {
 };
 
 /** part → subsubsection. Paragraph and below stay out of the outline. */
-const SECTION_NODES = new Set([
-	"Part",
-	"Chapter",
-	"Section",
-	"SubSection",
-	"SubSubSection",
-]);
+const SECTION_LEVELS: Record<string, number> = {
+	Part: 0,
+	Chapter: 0,
+	Section: 1,
+	SubSection: 2,
+	SubSubSection: 3,
+};
+const SECTION_NODES = new Set(Object.keys(SECTION_LEVELS));
 
 const FILE_NODES = new Set(["Input", "Include", "Subfile"]);
 
@@ -39,6 +40,8 @@ export type TexOutlineItem = {
 	path?: string;
 	/** Nesting under ancestor sections. Top-level rows are 0. */
 	indent: number;
+	/** Heading rank for section rows: part/chapter 0 … subsubsection 3. */
+	level?: number;
 	title: string;
 	/** 1-based line of the command. */
 	line: number;
@@ -97,15 +100,16 @@ function pushItem(
 	indent: number,
 	kind: TexOutlineItem["kind"],
 	title: string,
-	fileArg?: string,
+	extra?: { level?: number; fileArg?: string },
 ) {
 	out.push({
 		id: `${kind}:${node.from}`,
 		kind,
 		indent,
+		...(extra?.level === undefined ? {} : { level: extra.level }),
 		title,
 		line: doc.lineAt(node.from).number,
-		...(fileArg ? { fileArg } : {}),
+		...(extra?.fileArg ? { fileArg: extra.fileArg } : {}),
 	});
 }
 
@@ -148,7 +152,9 @@ function walk(
 		return;
 	}
 	if (SECTION_NODES.has(node.name)) {
-		pushItem(out, node, doc, indent, "section", sectionTitle(node, doc));
+		pushItem(out, node, doc, indent, "section", sectionTitle(node, doc), {
+			level: SECTION_LEVELS[node.name],
+		});
 		// Only the body. The title argument can itself contain `\input`,
 		// and that belongs in the heading text, not as its own row.
 		const content = childNamed(node, "Content");
@@ -158,7 +164,7 @@ function walk(
 	if (FILE_NODES.has(node.name)) {
 		const fileArg = fileArgument(node, doc);
 		if (fileArg) {
-			pushItem(out, node, doc, indent, "file", fileArg, fileArg);
+			pushItem(out, node, doc, indent, "file", fileArg, { fileArg });
 		}
 		return;
 	}

@@ -6,6 +6,7 @@
 		"welcome": "Welcome",
 		"theme": "Appearance",
 		"proxy": "Network",
+		"node": "Node.js",
 		"agent": "Agent",
 		"translate": "Translation",
 		"layout": "Figures & formulas",
@@ -28,6 +29,21 @@
 		"enabledLabel": "Enable network proxy",
 		"probe": "Probe"
 	},
+	"node": {
+		"title": "Set up Node.js",
+		"desc": "Node.js and npm power ACP adapters and some one-click AI assistant installs.",
+		"checking": "Checking Node.js and npm…",
+		"ready": "Node.js is ready",
+		"readyDesc": "Node.js and npm are already installed. You can continue.",
+		"missingTitle": "Node.js is required",
+		"missingDesc": "Install Node.js (npm ships with it) so Agent adapters and npm-based installs can run.",
+		"install": "Install Node.js",
+		"installing": "Installing…",
+		"installHint": "Uses your system package manager and can take a few minutes.",
+		"installed": "Installed",
+		"missing": "Not installed",
+		"recheck": "Check again"
+	},
 	"agent": {
 		"title": "Choose your AI assistant",
 		"desc": "Agentero plugs into agents already installed on this computer to summarize papers and answer questions — no extra API keys, just pick one.",
@@ -47,8 +63,10 @@
 		"failed": "Probe failed",
 		"notProbed": "Not probed",
 		"scanFailed": "Failed to scan agents",
+		"cliAgents": "CLI Agents",
 		"desktopApps": {
 			"title": "Local desktop apps",
+			"hint": "(not supported yet — install a CLI Agent below)",
 			"unsupported": "Not supported yet",
 			"chatgpt": "ChatGPT",
 			"qwenwork": "QwenWork",

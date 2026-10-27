@@ -22,7 +22,7 @@ import {
 	type IDockviewPanel,
 	type IDockviewPanelProps,
 } from "dockview-react";
-import { FileCode2, X } from "lucide-react";
+import { FileCode2 } from "lucide-react";
 import {
 	type ComponentProps,
 	createContext,
@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/tooltip";
 import { TexLiveStatusDot } from "@/components/viewer/texlive/tex-live-status";
 import { DocView, type DocViewProps } from "@/components/workspace/doc-view";
+import { DocumentTab } from "@/components/workspace/document-tab";
 import { PaperPathBar } from "@/components/workspace/paper-path-bar";
 import { AgenteroTabGroupChip } from "@/components/workspace/tab-group-chip";
 import { copyTextToClipboard } from "@/lib/core/clipboard";
@@ -246,9 +247,43 @@ function WorkspaceTab({
 	);
 
 	return (
-		<div
+		<DocumentTab
 			{...rest}
-			className="dv-default-tab group"
+			title={<MathText text={title ?? ""} />}
+			closeLabel={t("tabs.close", { title })}
+			onClose={isLibrary ? undefined : close}
+			trailing={
+				<>
+					{tab?.texLive ? (
+						<TexLiveStatusDot
+							rootPath={tab.texRoot ?? tab.path.replace(/\.pdf$/i, ".tex")}
+						/>
+					) : null}
+					{canToggleHtml ? (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									className="dv-default-tab-action"
+									aria-label={
+										tab?.mode === "pdf" ? t("tabs.showHtml") : t("tabs.showPdf")
+									}
+									onPointerDown={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+									}}
+									onClick={toggleHtml}
+								>
+									<FileCode2 className="size-3.5" />
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								{tab?.mode === "pdf" ? t("tabs.showHtml") : t("tabs.showPdf")}
+							</TooltipContent>
+						</Tooltip>
+					) : null}
+				</>
+			}
 			onPointerDown={(event) => {
 				middleClickRef.current = event.button === 1;
 				onPointerDown?.(event);
@@ -264,50 +299,7 @@ function WorkspaceTab({
 				middleClickRef.current = false;
 				onPointerLeave?.(event);
 			}}
-		>
-			<span className="dv-default-tab-content">
-				<MathText text={title ?? ""} />
-			</span>
-			{tab?.texLive ? (
-				<TexLiveStatusDot
-					rootPath={tab.texRoot ?? tab.path.replace(/\.pdf$/i, ".tex")}
-				/>
-			) : null}
-			{canToggleHtml ? (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							className="dv-default-tab-action"
-							aria-label={
-								tab?.mode === "pdf" ? t("tabs.showHtml") : t("tabs.showPdf")
-							}
-							onPointerDown={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-							}}
-							onClick={toggleHtml}
-						>
-							<FileCode2 className="size-3.5" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">
-						{tab?.mode === "pdf" ? t("tabs.showHtml") : t("tabs.showPdf")}
-					</TooltipContent>
-				</Tooltip>
-			) : null}
-			{isLibrary ? null : (
-				<button
-					type="button"
-					className="dv-default-tab-action"
-					aria-label={t("tabs.close", { title })}
-					onPointerDown={(event) => event.preventDefault()}
-					onClick={close}
-				>
-					<X className="size-3.5" />
-				</button>
-			)}
-		</div>
+		/>
 	);
 }
 

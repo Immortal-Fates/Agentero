@@ -395,6 +395,7 @@ function catalogTemplateFromId(templateId: string): AgentTemplate | undefined {
 		case "zcode":
 		case "minimax-code":
 		case "mimo-code":
+		case "qoder-cn":
 		case "custom":
 			return templateId;
 		default:

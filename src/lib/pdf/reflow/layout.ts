@@ -313,6 +313,7 @@ export function layoutReflowDocument(
 	ir: ReflowDocument,
 	translations: ReadonlyMap<string, string>,
 	fonts: ReflowFonts,
+	commonScale = true,
 ): PageLayout[] {
 	const result: PageLayout[] = ir.pages.map((page) => {
 		const paragraphs: ParagraphLayout[] = [];
@@ -363,7 +364,7 @@ export function layoutReflowDocument(
 		page.paragraphs = page.paragraphs.map((layout) => {
 			const p = source.paragraphs.find((p) => p.id === layout.id),
 				text = translations.get(layout.id);
-			if (!p || !text || layout.scale <= common) return layout;
+			if (!commonScale || !p || !text || layout.scale <= common) return layout;
 			const candidate = layoutParagraph(
 				p,
 				text,

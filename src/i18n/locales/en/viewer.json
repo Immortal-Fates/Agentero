@@ -71,6 +71,32 @@
 		},
 		"latexTranslation": {
 			"missingPaperPath": "Paper path is missing; cannot start LaTeX translation."
+		},
+		"bookmarks": {
+			"add": "Add bookmark",
+			"addChild": "Add child bookmark",
+			"actions": "Actions for {{title}}",
+			"up": "Move up",
+			"down": "Move down",
+			"indent": "Indent",
+			"outdent": "Outdent",
+			"delete": "Delete",
+			"cancel": "Cancel",
+			"apply": "Apply",
+			"title": "Title",
+			"defaultTitle": "Page {{page}}",
+			"empty": "Add a bookmark from the top-right corner of a page.",
+			"failed": "Could not save bookmarks. Your edits are kept.",
+			"conflict": "This PDF changed on disk. Cancel your edits and reopen it before editing again.",
+			"protected": "This PDF is encrypted, signed or read-only. Bookmarks cannot be saved.",
+			"unsupported": "This PDF contains unsupported bookmark actions or structure. The original file was not changed.",
+			"useCurrentPage": "Use current page",
+			"addPage": "Bookmark page {{page}}",
+			"rename": "Rename",
+			"removePage": "Remove bookmark for page {{page}}",
+			"saving": "Saving bookmarks…",
+			"retry": "Retry saving",
+			"discard": "Discard unsaved edits"
 		}
 	},
 	"pdfAsk": {

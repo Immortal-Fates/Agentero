@@ -31,7 +31,7 @@ import { LayoutAnalysisLayer } from "@embedpdf/plugin-layout-analysis/react";
 import { useRenderCapability } from "@embedpdf/plugin-render/react";
 import { SearchLayer } from "@embedpdf/plugin-search/react";
 import { TilingLayer } from "@embedpdf/plugin-tiling/react";
-import { EyeOff, Languages, Loader2 } from "lucide-react";
+import { Bookmark, EyeOff, Languages, Loader2 } from "lucide-react";
 import {
 	type CSSProperties,
 	memo,
@@ -629,6 +629,9 @@ type AnnotationCapabilityProvides = ReturnType<
 >["provides"];
 
 export type PdfPageLayersProps = {
+	onBookmarkPage?: (pageIndex: number) => void;
+	pageBookmarked?: boolean;
+	bookmarkSaving?: boolean;
 	annotationSource?: string;
 	docId: string;
 	pageIndex: number;
@@ -726,6 +729,9 @@ const PageTranslateTab = memo(function PageTranslateTab({
 });
 
 export const PdfPageLayers = memo(function PdfPageLayers({
+	onBookmarkPage,
+	pageBookmarked = false,
+	bookmarkSaving = false,
 	annotationSource,
 	docId,
 	pageIndex,
@@ -1327,6 +1333,53 @@ export const PdfPageLayers = memo(function PdfPageLayers({
 			 * annotation / pin overlays keep their intended colors. Agent crops
 			 * use engine.renderPageRect and are unaffected.
 			 */}
+			{onBookmarkPage && (
+				<button
+					type="button"
+					data-pdf-chrome
+					className={cn(
+						"absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-sm transition-[color,opacity,transform] duration-150 hover:opacity-100 active:scale-90 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current motion-reduce:transform-none motion-reduce:transition-none",
+						pageBookmarked
+							? pdfDark
+								? "text-[#ef8791]"
+								: "text-[#bd4554]"
+							: pdfDark
+								? "text-white/50 hover:text-[#ef8791]"
+								: "text-black/35 hover:text-[#bd4554]",
+						pageBookmarked
+							? "opacity-100"
+							: pageHovered
+								? "opacity-70"
+								: "opacity-0 [@media(hover:none)]:opacity-60",
+					)}
+					disabled={bookmarkSaving}
+					aria-busy={bookmarkSaving}
+					aria-pressed={pageBookmarked}
+					aria-label={t(
+						pageBookmarked
+							? "pdf.bookmarks.removePage"
+							: "pdf.bookmarks.addPage",
+						{ page: pageIndex + 1 },
+					)}
+					title={t(
+						pageBookmarked
+							? "pdf.bookmarks.removePage"
+							: "pdf.bookmarks.addPage",
+						{ page: pageIndex + 1 },
+					)}
+					onPointerDown={(event) => event.stopPropagation()}
+					onClick={(event) => {
+						event.stopPropagation();
+						onBookmarkPage(pageIndex);
+					}}
+				>
+					<Bookmark
+						className="size-4"
+						strokeWidth={1.75}
+						fill={pageBookmarked ? "currentColor" : "none"}
+					/>
+				</button>
+			)}
 			{paperRaster}
 			<SearchLayer
 				documentId={docId}

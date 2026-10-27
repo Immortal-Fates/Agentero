@@ -402,6 +402,7 @@ mod tests {
             is_read: false,
             zotero_item_id: None,
             zotero_last_synced: None,
+            custom_props: Default::default(),
             added_at: now.clone(),
             updated_at: now,
         };
@@ -602,6 +603,7 @@ mod tests {
                 is_read: false,
                 zotero_item_id: None,
                 zotero_last_synced: None,
+                custom_props: Default::default(),
                 added_at: now.clone(),
                 updated_at: now.clone(),
             };

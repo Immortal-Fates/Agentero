@@ -5,9 +5,7 @@
 //! Scoped to Motif catalog templates.
 
 use crate::features::agent::registry::antigravity;
-#[cfg(target_os = "windows")]
-use crate::features::agent::registry::discovery::path_entries;
-use crate::features::agent::registry::discovery::resolve_command;
+use crate::features::agent::registry::discovery::{login_shell_env, path_entries, resolve_command};
 use crate::features::agent::registry::templates::{
     antigravity_install_dir, antigravity_server_name, kimi_launcher_dir, template_info,
     zcode_host_path, CLAUDE_ACP_INSTALL_COMMAND, CODEX_ACP_INSTALL_COMMAND,
@@ -79,6 +77,7 @@ pub const LIFECYCLE_TEMPLATES: &[&str] = &[
     "cursor-agent",
     "hermes",
     "qodercli",
+    "qoder-cn",
     "grok-build",
     "pi",
     "dsh",
@@ -181,6 +180,17 @@ const QODER_NPM_INSTALL_COMMAND: &str = if cfg!(windows) {
     "npm i -g @qoder-ai/qodercli@latest --prefix \"$HOME/.local\""
 };
 
+/// Qoder CN (mainland build) official installer. Installs a native `qodercn`
+/// dispatcher under `~/.qoder-cn/entry`; npm is only the Node compatibility
+/// build, so it stays the fallback. Windows-arm64 has no native build.
+#[cfg(not(target_os = "windows"))]
+const QODER_CN_INSTALL_UNIX: &str = "bash -c 'tmp=$(mktemp) && curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
+const QODER_CN_NPM_INSTALL_COMMAND: &str = if cfg!(windows) {
+    "npm i -g @qodercn-ai/qoderclicn@latest"
+} else {
+    "npm i -g @qodercn-ai/qoderclicn@latest --prefix \"$HOME/.local\""
+};
+
 /// Cursor Agent CLI official installer. Downloads a native `cursor-agent`
 /// into `~/.local/share/cursor-agent/versions/<release>` and symlinks
 /// `~/.local/bin/{agent,cursor-agent}`. There is no npm package.
@@ -199,6 +209,9 @@ const HERMES_INSTALL_WINDOWS_SCRIPT: &str =
 const KIMI_INSTALL_WINDOWS_SCRIPT: &str = "irm https://code.kimi.com/kimi-code/install.ps1 | iex";
 #[cfg(target_os = "windows")]
 const QODER_INSTALL_WINDOWS_SCRIPT: &str = "irm https://qoder.com/install.ps1 | iex";
+#[cfg(target_os = "windows")]
+const QODER_CN_INSTALL_WINDOWS_SCRIPT: &str =
+    "irm https://static.qoder.com.cn/qoder-cli-cn/install.ps1 | iex";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolLifecycleAction {
@@ -341,6 +354,10 @@ pub fn uninstall_info(template_id: &str) -> Option<UninstallInfo> {
         // npm covers the Node fallback. The official script writes the paths
         // in `qoder_managed_install_paths` (not the ~/.qoder session dir).
         "qodercli" => (vec![npm_uninstall_global("@qoder-ai/qodercli")], Vec::new()),
+        "qoder-cn" => (
+            vec![npm_uninstall_global("@qodercn-ai/qoderclicn")],
+            Vec::new(),
+        ),
         // The ACP profile lives inside the umbrella CLI; the dir entry below
         // only cleans up the retired dsh-acp-demo launcher.
         "dsh" => (vec![dsh_host], Vec::new()),
@@ -373,6 +390,13 @@ pub fn uninstall_info(template_id: &str) -> Option<UninstallInfo> {
         "kimi-code" => (vec![kimi_launcher_dir().display().to_string()], Vec::new()),
         "qodercli" => (
             qoder_managed_install_paths()
+                .into_iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+            Vec::new(),
+        ),
+        "qoder-cn" => (
+            qoder_cn_managed_install_paths()
                 .into_iter()
                 .map(|path| path.display().to_string())
                 .collect(),
@@ -426,6 +450,33 @@ fn qoder_managed_install_paths() -> Vec<std::path::PathBuf> {
             bin.join("qodercli.cmd"),
         ]
     };
+    paths
+}
+
+/// Official Qoder CN installer layout. The versioned binaries live in
+/// `~/.qoder-cn/bin/qoderclicn`, the `qodercn` / `qoder-cn` dispatchers in
+/// `~/.qoder-cn/entry`, and Unix also symlinks `~/.local/bin/qoderclicn`.
+/// `~/.qoder-cn` itself holds auth, sessions and logs, so only the managed
+/// binary and dispatcher directories are removed.
+fn qoder_cn_managed_install_paths() -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    let home = std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
+    #[cfg(not(target_os = "windows"))]
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let Some(home) = home.filter(|path| !path.as_os_str().is_empty()) else {
+        return Vec::new();
+    };
+    #[cfg(not(target_os = "windows"))]
+    let paths = vec![
+        home.join(".qoder-cn").join("bin").join("qoderclicn"),
+        home.join(".qoder-cn").join("entry"),
+        home.join(".local").join("bin").join("qoderclicn"),
+    ];
+    #[cfg(target_os = "windows")]
+    let paths = vec![
+        home.join(".qoder-cn").join("bin").join("qoderclicn"),
+        home.join(".qoder-cn").join("entry"),
+    ];
     paths
 }
 
@@ -500,10 +551,10 @@ pub fn run_partial_template_uninstall(
     let npm_prefix: Option<std::path::PathBuf> = None;
     if !payload.npm_commands.is_empty() {
         // A fully `|| true` chain would silently succeed when npm is missing.
-        // Qoder's official installer does not need Node, so a missing npm must
+        // Qoder's official installers do not need Node, so a missing npm must
         // not block removal of the script-installed binary.
         let npm_available = resolve_command("npm").is_some();
-        if !npm_available && template_id != "qodercli" {
+        if !npm_available && !matches!(template_id, "qodercli" | "qoder-cn") {
             return Err("npm is not available on PATH; cannot uninstall npm packages".to_string());
         }
         if npm_available {
@@ -657,6 +708,15 @@ pub fn run_template_lifecycle(
 
     if command.trim().is_empty() {
         return Err(format!("empty lifecycle command for {template_id}"));
+    }
+    // Fail with the message the UI already recognizes before starting a doomed
+    // `bash -c "npm ..."`. Commands that put an official installer first (with
+    // npm only as an `||` fallback) are not npm-only and stay allowed.
+    if command_needs_npm(&command) && !npm_available_for_lifecycle() {
+        return Err(
+            "npm is not available on PATH; install Node.js (npm ships with it), then retry"
+                .to_string(),
+        );
     }
 
     log::info!(
@@ -977,6 +1037,10 @@ fn host_install_command(template_id: &str) -> Result<String, String> {
                 &qoder_install_windows_command(),
                 QODER_NPM_INSTALL_COMMAND,
             )),
+            "qoder-cn" => Ok(chain_or(
+                &qoder_cn_install_windows_command(),
+                QODER_CN_NPM_INSTALL_COMMAND,
+            )),
             "pi" => Ok(PI_HOST_INSTALL_COMMAND.to_string()),
             "dsh" => Ok(DSH_INSTALL_COMMAND.to_string()),
             "kimi-code" => Ok(chain_or(
@@ -1008,6 +1072,10 @@ fn host_install_command(template_id: &str) -> Result<String, String> {
             )),
             "hermes" => Ok(HERMES_INSTALL_UNIX.to_string()),
             "qodercli" => Ok(chain_or(QODER_INSTALL_UNIX, QODER_NPM_INSTALL_COMMAND)),
+            "qoder-cn" => Ok(chain_or(
+                QODER_CN_INSTALL_UNIX,
+                QODER_CN_NPM_INSTALL_COMMAND,
+            )),
             "pi" => Ok(PI_HOST_INSTALL_COMMAND.to_string()),
             "dsh" => Ok(DSH_INSTALL_COMMAND.to_string()),
             "kimi-code" => Ok(chain_or(KIMI_INSTALL_UNIX, KIMI_NPM_INSTALL_COMMAND)),
@@ -1130,6 +1198,27 @@ fn host_update_command(template_id: &str) -> Result<String, String> {
                 ))
             }
         }
+        // Qoder CN's dispatcher forwards `update` to the CLI's non-interactive
+        // self-updater; fall back to the official installer then npm.
+        "qoder-cn" => {
+            #[cfg(target_os = "windows")]
+            {
+                Ok(chain_or(
+                    "qodercn update",
+                    &chain_or(
+                        &qoder_cn_install_windows_command(),
+                        QODER_CN_NPM_INSTALL_COMMAND,
+                    ),
+                ))
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                Ok(chain_or(
+                    "qodercn update",
+                    &chain_or(QODER_CN_INSTALL_UNIX, QODER_CN_NPM_INSTALL_COMMAND),
+                ))
+            }
+        }
         _ => host_install_command(template_id),
     }
 }
@@ -1153,6 +1242,31 @@ fn chain_commands(parts: &[String]) -> String {
     {
         parts.join(" && ")
     }
+}
+
+/// True when every non-empty line is a direct `npm` invocation. Official
+/// installers that only use npm as an `||` fallback are excluded: they can
+/// succeed without Node, so a missing npm must not reject them up front.
+fn command_needs_npm(command: &str) -> bool {
+    let mut lines = command
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .peekable();
+    lines.peek().is_some()
+        && lines.all(|line| line.starts_with("npm ") || line.starts_with("npm.cmd "))
+}
+
+fn npm_available_for_lifecycle() -> bool {
+    if resolve_command("npm").is_some() {
+        return true;
+    }
+    login_shell_env()
+        .and_then(|environment| environment.get("PATH").cloned())
+        .is_some_and(|path| {
+            let paths = std::env::split_paths(&path).collect::<Vec<_>>();
+            crate::core::process::resolve_command_in_paths("npm", &paths).is_some()
+        })
 }
 
 #[cfg(target_os = "windows")]
@@ -1198,6 +1312,14 @@ fn qoder_install_windows_command() -> String {
 }
 
 #[cfg(target_os = "windows")]
+fn qoder_cn_install_windows_command() -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell_encoded_command(QODER_CN_INSTALL_WINDOWS_SCRIPT)
+    )
+}
+
+#[cfg(target_os = "windows")]
 fn cursor_install_windows_command() -> String {
     format!(
         "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
@@ -1228,6 +1350,9 @@ pub fn manual_install_commands_text() -> String {
 # Qoder CLI
 {qoder}
 # (or) {qoder_npm}
+# Qoder CN
+{qoder_cn}
+# (or) {qoder_cn_npm}
 # Grok Build
 {grok}
 # (or) {grok_npm}
@@ -1249,6 +1374,8 @@ pub fn manual_install_commands_text() -> String {
             hermes = hermes_install_windows_command(),
             qoder = qoder_install_windows_command(),
             qoder_npm = QODER_NPM_INSTALL_COMMAND,
+            qoder_cn = qoder_cn_install_windows_command(),
+            qoder_cn_npm = QODER_CN_NPM_INSTALL_COMMAND,
             grok = grok_install_windows_command(),
             grok_npm = GROK_NPM_INSTALL_COMMAND,
             kimi = kimi_install_windows_command(),
@@ -1277,6 +1404,8 @@ pub fn manual_install_commands_text() -> String {
 {hermes}
 # Qoder CLI
 {qoder} || {qoder_npm}
+# Qoder CN
+{qoder_cn} || {qoder_cn_npm}
 # Grok Build
 {grok} || {grok_npm}
 # Kimi Code
@@ -1298,6 +1427,8 @@ pub fn manual_install_commands_text() -> String {
             hermes = HERMES_INSTALL_UNIX,
             qoder = QODER_INSTALL_UNIX,
             qoder_npm = QODER_NPM_INSTALL_COMMAND,
+            qoder_cn = QODER_CN_INSTALL_UNIX,
+            qoder_cn_npm = QODER_CN_NPM_INSTALL_COMMAND,
             grok = GROK_INSTALL_UNIX,
             grok_npm = GROK_NPM_INSTALL_COMMAND,
             kimi = KIMI_INSTALL_UNIX,
@@ -1332,9 +1463,25 @@ fn run_tool_lifecycle_silently(
             cmd.env("npm_config_prefix", prefix);
         }
         let shell_env = crate::core::process::discover::refresh_login_shell_env();
-        if let Some(login_path) = shell_env.as_ref().and_then(|env| env.get("PATH")) {
-            let inherited = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", merge_path_segments(login_path, &inherited));
+        // Match `diagnose_host` / ACP spawn: nvm, fnm, Homebrew and the
+        // agent-specific user bins are often absent from both a GUI-launched
+        // process and a non-interactive login shell. Without them npm can be
+        // reported available by Doctor and still be `command not found` here.
+        let inherited = std::env::var("PATH").unwrap_or_default();
+        let base_path = shell_env
+            .as_ref()
+            .and_then(|env| env.get("PATH"))
+            .map_or(inherited.clone(), |login_path| {
+                merge_path_segments(login_path, &inherited)
+            });
+        let mut merged_paths = std::env::split_paths(&base_path).collect::<Vec<_>>();
+        for entry in path_entries() {
+            if !merged_paths.iter().any(|existing| existing == &entry) {
+                merged_paths.push(entry);
+            }
+        }
+        if let Ok(path) = std::env::join_paths(&merged_paths) {
+            cmd.env("PATH", path);
         }
         let output = run_command_with_cancellation(cmd, app, task_id, phase);
         crate::core::process::discover::invalidate_login_shell_env();
@@ -1896,6 +2043,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn npm_guard_only_covers_pure_npm_commands() {
+        assert!(command_needs_npm("npm i -g @openai/codex@latest"));
+        assert!(command_needs_npm(
+            "npm i -g @openai/codex@latest && npm i -g @agentclientprotocol/codex-acp@latest"
+        ));
+        assert!(!command_needs_npm(
+            "bash -c 'curl -fsSL https://example.test/install.sh | bash' || npm i -g foo"
+        ));
+        assert!(!command_needs_npm(""));
+    }
+
     /// Every npm global install/uninstall on Unix must use the user prefix.
     /// The macOS pkg installer leaves npm's prefix at the root-owned
     /// `/usr/local`, where a bare `npm i -g` fails with EPERM (#791).
@@ -1925,6 +2084,7 @@ mod tests {
             "opencode",
             "hermes",
             "qodercli",
+            "qoder-cn",
             "grok-build",
             "pi",
             "dsh",
@@ -2112,6 +2272,59 @@ mod tests {
     }
 
     #[test]
+    fn qoder_cn_install_prefers_official_script_with_npm_fallback() {
+        let cmd = host_install_command("qoder-cn").expect("Qoder CN install");
+        let script = if cfg!(target_os = "windows") {
+            decode_encoded_commands(&cmd)
+        } else {
+            cmd.clone()
+        };
+        assert!(
+            script.contains("static.qoder.com.cn/qoder-cli-cn/install"),
+            "Qoder CN install must use the official script: {script}"
+        );
+        assert!(
+            !script.contains("curl | bash"),
+            "must not pipe curl to bash"
+        );
+        assert!(
+            cmd.contains("@qodercn-ai/qoderclicn"),
+            "Qoder CN install must fall back to npm: {cmd}"
+        );
+        let update = host_update_command("qoder-cn").expect("Qoder CN update");
+        assert!(
+            update.contains("qodercn update"),
+            "Qoder CN update must try the built-in updater: {update}"
+        );
+        let info = uninstall_info("qoder-cn").expect("Qoder CN uninstall");
+        assert!(info
+            .agent
+            .npm_commands
+            .iter()
+            .any(|c| c.contains("@qodercn-ai/qoderclicn")));
+        let dirs: Vec<String> = info
+            .agent
+            .dirs
+            .iter()
+            .map(|dir| dir.replace('\\', "/"))
+            .collect();
+        assert!(dirs
+            .iter()
+            .any(|dir| dir.ends_with(".qoder-cn/bin/qoderclicn")));
+        assert!(dirs.iter().any(|dir| dir.ends_with(".qoder-cn/entry")));
+        assert!(dirs.iter().all(|dir| {
+            let name = std::path::Path::new(dir)
+                .file_name()
+                .and_then(|name| name.to_str());
+            name != Some(".qoder-cn") && name != Some(".local") && name != Some("bin")
+        }));
+        #[cfg(not(target_os = "windows"))]
+        assert!(dirs
+            .iter()
+            .any(|dir| dir.ends_with(".local/bin/qoderclicn")));
+    }
+
+    #[test]
     fn remove_managed_path_removes_file_and_directory_and_ignores_missing() {
         let root = std::env::temp_dir().join(format!(
             "agentero-managed-path-{}-{}",
@@ -2266,6 +2479,7 @@ mod tests {
             }
         }
         assert!(uninstall_info("qodercli").is_some());
+        assert!(uninstall_info("qoder-cn").is_some());
         assert!(uninstall_info("custom").is_none());
     }
 

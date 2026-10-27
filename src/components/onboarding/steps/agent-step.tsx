@@ -218,167 +218,12 @@ export const AgentStep = forwardRef<AgentStepHandle>(
 			<div className="space-y-4">
 				{error ? <p className="text-destructive text-xs">{error}</p> : null}
 
-				{entries.length === 0 ? (
-					<div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-muted-foreground text-xs">
-						<Wifi className="size-4 shrink-0" />
-						<span>{scanning ? t("agent.scanning") : t("agent.none")}</span>
-					</div>
-				) : (
-					<ul className="grid grid-cols-4 gap-3">
-						{entries.map((entry) => {
-							const available = isAvailable(entry);
-							const layer = available ? null : missingLayer(entry);
-							const adapterOnly = layer === "adapter";
-							const isDefault =
-								available &&
-								(entry.isDefault || entry.registeredId === state?.defaultId);
-							const settingDefault = busyId === entry.templateId;
-							const installing = lifecycleBusyIds.has(entry.templateId);
-							const busy = settingDefault || installing;
-							const rowLifecycle = lifecycleProgress[entry.templateId];
-							const cardClassName = cn(
-								"group relative flex w-full flex-col items-center gap-2 rounded-xl border bg-background p-3 text-center outline-none transition-colors hover:border-primary/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
-								isDefault && "border-primary bg-primary/5",
-								!available && "opacity-60",
-							);
-							const cardContent = (
-								<>
-									{/* Top-right: "default" tag, status dot, or install icon. */}
-									{isDefault ? (
-										<span className="absolute top-2 right-2 rounded bg-primary px-1 py-0.5 text-caption leading-none font-medium text-primary-foreground">
-											{t("agent.default")}
-										</span>
-									) : available ? (
-										<span
-											role="status"
-											aria-label={t(statusLabelKey(entry.acpStatus))}
-											className={cn(
-												"absolute top-2 right-2 size-1.5 rounded-full",
-												statusDotClass(entry.acpStatus),
-											)}
-										/>
-									) : entry.canInstall ? (
-										<button
-											type="button"
-											disabled={busy}
-											aria-label={
-												adapterOnly
-													? t("agent.installAdapterAria", {
-															name: entry.name,
-														})
-													: t("agent.installAgentAria", {
-															name: entry.name,
-														})
-											}
-											title={
-												adapterOnly
-													? t("agent.installAdapterTitle")
-													: t("agent.installAgentTitle")
-											}
-											onClick={(e) => {
-												e.stopPropagation();
-												void onInstall(entry);
-											}}
-											className="absolute top-1.5 right-1.5 rounded p-0.5 text-muted-foreground transition-colors opacity-80 hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
-										>
-											{busy ? (
-												<LoaderCircle className="size-3.5 animate-spin" />
-											) : (
-												<Download className="size-3.5" />
-											)}
-										</button>
-									) : (
-										<span
-											role="status"
-											aria-label={t(statusLabelKey(entry.acpStatus))}
-											className="absolute top-2 right-2 size-1.5 rounded-full bg-muted-foreground/30"
-										/>
-									)}
-
-									<div className="flex size-14 items-center justify-center">
-										{settingDefault ? (
-											<LoaderCircle className="size-6 animate-spin" />
-										) : (
-											<AgentLogo
-												template={entry.templateId}
-												className="size-12 rounded-none border-0 bg-transparent shadow-none"
-												iconClassName="size-7"
-											/>
-										)}
-									</div>
-									<p className="w-full truncate text-sm font-medium">
-										{entry.name}
-									</p>
-									{layer && !rowLifecycle ? (
-										<p className="w-full text-caption text-muted-foreground leading-tight">
-											{adapterOnly
-												? t("agent.adapterMissing")
-												: t("agent.agentMissing")}
-										</p>
-									) : null}
-									{rowLifecycle ? (
-										<div
-											role="status"
-											aria-live="polite"
-											className="flex w-full flex-col gap-1"
-										>
-											<div className="grid grid-cols-[minmax(0,1fr)_2rem_1rem] items-center gap-1.5">
-												<span className="truncate text-caption text-muted-foreground">
-													{rowLifecycle.detail}
-												</span>
-												<span className="text-right font-mono text-caption text-muted-foreground tabular-nums">
-													{rowLifecycle.progress == null
-														? ""
-														: `${Math.round(rowLifecycle.progress)}%`}
-												</span>
-												<button
-													type="button"
-													aria-label={t("common:cancel")}
-													title={t("common:cancel")}
-													onClick={(e) => {
-														e.stopPropagation();
-														cancelToolLifecycle(entry.templateId);
-													}}
-													className="flex size-4 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-												>
-													<X className="size-3" aria-hidden />
-												</button>
-											</div>
-											<Progress
-												value={rowLifecycle.progress ?? 0}
-												className="h-1"
-											/>
-										</div>
-									) : null}
-								</>
-							);
-							return (
-								<li key={entry.templateId}>
-									{available ? (
-										<button
-											type="button"
-											aria-pressed={isDefault}
-											aria-label={`${entry.name} — ${t(statusLabelKey(entry.acpStatus))}`}
-											disabled={busy}
-											onClick={() => {
-												void onSetDefault(entry);
-											}}
-											className={cardClassName}
-										>
-											{cardContent}
-										</button>
-									) : (
-										<div className={cardClassName}>{cardContent}</div>
-									)}
-								</li>
-							);
-						})}
-					</ul>
-				)}
-
 				<div className="space-y-2">
 					<p className="px-0.5 text-muted-foreground text-xs">
-						{t("agent.desktopApps.title")}
+						{t("agent.desktopApps.title")}{" "}
+						<span className="text-muted-foreground/70">
+							{t("agent.desktopApps.hint")}
+						</span>
 					</p>
 					<ul className="grid grid-cols-4 gap-3">
 						{DESKTOP_APP_IDS.map((id) => {
@@ -405,6 +250,169 @@ export const AgentStep = forwardRef<AgentStepHandle>(
 							);
 						})}
 					</ul>
+				</div>
+
+				<div className="space-y-2">
+					<p className="px-0.5 text-muted-foreground text-xs">
+						{t("agent.cliAgents")}
+					</p>
+					{entries.length === 0 ? (
+						<div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-muted-foreground text-xs">
+							<Wifi className="size-4 shrink-0" />
+							<span>{scanning ? t("agent.scanning") : t("agent.none")}</span>
+						</div>
+					) : (
+						<ul className="grid grid-cols-4 gap-3">
+							{entries.map((entry) => {
+								const available = isAvailable(entry);
+								const layer = available ? null : missingLayer(entry);
+								const adapterOnly = layer === "adapter";
+								const isDefault =
+									available &&
+									(entry.isDefault || entry.registeredId === state?.defaultId);
+								const settingDefault = busyId === entry.templateId;
+								const installing = lifecycleBusyIds.has(entry.templateId);
+								const busy = settingDefault || installing;
+								const rowLifecycle = lifecycleProgress[entry.templateId];
+								const cardClassName = cn(
+									"group relative flex w-full flex-col items-center gap-2 rounded-xl border bg-background p-3 text-center outline-none transition-colors hover:border-primary/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
+									isDefault && "border-primary bg-primary/5",
+									!available && "opacity-60",
+								);
+								const cardContent = (
+									<>
+										{/* Top-right: "default" tag, status dot, or install icon. */}
+										{isDefault ? (
+											<span className="absolute top-2 right-2 rounded bg-primary px-1 py-0.5 text-caption leading-none font-medium text-primary-foreground">
+												{t("agent.default")}
+											</span>
+										) : available ? (
+											<span
+												role="status"
+												aria-label={t(statusLabelKey(entry.acpStatus))}
+												className={cn(
+													"absolute top-2 right-2 size-1.5 rounded-full",
+													statusDotClass(entry.acpStatus),
+												)}
+											/>
+										) : entry.canInstall ? (
+											<button
+												type="button"
+												disabled={busy}
+												aria-label={
+													adapterOnly
+														? t("agent.installAdapterAria", {
+																name: entry.name,
+															})
+														: t("agent.installAgentAria", {
+																name: entry.name,
+															})
+												}
+												title={
+													adapterOnly
+														? t("agent.installAdapterTitle")
+														: t("agent.installAgentTitle")
+												}
+												onClick={(e) => {
+													e.stopPropagation();
+													void onInstall(entry);
+												}}
+												className="absolute top-1.5 right-1.5 rounded p-0.5 text-muted-foreground transition-colors opacity-80 hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+											>
+												{busy ? (
+													<LoaderCircle className="size-3.5 animate-spin" />
+												) : (
+													<Download className="size-3.5" />
+												)}
+											</button>
+										) : (
+											<span
+												role="status"
+												aria-label={t(statusLabelKey(entry.acpStatus))}
+												className="absolute top-2 right-2 size-1.5 rounded-full bg-muted-foreground/30"
+											/>
+										)}
+
+										<div className="flex size-14 items-center justify-center">
+											{settingDefault ? (
+												<LoaderCircle className="size-6 animate-spin" />
+											) : (
+												<AgentLogo
+													template={entry.templateId}
+													className="size-12 rounded-none border-0 bg-transparent shadow-none"
+													iconClassName="size-7"
+												/>
+											)}
+										</div>
+										<p className="w-full truncate text-sm font-medium">
+											{entry.name}
+										</p>
+										{layer && !rowLifecycle ? (
+											<p className="w-full text-caption text-muted-foreground leading-tight">
+												{adapterOnly
+													? t("agent.adapterMissing")
+													: t("agent.agentMissing")}
+											</p>
+										) : null}
+										{rowLifecycle ? (
+											<div
+												role="status"
+												aria-live="polite"
+												className="flex w-full flex-col gap-1"
+											>
+												<div className="grid grid-cols-[minmax(0,1fr)_2rem_1rem] items-center gap-1.5">
+													<span className="truncate text-caption text-muted-foreground">
+														{rowLifecycle.detail}
+													</span>
+													<span className="text-right font-mono text-caption text-muted-foreground tabular-nums">
+														{rowLifecycle.progress == null
+															? ""
+															: `${Math.round(rowLifecycle.progress)}%`}
+													</span>
+													<button
+														type="button"
+														aria-label={t("common:cancel")}
+														title={t("common:cancel")}
+														onClick={(e) => {
+															e.stopPropagation();
+															cancelToolLifecycle(entry.templateId);
+														}}
+														className="flex size-4 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+													>
+														<X className="size-3" aria-hidden />
+													</button>
+												</div>
+												<Progress
+													value={rowLifecycle.progress ?? 0}
+													className="h-1"
+												/>
+											</div>
+										) : null}
+									</>
+								);
+								return (
+									<li key={entry.templateId}>
+										{available ? (
+											<button
+												type="button"
+												aria-pressed={isDefault}
+												aria-label={`${entry.name} — ${t(statusLabelKey(entry.acpStatus))}`}
+												disabled={busy}
+												onClick={() => {
+													void onSetDefault(entry);
+												}}
+												className={cardClassName}
+											>
+												{cardContent}
+											</button>
+										) : (
+											<div className={cardClassName}>{cardContent}</div>
+										)}
+									</li>
+								);
+							})}
+						</ul>
+					)}
 				</div>
 			</div>
 		);

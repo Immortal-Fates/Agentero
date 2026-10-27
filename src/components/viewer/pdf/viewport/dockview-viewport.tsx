@@ -224,6 +224,11 @@ export function DockviewViewport({
 					// Chromium's scroll anchoring adjust this custom virtual viewport can
 					// move it to an endpoint when the rendered range changes.
 					overflowAnchor: "none",
+					// FitWidth derives the zoom from clientWidth. A scrollbar that
+					// appears with the first page layout would shrink that width and
+					// re-fit the document one step smaller; reserve the gutter so the
+					// auto zoom does not flip between two percentages on open.
+					scrollbarGutter: "stable",
 					padding: `${viewportGap}px`,
 					// The shorthand above would clobber a caller's paddingRight; merge
 					// the reserved rail gutter explicitly.

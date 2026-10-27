@@ -18,6 +18,7 @@ import { cn } from "@/lib/core/utils";
 
 type PdfLeftToolbarProps = {
 	outline: PdfBookmarkObject[];
+	canEditBookmarks?: boolean;
 	showOutline: boolean;
 	onToggleOutline: () => void;
 	paperPath: string | null;
@@ -39,6 +40,7 @@ type PdfLeftToolbarProps = {
  *  visible ones aligned without fixed left-offset magic numbers. */
 export function PdfLeftToolbar({
 	outline,
+	canEditBookmarks = false,
 	showOutline,
 	onToggleOutline,
 	paperPath,
@@ -52,7 +54,7 @@ export function PdfLeftToolbar({
 	plainViewer = false,
 }: PdfLeftToolbarProps) {
 	const { t } = useTranslation("viewer");
-	const hasOutline = outline.length > 0;
+	const hasOutline = outline.length > 0 || canEditBookmarks;
 
 	return (
 		<div

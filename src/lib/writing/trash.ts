@@ -27,6 +27,7 @@ export async function trashWritingProject(
 	if (await vaultPathExists(target)) return false;
 	forgetWritingProject(rootFile, fileOnly ? "file" : "directory");
 	try {
+		setWritingDiscovering(true);
 		setDiscoveredManuscripts(await discoverWritingProjects(vaultPath));
 	} catch {
 		setWritingDiscovering(false);

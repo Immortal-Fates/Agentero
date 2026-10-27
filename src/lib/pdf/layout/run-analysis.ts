@@ -324,6 +324,19 @@ export async function runDocumentLayoutAnalysis(
 	documentId: string,
 	options: RunLayoutAnalysisOptions = {},
 ): Promise<LayoutTaskLike | null> {
+	const started = performance.now();
+	const onDone = options.onDone;
+	options = {
+		...options,
+		onDone: (summary, count) => {
+			logger.info("pdf.layout.complete", {
+				documentId,
+				duration_ms: Math.round(performance.now() - started),
+			});
+			onDone?.(summary, count);
+		},
+	};
+
 	/** Attribute progress to this paper so the open Figures rail can match. */
 	const paperKey = options.paperAbsPath ?? null;
 	const setUi = (

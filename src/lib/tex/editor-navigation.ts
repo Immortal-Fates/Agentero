@@ -180,7 +180,7 @@ function fragmentLine(fragment: string): number | null {
  */
 export function tryOpenWritingSource(path: string, fragment: string): boolean {
 	const writing = writingStore.getState();
-	if (writing.surface !== "writing" || writing.showTrash) return false;
+	if (writing.surface !== "writing") return false;
 	const vaultPath = vaultStore.getState().vaultPath;
 	if (!vaultPath) return false;
 	const rel =

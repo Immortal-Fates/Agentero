@@ -1,7 +1,7 @@
 import type { useDocumentManagerCapability } from "@embedpdf/plugin-document-manager/react";
 import { useScrollCapability } from "@embedpdf/plugin-scroll/react";
-import { type RefObject, useEffect, useRef } from "react";
-import { EMBED_PAGE_ATTR } from "@/components/viewer/pdf/coords";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
+import { EMBED_PAGE_ATTR, pageElByIndex } from "@/components/viewer/pdf/coords";
 import i18n from "@/i18n";
 import { errorText } from "@/lib/core/error";
 import { notifyError } from "@/lib/core/notify";
@@ -30,7 +30,61 @@ export function usePdfSyncTex(options: {
 	const latest = useRef(options);
 	latest.current = options;
 	const { provides: scrollCapability } = useScrollCapability();
-	const { docId, pdfPath, rootPath, hostRef } = options;
+	const { docId, pdfPath, rootPath, hostRef, scope } = options;
+	const navigation = useRef(0);
+
+	const syncBackward = useCallback(
+		(index: number, element: HTMLElement, client: { x: number; y: number }) => {
+			if (!pdfPath) return false;
+			const state = latest.current.docCapRef.current?.getDocumentState(docId);
+			const page = state?.document?.pages[index];
+			if (!page) return false;
+			const point = syncTexClickPoint(
+				client,
+				element.getBoundingClientRect(),
+				page.size,
+				(page.rotation + (state?.rotation ?? 0)) % 4,
+			);
+			if (!point) return false;
+			const request = ++navigation.current;
+			void syncTexBackward(pdfPath, index + 1, point.x, point.y)
+				.then((source) => {
+					if (request !== navigation.current) return;
+					if (source)
+						navigateTexSource(source.path, source.line, source.column);
+					else notifyError(i18n.t("latexPdf:noMatch"));
+				})
+				.catch((error) => {
+					if (request === navigation.current)
+						notifyError(errorText(error) || i18n.t("latexPdf:syncFailed"));
+				});
+			return true;
+		},
+		[docId, pdfPath],
+	);
+
+	/** Writing split button: backward-sync the middle of the visible page. */
+	const syncFromView = useCallback(() => {
+		const host = hostRef.current;
+		if (!host || !scrollCapability) return false;
+		const metrics = scrollCapability.forDocument(docId)?.getMetrics();
+		if (!metrics) return false;
+		const index = Math.max(0, (metrics.currentPage || 1) - 1);
+		const element = pageElByIndex(host, index);
+		if (!element) return false;
+		const box = element.getBoundingClientRect();
+		const view = host.getBoundingClientRect();
+		const left = Math.max(box.left, view.left);
+		const right = Math.min(box.right, view.right);
+		const top = Math.max(box.top, view.top);
+		const bottom = Math.min(box.bottom, view.bottom);
+		if (right <= left || bottom <= top) return false;
+		return syncBackward(index, element, {
+			x: (left + right) / 2,
+			y: (top + bottom) / 2,
+		});
+	}, [docId, hostRef, scrollCapability, syncBackward]);
+
 	useEffect(() => {
 		if (!pdfPath || !rootPath || !scrollCapability) return;
 		let unregister: (() => void) | undefined;
@@ -54,18 +108,18 @@ export function usePdfSyncTex(options: {
 						kind: "text",
 					});
 				},
+				...(scope === "writing" ? { syncFromView } : {}),
 			});
 		});
 		return () => {
 			off();
 			unregister?.();
 		};
-	}, [docId, pdfPath, rootPath, scrollCapability]);
+	}, [docId, pdfPath, rootPath, scrollCapability, scope, syncFromView]);
 
 	useEffect(() => {
 		const host = hostRef.current;
 		if (!host || !pdfPath || !rootPath) return;
-		let navigation = 0;
 		const click = (event: MouseEvent) => {
 			if (!(event.ctrlKey || event.metaKey) || event.button !== 0) return;
 			const element =
@@ -74,35 +128,14 @@ export function usePdfSyncTex(options: {
 					: null;
 			if (!element || !host.contains(element)) return;
 			const index = Number(element.getAttribute(EMBED_PAGE_ATTR));
-			const state = latest.current.docCapRef.current?.getDocumentState(docId);
-			const page = state?.document?.pages[index];
-			if (!page) return;
-			const point = syncTexClickPoint(
-				{ x: event.clientX, y: event.clientY },
-				element.getBoundingClientRect(),
-				page.size,
-				(page.rotation + (state?.rotation ?? 0)) % 4,
-			);
-			if (!point) return;
 			event.preventDefault();
 			event.stopPropagation();
-			const request = ++navigation;
-			void syncTexBackward(pdfPath, index + 1, point.x, point.y)
-				.then((source) => {
-					if (request !== navigation) return;
-					if (source)
-						navigateTexSource(source.path, source.line, source.column);
-					else notifyError(i18n.t("latexPdf:noMatch"));
-				})
-				.catch((error) => {
-					if (request === navigation)
-						notifyError(errorText(error) || i18n.t("latexPdf:syncFailed"));
-				});
+			syncBackward(index, element, { x: event.clientX, y: event.clientY });
 		};
 		host.addEventListener("click", click, true);
 		return () => {
-			navigation += 1;
+			navigation.current += 1;
 			host.removeEventListener("click", click, true);
 		};
-	}, [docId, pdfPath, rootPath, hostRef]);
+	}, [pdfPath, rootPath, hostRef, syncBackward]);
 }

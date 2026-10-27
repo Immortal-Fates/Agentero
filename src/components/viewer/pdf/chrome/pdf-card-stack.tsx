@@ -32,6 +32,7 @@ type PdfCardStackProps = {
 		onAddToChat: () => void;
 		onTranslate: () => void;
 		onCopy?: () => Promise<boolean>;
+		onBookmark?: () => void;
 		/** Hide highlight / translate (no marks/ to persist into); keep Ask. */
 		showHighlight?: boolean;
 		showTranslate?: boolean;
@@ -124,6 +125,7 @@ export const PdfCardStack = memo(function PdfCardStack({
 					onAddToChat={selectionMenu.onAddToChat}
 					onTranslate={selectionMenu.onTranslate}
 					onCopy={selectionMenu.onCopy}
+					onBookmark={selectionMenu.onBookmark}
 					showHighlight={selectionMenu.showHighlight}
 					showTranslate={selectionMenu.showTranslate}
 					contributionContext={selectionMenu.contributionContext}

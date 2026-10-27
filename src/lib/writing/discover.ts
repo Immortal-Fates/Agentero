@@ -1,16 +1,16 @@
 /**
- * Find TeX roots under the vault's thesis/ directory.
- * One level of nested folders is enough for a main file plus chapter dirs.
+ * One project per first-level folder under the vault's thesis/ folder.
+ * Folders are created and removed outside the app, so discovery only needs
+ * to read what is on disk. A folder without any TeX file is not a project.
  */
 
-import { normalizePath } from "@/lib/core/path";
+import { basenameOf } from "@/lib/core/path";
 import {
 	type FileNode,
 	joinVaultPath,
 	listVaultDirChildren,
 	readVaultFile,
 } from "@/lib/vault";
-import { resolveTexRoot } from "@/lib/workspace/tex-compile";
 import { isWritingSourceName } from "@/lib/writing/files";
 import {
 	type Manuscript,
@@ -18,37 +18,49 @@ import {
 	writingProjectTitle,
 } from "@/lib/writing/session";
 
-const ROOT_BUDGET = 32;
-const FILES_PER_DIR = 24;
-const DIRS_PER_LEVEL = 12;
+const FILES_PER_DIR = 64;
+const DIRS_PER_LEVEL = 16;
 
 function isTexFile(path: string): boolean {
 	return /\.tex$/i.test(path);
 }
 
-async function collectRoots(
+/** `main.tex` first, then a file named like the folder, then by path. */
+function preferredRoot(dir: string, files: readonly string[]): string {
+	const folder = basenameOf(dir).toLowerCase();
+	const score = (path: string) => {
+		const stem = basenameOf(path)
+			.replace(/\.tex$/i, "")
+			.toLowerCase();
+		if (stem === "main") return 0;
+		if (stem === "thesis") return 1;
+		if (stem === folder) return 2;
+		return 3;
+	};
+	return (
+		[...files].sort((a, b) => score(a) - score(b) || a.localeCompare(b))[0] ??
+		""
+	);
+}
+
+/** Root file of one project folder; chapters may live in immediate subfolders. */
+async function findTexRoot(
 	vaultPath: string,
 	dir: string,
 	depth: number,
-	budget: { left: number },
-): Promise<string[]> {
-	if (budget.left <= 0) return [];
+): Promise<string | null> {
 	let children: FileNode[];
 	try {
 		children = await listVaultDirChildren(vaultPath, dir);
 	} catch {
-		return [];
+		return null;
 	}
-	const roots: string[] = [];
 	const texFiles = children
 		.filter((node) => node.kind === "file" && isTexFile(node.path))
-		.slice(0, FILES_PER_DIR);
-	for (const file of texFiles) {
-		if (budget.left <= 0) break;
-		budget.left -= 1;
-		roots.push(await resolveTexRoot(file.path));
-	}
-	if (depth <= 0) return roots;
+		.slice(0, FILES_PER_DIR)
+		.map((node) => node.path);
+	if (texFiles.length > 0) return preferredRoot(dir, texFiles);
+	if (depth <= 0) return null;
 	const directories = children
 		.filter(
 			(node) =>
@@ -57,11 +69,10 @@ async function collectRoots(
 		)
 		.slice(0, DIRS_PER_LEVEL);
 	for (const directory of directories) {
-		roots.push(
-			...(await collectRoots(vaultPath, directory.path, depth - 1, budget)),
-		);
+		const root = await findTexRoot(vaultPath, directory.path, depth - 1);
+		if (root) return root;
 	}
-	return roots;
+	return null;
 }
 
 async function projectFromRoot(rootFile: string): Promise<Manuscript> {
@@ -75,28 +86,32 @@ async function projectFromRoot(rootFile: string): Promise<Manuscript> {
 	return { ...base, title: writingProjectTitle(rootFile, head) };
 }
 
-/**
- * Independently compilable TeX projects under thesis/.
- * Chapters that resolve to a parent main file stay inside that project.
- */
+/** First-level folders under thesis/, in title order. */
 export async function discoverWritingProjects(
 	vaultPath: string,
 ): Promise<Manuscript[]> {
-	const roots = await collectRoots(
-		vaultPath,
-		joinVaultPath(vaultPath, "thesis"),
-		1,
-		{ left: ROOT_BUDGET },
-	);
-	const seen = new Set<string>();
-	const unique: string[] = [];
-	for (const root of roots) {
-		const key = normalizePath(root);
-		if (seen.has(key)) continue;
-		seen.add(key);
-		unique.push(root);
+	let children: FileNode[];
+	try {
+		children = await listVaultDirChildren(
+			vaultPath,
+			joinVaultPath(vaultPath, "thesis"),
+		);
+	} catch {
+		return [];
 	}
-	const manuscripts = await Promise.all(unique.map(projectFromRoot));
+	const directories = children.filter(
+		(node) =>
+			node.kind === "directory" && isWritingSourceName("directory", node.name),
+	);
+	const projects = await Promise.all(
+		directories.map(async (directory) => {
+			const root = await findTexRoot(vaultPath, directory.path, 1);
+			return root ? projectFromRoot(root) : null;
+		}),
+	);
+	const manuscripts = projects.filter(
+		(item): item is Manuscript => item != null,
+	);
 	manuscripts.sort((a, b) => {
 		if (!a.title && b.title) return 1;
 		if (a.title && !b.title) return -1;

@@ -18,7 +18,10 @@ import { errorText } from "@/lib/core/error";
 import { notifyError, notifySuccess } from "@/lib/core/notify";
 import { isTauri } from "@/lib/core/tauri";
 import { listenEventSafe } from "@/lib/core/tauri-events";
-import { isLifecycleNodeBlocked } from "@/lib/doctor/node-guidance";
+import {
+	isLifecycleNodeBlocked,
+	lifecycleNeedsNode,
+} from "@/lib/doctor/node-guidance";
 import { ensureVault } from "@/lib/vault";
 import { getVaultPath } from "@/lib/vault/store";
 
@@ -96,7 +99,7 @@ export function useAgentToolLifecycle(opts: {
 	 * instead of starting a doomed background install (Fix #786).
 	 */
 	const hostNode = useHostNodeStatus({ onInstalled: rescanAfterNodeInstall });
-	const { nodeMissing, npmMissing, installNode } = hostNode;
+	const { checkNodeGap, installNode } = hostNode;
 
 	const runToolLifecycle = useCallback(
 		async (
@@ -106,8 +109,12 @@ export function useAgentToolLifecycle(opts: {
 			if (!isTauri()) return false;
 			// npm / bundled-JS adapter actions cannot run without Node.js/npm:
 			// guide the user to install it instead of failing silently in the
-			// background task. Uninstall and native binary installs stay as-is.
-			if (isLifecycleNodeBlocked(entry, action, { nodeMissing, npmMissing })) {
+			// background task. Wait for the mount probe so a click that lands
+			// before its first result cannot bypass this guard.
+			if (
+				lifecycleNeedsNode(entry, action) &&
+				isLifecycleNodeBlocked(entry, action, await checkNodeGap())
+			) {
 				const message = t("agent.nodeRequired");
 				onError?.(message);
 				notifyError(message, {
@@ -211,11 +218,10 @@ export function useAgentToolLifecycle(opts: {
 			}
 		},
 		[
+			checkNodeGap,
 			clearLifecycleProgress,
 			installNode,
 			lifecyclePhaseLabel,
-			nodeMissing,
-			npmMissing,
 			onError,
 			patchLifecycleProgress,
 			probeInstalled,

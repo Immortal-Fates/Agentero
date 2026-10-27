@@ -52,7 +52,7 @@ Agentero 作为 **ACP Client**，stdio JSON-RPC 连接用户本机或远端 Agen
   `OPENAI_BASE_URL` 等变量；`AgentDescriptor.env` 优先级最高，可覆盖 shell 值（#478）。
   ACP、命令探测和安装器共用 core 的 shell 环境快照；安装前刷新，安装结束（含失败/取消）后失效，
   下次启动重新读取安装器可能修改的 PATH。快照不写入日志。
-- 统一接口：OpenCode、Hermes、Claude ACP、Codex ACP、Cursor Agent、Antigravity ACP、Qoder、Grok、Pi、Dsh（DeepSeek Harness）、Kimi Code、ZCode、MiniMax Code、MiMo Code、自定义 `command`/`args`/`env`。自定义项不探测安装器，保存后按同一 stdio 路径拉起；前端把参数字符串按空白拆开。设置表单用 `agent.form.hint` 说明这一约定。
+- 统一接口：OpenCode、Hermes、Claude ACP、Codex ACP、Cursor Agent、Antigravity ACP、Qoder、Qoder CN、Grok、Pi、Dsh（DeepSeek Harness）、Kimi Code、ZCode、MiniMax Code、MiMo Code、自定义 `command`/`args`/`env`。自定义项不探测安装器，保存后按同一 stdio 路径拉起；前端把参数字符串按空白拆开。设置表单用 `agent.form.hint` 说明这一约定。
 - Dsh：umbrella CLI `@deepseek-ai/dsh`（npm，需 0.1.2+）内置 ACP profile——
   `dsh --profile acp` 以 ACP stdio 服务，首次启动从内置模板自动初始化 profile
   （`$DSH_HOME/profiles/acp`），无需手写 `cordis.yml` 或受管 launcher 目录。
@@ -114,6 +114,15 @@ Agentero 作为 **ACP Client**，stdio JSON-RPC 连接用户本机或远端 Agen
   `~/.qoder/bin/qodercli`、`~/.qoder/entry` 和 `~/.local/bin/qodercli`（只删这个链接；Windows 同位置
   再试 `qodercli.exe` / `qodercli.cmd`）。没有 npm 时仍删除这些路径。不删除 `~/.qoder` 里的会话和登录，
   不改 shell rc，也不处理 Homebrew cask。登录在终端完成（`qodercli login`）。
+- Qoder CN：Qoder CLI 中国大陆版，原生 ACP（`qodercn --acp`）。官方 installer
+  （`https://static.qoder.com.cn/qoder-cli-cn/install.sh`，Windows 为
+  `irm https://static.qoder.com.cn/qoder-cli-cn/install.ps1 | iex`）安装原生 `qodercn`；
+  npm 包 `@qodercn-ai/qoderclicn`（需 Node 20+）作回退。静默 update 优先 `qodercn update`，
+  失败再重跑官方 installer。卸载会 `npm uninstall -g @qodercn-ai/qoderclicn`，并删除官方脚本写入的
+  `~/.qoder-cn/bin/qoderclicn`、`~/.qoder-cn/entry` 和 `~/.local/bin/qoderclicn`（只删这个链接；
+  Windows 同位置不含该链接）。没有 npm 时仍删除这些路径。`~/.qoder-cn` 里的会话和登录保留，
+  不改 shell rc。登录在终端完成（`qodercn login`）。GUI 启动或静默安装后尚未继承 shell rc 时，
+  Agentero 也会直接扫描 `~/.qoder-cn/entry`。
 - Antigravity ACP：Google 官方 ACP server，安装和更新从 ACP Registry 的 manifest
   读取当前版本及平台压缩包，不保留旧版本回退。压缩包解压到 Agentero 管理目录，并保留
   `agy_acp_server` 与 `localharness_external`；macOS Intel 没有官方构建，因此不提供该预设。
@@ -199,7 +208,9 @@ Agentero 作为 **ACP Client**，stdio JSON-RPC 连接用户本机或远端 Agen
     详见 [Windows 内置 ACP 启动失败](../bug_fix/windows-bundled-acp-node-path.md)。
   - Node 门槛：claude-agent-acp 需 Node ≥22（manifest `nodeMajor`）；node 缺失或版本不足
     时该层静默关闭（`bundled_spawnable` = false），catalog 的 `last_probe_error` 显示
-    `node_blocker_message` 提示，安装按钮回归 npm 路径。
+    `node_blocker_message` 提示，安装按钮回归 npm 路径。Codex 的 `codex-acp` 同样是 Node
+    包：Codex 官方安装器只装 host CLI，不能替代适配器，因此 Codex 接入仍然要求
+    Node.js/npm；生命周期守卫会在首次 host 探测返回后再决定是否启动 npm 安装。
   - Lifecycle 跳过（`registry/lifecycle.rs`）：`bundled_tier_active`（PATH 无适配器且内置层
     可 spawn）时 install/update 只装/升级 host，不再 npm 安装适配器；PATH 装上适配器后自动
     恢复双装语义。uninstall 不受影响（npm 卸载只作用于 PATH 安装）。

@@ -3,10 +3,12 @@
  */
 
 import {
+	Check,
 	ChevronDown,
 	CloudUpload,
 	History,
 	Loader2,
+	MonitorPlay,
 	Play,
 	Square,
 } from "lucide-react";
@@ -18,22 +20,17 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-	PdfBottomBar,
-	PdfPaperToneButton,
-} from "@/components/viewer/pdf/chrome/pdf-bottom-bar";
 import { WritingProblems } from "@/components/writing/writing-problems";
-import { errorText } from "@/lib/core/error";
-import { notifyError, notifySuccess } from "@/lib/core/notify";
+import { commands } from "@/lib/core/bindings";
+import { notifyError } from "@/lib/core/notify";
 import { normalizePath } from "@/lib/core/path";
 import { cancelTask } from "@/lib/core/tasks";
+import { isTauri } from "@/lib/core/tauri";
 import { cn } from "@/lib/core/utils";
-import { writingPdfChromeStore } from "@/lib/pdf/writing-chrome";
-import { openSettingsWindow } from "@/lib/shell/settings-window";
 import { ensureTexBuildEvents, texBuildStore } from "@/lib/tex/build-state";
-import { joinVaultPath } from "@/lib/vault/path";
 import { getVaultPath } from "@/lib/vault/store";
 import { compileTexProject } from "@/lib/workspace/actions";
 import {
@@ -45,13 +42,28 @@ import {
 	readWritingGitHub,
 	type WritingGitHubLink,
 } from "@/lib/writing/github";
-import { writingStore } from "@/lib/writing/store";
-import { syncWritingProject } from "@/lib/writing/sync";
+import {
+	closeWritingHistory,
+	openWritingHistory,
+	openWritingSync,
+	writingStore,
+} from "@/lib/writing/store";
 import { readWritingSyncPrefs } from "@/lib/writing/sync-prefs";
+import {
+	isWritingAutoSyncPaused,
+	resumeWritingAutoSync,
+	uploadWritingProject,
+} from "@/lib/writing/upload";
 
-let autoSyncPaused = false;
-
-export function WritingPdfBar({ rootFile }: { rootFile: string }) {
+export function WritingPdfBar({
+	rootFile,
+	livePreview,
+	onLivePreviewChange,
+}: {
+	rootFile: string;
+	livePreview: boolean;
+	onLivePreviewChange: (live: boolean) => void;
+}) {
 	const { t } = useTranslation(["sidebar", "latexBuild"]);
 	const key = normalizePath(rootFile);
 	const engines = useStore(texCompileStore, (state) => state.engines);
@@ -64,12 +76,10 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 		(state) => state.compilingPath,
 	);
 	const snapshot = useStore(texBuildStore, (state) => state.byRoot[key]);
-	const chrome = useStore(writingPdfChromeStore, (state) => state.current);
 	const compiling = compilingPath != null || snapshot?.status === "running";
 	const ready = enginesLoading || engines.length > 0;
 	const vault = getVaultPath();
-	const thesisDir = vault ? joinVaultPath(vault, "thesis") : "";
-	const historyOpen = useStore(writingStore, (state) => state.historyOpen);
+	const historyActive = useStore(writingStore, (state) => state.historyActive);
 	const [syncing, setSyncing] = useState(false);
 	const [github, setGithub] = useState<WritingGitHubLink | null>(() =>
 		vault ? readWritingGitHub(vault) : null,
@@ -99,68 +109,9 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 	}, []);
 
 	async function runSync(link: WritingGitHubLink, quiet = false) {
-		if (quiet && autoSyncPaused) return;
-		if (!thesisDir) {
-			if (!quiet) notifyError(t("writing.syncMissing"));
-			return;
-		}
 		setSyncing(true);
 		try {
-			const report = await syncWritingProject(
-				thesisDir,
-				link.remote,
-				link.branch,
-			);
-			const stop = () => {
-				if (quiet) autoSyncPaused = true;
-			};
-			if (report.code === "git_missing") {
-				stop();
-				notifyError(t("writing.syncNoGit"));
-				return;
-			}
-			if (report.code === "auth") {
-				stop();
-				notifyError(t("writing.syncAuth"), {
-					description: report.detail || undefined,
-				});
-				return;
-			}
-			if (report.code === "conflict") {
-				stop();
-				notifyError(t("writing.syncConflict"), {
-					description: report.detail || undefined,
-				});
-				return;
-			}
-			if (report.code === "missing") {
-				stop();
-				if (!quiet) notifyError(t("writing.syncMissing"));
-				return;
-			}
-			if (report.code === "clean") {
-				if (!quiet) notifySuccess(t("writing.syncClean"));
-				return;
-			}
-			if (report.code === "pulled") {
-				notifySuccess(t("writing.syncPulled"));
-				return;
-			}
-			if (report.code === "pushed") {
-				if (!quiet) {
-					notifySuccess(t("writing.syncPushed"), {
-						description: link.label,
-					});
-				}
-				return;
-			}
-			stop();
-			notifyError(t("writing.syncFailed"), {
-				description: report.detail || undefined,
-			});
-		} catch (error) {
-			if (quiet) autoSyncPaused = true;
-			notifyError(errorText(error) || t("writing.syncFailed"));
+			await uploadWritingProject(link, quiet);
 		} finally {
 			setSyncing(false);
 		}
@@ -182,8 +133,8 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 			}
 			if (seenJob.current === snap.jobId) return;
 			seenJob.current = snap.jobId;
-			if (!vault || syncMode !== "onCompile" || !github || autoSyncPaused)
-				return;
+			if (!vault || syncMode !== "onCompile" || !github) return;
+			if (isWritingAutoSyncPaused()) return;
 			void runSyncRef.current(github, true);
 		});
 	}, [key, vault, syncMode, github]);
@@ -192,7 +143,7 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 		if (!vault || syncMode !== "interval" || !github) return;
 		const timer = window.setInterval(
 			() => {
-				if (autoSyncPaused) return;
+				if (isWritingAutoSyncPaused()) return;
 				void runSyncRef.current(github, true);
 			},
 			syncMinutes * 60 * 1000,
@@ -201,16 +152,37 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 	}, [vault, syncMode, syncMinutes, github]);
 
 	function syncProject() {
-		autoSyncPaused = false;
-		if (!github) {
-			openSettingsWindow("writing");
+		resumeWritingAutoSync();
+		const current = getVaultPath();
+		const link = current ? readWritingGitHub(current) : null;
+		setGithub(link);
+		if (!link) {
+			openWritingSync();
 			return;
 		}
-		void runSync(github);
+		void runSync(link);
+	}
+
+	async function toggleLivePreview() {
+		if (livePreview) {
+			onLivePreviewChange(false);
+			return;
+		}
+		if (!isTauri()) return;
+		const status = await commands.rtexStatus();
+		if (!status.ok || !status.data?.available) {
+			notifyError(
+				status.error?.message ??
+					status.data?.error ??
+					t("fileTree.livePreviewUnavailable"),
+			);
+			return;
+		}
+		onLivePreviewChange(true);
 	}
 
 	return (
-		<div className="flex h-10 shrink-0 items-center gap-1 overflow-hidden border-b border-border bg-background px-2">
+		<div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden pr-2 pl-1">
 			<div className="inline-flex items-stretch">
 				<Button
 					type="button"
@@ -265,6 +237,20 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 						>
 							{t("fileTree.cleanAux")}
 						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							onSelect={() => void toggleLivePreview()}
+							className="justify-between"
+						>
+							<span className="flex items-center gap-1.5">
+								<MonitorPlay className="size-4" aria-hidden />
+								{t("fileTree.liveCompile")}
+							</span>
+							<Check
+								className={cn("size-4", !livePreview && "invisible")}
+								aria-hidden
+							/>
+						</DropdownMenuItem>
 						{snapshot?.status === "running" && snapshot.jobId ? (
 							<DropdownMenuItem
 								onSelect={() => {
@@ -278,38 +264,30 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
+			<WritingProblems rootFile={rootFile} />
+			<span className="min-w-0 flex-1" />
 			<Button
 				type="button"
 				variant="ghost"
-				size="icon-sm"
-				aria-label={t("writing.history")}
-				aria-pressed={historyOpen}
-				title={t("writing.history")}
+				size="sm"
+				aria-pressed={historyActive}
 				className={cn(
 					"shrink-0 text-muted-foreground",
-					historyOpen && "bg-muted text-foreground",
+					historyActive && "bg-muted text-foreground",
 				)}
 				onClick={() =>
-					writingStore.setState((state) => ({
-						historyOpen: !state.historyOpen,
-					}))
+					historyActive ? closeWritingHistory() : openWritingHistory()
 				}
 			>
 				<History aria-hidden />
+				{t("writing.history")}
 			</Button>
 			<Button
 				type="button"
 				variant="ghost"
-				size="icon-sm"
+				size="sm"
 				className="shrink-0 text-muted-foreground"
 				aria-label={
-					syncing
-						? t("writing.syncing")
-						: github
-							? t("writing.syncTo", { repo: github.label })
-							: t("writing.sync")
-				}
-				title={
 					syncing
 						? t("writing.syncing")
 						: github
@@ -324,16 +302,8 @@ export function WritingPdfBar({ rootFile }: { rootFile: string }) {
 				) : (
 					<CloudUpload aria-hidden />
 				)}
+				{syncing ? t("writing.syncing") : t("writing.sync")}
 			</Button>
-			<WritingProblems rootFile={rootFile} />
-			<span className="min-w-0 flex-1" />
-			{chrome ? (
-				<PdfPaperToneButton
-					pdfTone={chrome.pdfTone}
-					onSetPdfTone={chrome.onSetPdfTone}
-				/>
-			) : null}
-			{chrome ? <PdfBottomBar {...chrome} variant="inline" /> : null}
 		</div>
 	);
 }

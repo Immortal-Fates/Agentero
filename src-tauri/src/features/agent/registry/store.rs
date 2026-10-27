@@ -854,6 +854,7 @@ fn apply_user_agent_to_agent(agent: &mut AgentDescriptor, user_agent: &str, prov
         AgentTemplate::Opencode
         | AgentTemplate::AntigravityAcp
         | AgentTemplate::QoderCli
+        | AgentTemplate::QoderCn
         | AgentTemplate::GrokBuild
         | AgentTemplate::Pi
         | AgentTemplate::Hermes

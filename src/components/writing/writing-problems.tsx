@@ -1,9 +1,10 @@
 /**
  * Problems from the editor and from the last compile, in one place.
- * The counts, the hover list, and the build log are the same findings.
+ * One yellow alert entry opens the findings card; the card footer opens the
+ * full build log (same findings, raw text on the right).
  */
 
-import { FileText, MessageSquare, Square } from "lucide-react";
+import { FileText, MessageSquare, Square, TriangleAlert } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -53,6 +54,7 @@ export function WritingProblems({ rootFile }: { rootFile: string }) {
 	const snapshot = useStore(texBuildStore, (state) => state.byRoot[key]);
 	const lint = useStore(editorLintStore, (state) => state.current);
 	const [open, setOpen] = useState(false);
+	const [listOpen, setListOpen] = useState(false);
 	const [selected, setSelected] = useState<string | null>(null);
 	const logRef = useRef<HTMLTextAreaElement>(null);
 	const logText = snapshot?.logs.join("\n") ?? "";
@@ -90,6 +92,7 @@ export function WritingProblems({ rootFile }: { rootFile: string }) {
 
 	function focusLog(row: Row) {
 		setSelected(row.key);
+		setListOpen(false);
 		setOpen(true);
 		const line = row.logLine;
 		if (line == null) return;
@@ -103,36 +106,36 @@ export function WritingProblems({ rootFile }: { rootFile: string }) {
 
 	return (
 		<>
-			{shown.length > 0 ? (
-				<Popover>
-					<PopoverTrigger asChild>
-						<button
-							type="button"
-							className="flex h-7 shrink-0 items-center gap-2 rounded px-1 text-muted-foreground outline-none hover:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring"
-							aria-label={shown
-								.map((severity) =>
-									t(`viewer:textEditor.${severity}Count`, {
-										count: counts[severity],
-									}),
-								)
-								.join(", ")}
-						>
-							{shown.map((severity) => {
-								const { Icon, iconClasses } = SEVERITY_META[severity];
-								return (
-									<span
-										key={severity}
-										className="flex items-center gap-1 font-mono text-xs"
-									>
-										<Icon className={cn("size-3.5", iconClasses)} aria-hidden />
-										{counts[severity]}
-									</span>
-								);
-							})}
-						</button>
-					</PopoverTrigger>
-					<PopoverContent align="start" className="w-80 gap-1 p-1">
-						{rows.slice(0, 8).map((row) => {
+			<Popover open={listOpen} onOpenChange={setListOpen}>
+				<PopoverTrigger asChild>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						className="shrink-0 text-amber-600 dark:text-amber-500"
+						aria-label={
+							shown.length
+								? shown
+										.map((severity) =>
+											t(`viewer:textEditor.${severity}Count`, {
+												count: counts[severity],
+											}),
+										)
+										.join(", ")
+								: t("problems")
+						}
+						title={t("problems")}
+					>
+						<TriangleAlert aria-hidden />
+					</Button>
+				</PopoverTrigger>
+				<PopoverContent align="start" className="w-80 gap-1 p-1">
+					{rows.length === 0 ? (
+						<p className="text-muted-foreground px-2 py-1.5 text-xs">
+							{t("noProblems")}
+						</p>
+					) : (
+						rows.slice(0, 8).map((row) => {
 							const { Icon, iconClasses } = SEVERITY_META[row.severity];
 							return (
 								<div
@@ -171,25 +174,21 @@ export function WritingProblems({ rootFile }: { rootFile: string }) {
 									</button>
 								</div>
 							);
-						})}
-					</PopoverContent>
-				</Popover>
-			) : null}
-			<Button
-				type="button"
-				variant="ghost"
-				size="icon-sm"
-				className={
-					snapshot?.status === "failed"
-						? "shrink-0 text-destructive"
-						: "shrink-0 text-muted-foreground"
-				}
-				aria-label={t("log")}
-				title={t("log")}
-				onClick={() => setOpen(true)}
-			>
-				<FileText aria-hidden />
-			</Button>
+						})
+					)}
+					<button
+						type="button"
+						className="text-muted-foreground hover:text-foreground mt-0.5 flex w-full items-center gap-2 rounded border-t border-border px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						onClick={() => {
+							setListOpen(false);
+							setOpen(true);
+						}}
+					>
+						<FileText className="size-3.5 shrink-0" aria-hidden />
+						{t("log")}
+					</button>
+				</PopoverContent>
+			</Popover>
 			<Dialog open={open} onOpenChange={setOpen}>
 				<DialogContent
 					className="flex h-[70vh] flex-col gap-3 sm:max-w-4xl"

@@ -61,10 +61,11 @@ pub const CODEX_ACP_INSTALL_COMMAND: &str = if cfg!(windows) {
     "npm i -g @agentclientprotocol/codex-acp@latest --prefix \"$HOME/.local\""
 };
 
-/// Codex host CLI (`@openai/codex`). Unlike the official installers used by
-/// Claude/OpenCode/Grok/Kimi, this package only has the npm path on Unix, so it
-/// needs the same user-prefix treatment as the adapters: the default npm prefix
-/// on macOS pkg-installed Node is the root-owned `/usr/local` (#791).
+/// Codex host CLI (`@openai/codex`). Codex also ships a standalone installer,
+/// but Agentero's Codex entry needs the npm-only `codex-acp` adapter, so the
+/// lifecycle keeps both layers on npm instead of mixing an officially installed
+/// Codex with the adapter's own dependency. The user prefix avoids the
+/// root-owned `/usr/local` default on macOS pkg-installed Node (#791).
 pub const CODEX_HOST_INSTALL_COMMAND: &str = if cfg!(windows) {
     "npm i -g @openai/codex@latest"
 } else {
@@ -522,6 +523,21 @@ pub fn builtin_templates() -> Vec<AgentTemplateInfo> {
             login_command: None,
         },
         AgentTemplateInfo {
+            id: AgentTemplate::QoderCn.as_str().to_string(),
+            name: "Qoder CN".to_string(),
+            description: "Qoder CN CLI with native ACP (`qodercn --acp`).".to_string(),
+            command: "qodercn".to_string(),
+            args: vec!["--acp".to_string()],
+            detect_command: Some("qodercn".to_string()),
+            install_hint:
+                "Official installer (https://static.qoder.com.cn/qoder-cli-cn/install.sh) or npm: \
+                 `npm i -g @qodercn-ai/qoderclicn`  ·  then `qodercn login`  ·  \
+                 https://docs.qoder.cn/cli/installation"
+                    .to_string(),
+            install_command: None,
+            login_command: Some("qodercn login".to_string()),
+        },
+        AgentTemplateInfo {
             id: AgentTemplate::GrokBuild.as_str().to_string(),
             name: "Grok Build".to_string(),
             description: "xAI Grok Build with native ACP (`grok agent stdio`).".to_string(),
@@ -660,6 +676,7 @@ pub fn template_from_id(id: &str) -> AgentTemplate {
         "cursor-agent" => AgentTemplate::CursorAgent,
         "antigravity-acp" => AgentTemplate::AntigravityAcp,
         "qodercli" => AgentTemplate::QoderCli,
+        "qoder-cn" => AgentTemplate::QoderCn,
         "grok-build" => AgentTemplate::GrokBuild,
         "pi" => AgentTemplate::Pi,
         "dsh" => AgentTemplate::Dsh,

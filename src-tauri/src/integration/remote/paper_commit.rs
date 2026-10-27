@@ -132,7 +132,11 @@ mod tests {
     use agentero_core::features::paper::source::{self, SourceStatus};
 
     #[tokio::test]
-    async fn copy_pdf_preserves_import_and_retry_state_when_source_version_is_unknown() {
+    async fn copy_pdf_preserves_file_and_retry_state_when_source_download_fails() {
+        // A real unversioned id now downloads the latest e-print. This id cannot
+        // resolve, so a failed download must still keep the copied PDF and a
+        // later retry error.
+        let id = "9999.99999";
         let root = tempfile::tempdir().unwrap();
         let pdf = root.path().join("fixture.pdf");
         let bytes = include_bytes!("../../../../test/fixtures/rotate90.pdf");
@@ -143,8 +147,8 @@ mod tests {
             .await
             .unwrap();
         let session = registry.get(&info.session_id).await.unwrap();
-        let mut meta = papers::PaperRecord::local_pdf("1706.03762".into(), "Keep PDF".into());
-        meta.arxiv_id = Some("1706.03762".into());
+        let mut meta = papers::PaperRecord::local_pdf(id.into(), "Keep PDF".into());
+        meta.arxiv_id = Some(id.into());
         let result = remote_paper_commit(
             session.clone(),
             meta,
@@ -159,14 +163,16 @@ mod tests {
         .await
         .unwrap();
         let paper = root.path().join(&result.path);
-        assert!(result.pdf && !result.tex && !result.paper_md);
+        assert!(result.pdf);
+        assert!(!result.tex);
+        assert!(!result.paper_md);
         assert!(!result.asset_messages.is_empty());
-        assert_eq!(fs::read(paper.join("1706.03762.pdf")).unwrap(), bytes);
+        assert_eq!(fs::read(paper.join(format!("{id}.pdf"))).unwrap(), bytes);
         assert_eq!(
             source::state(&paper).unwrap().status,
             SourceStatus::RetryableError
         );
-        assert!(source::needs_source(&paper, Some("1706.03762")));
+        assert!(source::needs_source(&paper, Some(id)));
         let record = papers::get_by_path(root.path(), &result.path)
             .unwrap()
             .unwrap();
@@ -174,7 +180,7 @@ mod tests {
         assert!(!paper.join("PAPER.md").exists());
         source::record_state(
             &session.work_root.join(&result.path),
-            "1706.03762",
+            id,
             SourceStatus::RetryableError,
             Some("HTTP 429: retry source".into()),
         )

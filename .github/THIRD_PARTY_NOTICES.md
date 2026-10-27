@@ -47,7 +47,6 @@
 | `@codemirror/legacy-modes` | 6.5.4 | MIT | https://code.haverbeke.berlin/codemirror/legacy-modes |
 | `@codemirror/lint` | 6.9.7 | MIT | https://code.haverbeke.berlin/codemirror/lint |
 | `@codemirror/state` | 6.7.4 | MIT | https://code.haverbeke.berlin/codemirror/state |
-| `@codemirror/theme-one-dark` | 6.1.3 | MIT | https://github.com/codemirror/theme-one-dark |
 | `@codemirror/view` | 6.43.11 | MIT | https://code.haverbeke.berlin/codemirror/view |
 | `@embedpdf/ai` | 0.0.1 | MIT | https://www.embedpdf.com/docs |
 | `@embedpdf/core` | 2.14.4 | MIT | https://www.npmjs.com/package/@embedpdf/core |
@@ -71,6 +70,7 @@
 | `@excalidraw/excalidraw` | 0.18.1 | MIT | https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw |
 | `@flowershow/remark-wiki-link` | 3.4.0 | MIT | https://github.com/flowershow/remark-wiki-link#readme |
 | `@fontsource-variable/geist` | 5.2.9 | OFL-1.1 | https://fontsource.org/fonts/geist |
+| `@lezer/highlight` | 1.2.3 | MIT | https://github.com/lezer-parser/highlight |
 | `@pdf-lib/fontkit` | 1.1.1 | MIT | https://github.com/Hopding/fontkit |
 | `@platejs/basic-nodes` | 53.0.0 | MIT | https://platejs.org |
 | `@platejs/code-block` | 53.0.0 | MIT | https://platejs.org |

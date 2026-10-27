@@ -1016,6 +1016,30 @@ async fn try_institution_proxy_download(
     false
 }
 
+/// Pick the e-print id. A stamp read from the local PDF pins the download,
+/// including when the save itself was unversioned. An explicit version that
+/// disagrees with that stamp is refused. With no stamp the request is kept:
+/// a bare id is arXiv's latest version.
+fn resolve_eprint_request(requested: &str, stamp: Option<&str>) -> Result<String, String> {
+    let bare = strip_arxiv_version(requested);
+    if let Some(versioned) = stamp {
+        if requested != bare && requested != versioned {
+            return Err(format!(
+                "arXiv source version {requested} does not match local PDF {versioned}"
+            ));
+        }
+        return Ok(versioned.to_string());
+    }
+    Ok(requested.to_string())
+}
+
+/// Papers saved before unversioned requests fell through to latest recorded
+/// this refusal. It is no longer a failure, so the retry backoff must not
+/// keep replaying it.
+fn is_retired_unversioned_stamp_refusal(error: &str) -> bool {
+    error.contains("Cannot determine the local PDF's arXiv version")
+}
+
 pub async fn prepare_arxiv_source(
     paper_dir: &Path,
     arxiv_id: &str,
@@ -1044,6 +1068,10 @@ async fn prepare_arxiv_source_with_progress(
         if !retry
             && state.status == SourceStatus::RetryableError
             && !source::retry_due(paper_dir, arxiv_id)
+            && !state
+                .error
+                .as_deref()
+                .is_some_and(is_retired_unversioned_stamp_refusal)
         {
             return Err(AppError::message(
                 state
@@ -1055,8 +1083,7 @@ async fn prepare_arxiv_source_with_progress(
     let mut request = arxiv_id.to_string();
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     if let Some(pdf) = probe_paper_caps(paper_dir).pdf_path {
-        let bare = strip_arxiv_version(arxiv_id);
-        let mut pinned = request != bare;
+        let bare = strip_arxiv_version(&request);
         if let Ok(pages) =
             crate::features::paper::analyze::parse::run_liteparse_probe(&pdf, progress.task_id())
                 .await
@@ -1069,33 +1096,22 @@ async fn prepare_arxiv_source_with_progress(
                 .collect::<Vec<_>>()
                 .join(" ");
             if let Some(versioned) = source::version_from_text(&text, &bare) {
-                if request != bare && request != versioned {
-                    let message = format!(
-                        "arXiv source version {request} does not match local PDF {versioned}"
-                    );
-                    source::record_state(
-                        paper_dir,
-                        arxiv_id,
-                        SourceStatus::RetryableError,
-                        Some(message.clone()),
-                    )?;
-                    return Err(AppError::message(message));
-                }
-                request = versioned;
-                pinned = true;
+                request = match resolve_eprint_request(&request, Some(&versioned)) {
+                    Ok(request) => request,
+                    Err(message) => {
+                        source::record_state(
+                            paper_dir,
+                            arxiv_id,
+                            SourceStatus::RetryableError,
+                            Some(message.clone()),
+                        )?;
+                        return Err(AppError::message(message));
+                    }
+                };
             }
         }
         super::check_task_not_cancelled(progress.task_id())?;
-        if !pinned {
-            let message = "Cannot determine the local PDF's arXiv version; set a versioned arXiv PDF/source URL before supplementing LaTeX";
-            source::record_state(
-                paper_dir,
-                arxiv_id,
-                SourceStatus::RetryableError,
-                Some(message.into()),
-            )?;
-            return Err(AppError::message(message));
-        }
+        // No readable stamp: an unversioned id stays bare and downloads latest.
     }
     let source = paper_dir.join("source");
     fs::create_dir_all(&source)?;
@@ -2099,6 +2115,26 @@ mod tests {
         );
         assert!(c.iter().any(|u| u.contains("arxiv.org/pdf/1412.6980")));
         assert!(c.len() >= 2);
+    }
+
+    #[test]
+    fn unversioned_arxiv_without_stamp_downloads_latest() {
+        assert_eq!(
+            resolve_eprint_request("2505.02387", None).as_deref(),
+            Ok("2505.02387")
+        );
+        assert_eq!(
+            resolve_eprint_request("2505.02387", Some("2505.02387v4")).as_deref(),
+            Ok("2505.02387v4")
+        );
+        assert_eq!(
+            resolve_eprint_request("2505.02387v4", None).as_deref(),
+            Ok("2505.02387v4")
+        );
+        assert!(resolve_eprint_request("2505.02387v1", Some("2505.02387v4")).is_err());
+        assert!(is_retired_unversioned_stamp_refusal(
+            "Cannot determine the local PDF's arXiv version; set a versioned arXiv PDF/source URL before supplementing LaTeX"
+        ));
     }
 
     #[test]

@@ -31,8 +31,8 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type LocalePreference = "system" | "en" | "zh-CN";
 
-/** Sortable / customizable columns in the papers Library table. */
-export type LibraryColumnKey =
+/** Builtin sortable / customizable columns in the papers Library table. */
+export type BuiltinLibraryColumnKey =
 	| "title"
 	| "authors"
 	| "date"
@@ -41,6 +41,9 @@ export type LibraryColumnKey =
 	| "tags"
 	| "id"
 	| "citations";
+
+/** Sortable / customizable columns in the papers Library table, including custom properties. */
+export type LibraryColumnKey = BuiltinLibraryColumnKey | `prop:${string}`;
 
 /** Per-column display preference: order comes from array position. */
 export type LibraryColumnPref = {

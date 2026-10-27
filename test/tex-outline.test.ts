@@ -50,6 +50,13 @@ describe("tex outline", () => {
 		]);
 	});
 
+	it("records the heading rank independently of include nesting", () => {
+		const items = outline(
+			"\\chapter{A}\n\\section{B}\n\\subsection{C}\n\\subsubsection{D}",
+		);
+		expect(items.map((item) => item.level)).toEqual([0, 1, 2, 3]);
+	});
+
 	it("highlights the section that contains the cursor", () => {
 		const items = outline("\\section{A}\n\\subsection{B}\n\\chapter{C}");
 		expect(activeOutlineSectionId(items, 1)).toBe(items[0]?.id);

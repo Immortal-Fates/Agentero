@@ -26,6 +26,10 @@ pub const HOME_BIN_DIRS: &[&str] = &[
     ".grok/bin",
     // Kimi Code official installer (single binary, writes PATH into the shell rc).
     ".kimi-code/bin",
+    // Qoder CN official installer writes the `qodercn` dispatchers here and
+    // appends the dir to the shell rc, which GUI launches / a just-finished
+    // silent install may not see yet.
+    ".qoder-cn/entry",
     // MiniMax Code's official installer keeps its isolated runtime and
     // launchers outside npm's global bin. POSIX uses `bin/mcode`; Windows
     // writes `mcode.cmd` directly under `%USERPROFILE%\\.minimax-code`.

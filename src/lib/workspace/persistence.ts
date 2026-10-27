@@ -7,6 +7,7 @@ import { errorText } from "@/lib/core/error";
 import { notifyError, notifyUndo, notifyWarning } from "@/lib/core/notify";
 import { isTauri } from "@/lib/core/tauri";
 import { localFileToArrayBuffer } from "@/lib/paper";
+import { isRecentBookmarkWrite } from "@/lib/pdf/bookmark-echo";
 import { onTexFileSaved } from "@/lib/tex/auto-build";
 import {
 	isMarkdownPath,
@@ -194,7 +195,9 @@ export async function applyDiskChange(
 	// tab + translation split); the fresh ArrayBuffer identity is the mounted
 	// viewer's reload signal. Panes still on the compile shimmer are skipped
 	// inside refreshPdfTab — the compile flow fills them when the run lands.
-	if (pdfOwners.length) {
+	// A bookmark write already updated the in-memory outline. Reloading the
+	// buffer here remounts EmbedPDF and flashes the page.
+	if (pdfOwners.length && !isRecentBookmarkWrite(absPath)) {
 		const bytes = await localFileToArrayBuffer(absPath);
 		if (bytes) sink.updateTabs((prev) => refreshPdfTab(prev, absPath, bytes));
 	}

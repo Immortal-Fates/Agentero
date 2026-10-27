@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { FileNode } from "@/lib/vault/types";
 import {
 	compareWritingNodes,
 	isWritingSourceName,
@@ -16,6 +17,15 @@ import {
 	writingProjectTitle,
 	writingProjectTrashRel,
 } from "@/lib/writing/session";
+
+vi.mock("@/lib/vault", () => ({
+	joinVaultPath: (vaultPath: string, rel: string) => `${vaultPath}/${rel}`,
+	listVaultDirChildren: vi.fn(),
+	readVaultFile: vi.fn(),
+}));
+
+import { listVaultDirChildren, readVaultFile } from "@/lib/vault";
+import { discoverWritingProjects } from "@/lib/writing/discover";
 
 describe("writing project file list", () => {
 	it("hides another project's directory", () => {
@@ -176,5 +186,77 @@ describe("writing project trash path", () => {
 			writingProjectTrashRel("D:/vault", "D:/vault/notes/main.tex"),
 		).toBeNull();
 		expect(writingProjectTrashRel("D:/vault", "D:/vault/thesis")).toBeNull();
+	});
+});
+
+function fileNode(parent: string, name: string): FileNode {
+	return {
+		id: `${parent}/${name}`,
+		name,
+		path: `${parent}/${name}`,
+		kind: "file",
+	};
+}
+
+function directoryNode(parent: string, name: string): FileNode {
+	return {
+		id: `${parent}/${name}`,
+		name,
+		path: `${parent}/${name}`,
+		kind: "directory",
+	};
+}
+
+describe("writing project discovery", () => {
+	it("lists one project per first-level folder under thesis", async () => {
+		const shelf = "/vault/thesis";
+		const paper = `${shelf}/paper`;
+		const paperSections = `${paper}/sections`;
+		const paperMain = `${paper}/main.tex`;
+		const draft = `${shelf}/draft`;
+		const draftTex = `${draft}/draft.tex`;
+		const nested = `${shelf}/nested`;
+		const nestedSrc = `${nested}/src`;
+		const nestedMain = `${nestedSrc}/main.tex`;
+		const empty = `${shelf}/empty`;
+		const children: Record<string, FileNode[]> = {
+			[shelf]: [
+				fileNode(shelf, "loose.tex"),
+				directoryNode(shelf, "paper"),
+				directoryNode(shelf, "draft"),
+				directoryNode(shelf, "nested"),
+				directoryNode(shelf, "empty"),
+				directoryNode(shelf, "build"),
+				directoryNode(shelf, ".git"),
+			],
+			[paper]: [fileNode(paper, "main.tex"), directoryNode(paper, "sections")],
+			[paperSections]: [fileNode(paperSections, "intro.tex")],
+			[draft]: [fileNode(draft, "draft.tex"), fileNode(draft, "notes.md")],
+			[nested]: [directoryNode(nested, "src")],
+			[nestedSrc]: [fileNode(nestedSrc, "main.tex")],
+			[empty]: [fileNode(empty, "notes.md")],
+		};
+		vi.mocked(listVaultDirChildren).mockImplementation(
+			async (_root: string, dir: string) => children[dir] ?? [],
+		);
+		vi.mocked(readVaultFile).mockImplementation(async (path) => {
+			if (path === paperMain) return "\\documentclass{article}\n\\title{Main}";
+			if (path === nestedMain)
+				return "\\documentclass{article}\n\\title{Nested}";
+			return "\\documentclass{article}";
+		});
+
+		const found = await discoverWritingProjects("/vault");
+
+		expect(found.map((item) => item.rootFile)).toEqual([
+			draftTex,
+			paperMain,
+			nestedMain,
+		]);
+		expect(found.map((item) => item.title)).toEqual([
+			"draft",
+			"Main",
+			"Nested",
+		]);
 	});
 });

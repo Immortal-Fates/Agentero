@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type { PaperLibraryRow, PaperMetadata } from "@/lib/paper";
+import { customPropertiesStore } from "@/lib/paper/custom-properties-store";
 import { publicationDateSortKey } from "@/lib/paper/publication-date";
 import type { ReadingHeatmap } from "@/lib/paper/reading-heatmap";
 import {
@@ -15,6 +16,8 @@ import {
 import { venueInfo } from "@/lib/paper/venue-info";
 import type { LibraryColumnKey, LibraryColumnPref } from "@/lib/settings";
 
+export type BuiltinLibraryColumnKey =
+	import("@/lib/settings").BuiltinLibraryColumnKey;
 export type SortKey = LibraryColumnKey;
 export type SortDir = "asc" | "desc";
 
@@ -124,6 +127,12 @@ export function buildPaperRow(p: PaperLibraryRow): PaperRow {
 			citations: p.citation_count ?? Number.NEGATIVE_INFINITY,
 		},
 	};
+	const customProps = customPropertiesStore.getState().properties;
+	for (const prop of customProps) {
+		const optId = p.custom_props?.[prop.id];
+		const opt = optId ? prop.options.find((o) => o.id === optId) : undefined;
+		row.sort[`prop:${prop.id}`] = opt ? opt.name.toLocaleLowerCase() : "";
+	}
 	paperRowCache.set(p, row);
 	return row;
 }

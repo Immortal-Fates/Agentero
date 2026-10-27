@@ -121,6 +121,15 @@ import {
 	splitActivePane,
 } from "@/lib/workspace/actions";
 import { workspaceStore } from "@/lib/workspace/store";
+import { writingStore } from "@/lib/writing/store";
+import {
+	closeActiveWritingTab,
+	cutWritingTarget,
+	deleteWritingTarget,
+	openWritingTargetInTerminal,
+	pasteWritingTarget,
+	revealWritingTarget,
+} from "@/lib/writing/tree-actions";
 
 // macOS keeps native traffic lights (Overlay title bar) and a native menu bar.
 // Other desktop platforms also use native decorations, but have no native menu
@@ -149,6 +158,11 @@ function zoomOut(): void {
 
 function zoomReset(): void {
 	if (getSettings().uiScale !== 1) patchSettings({ uiScale: 1 });
+}
+
+/** The writing desk replaces the reading tree; route its shortcuts to it. */
+function onWritingSurface(): boolean {
+	return writingStore.getState().surface === "writing";
 }
 
 /** Title bar wrapper: subscribes to tabs/ui itself so the shell stays still. */
@@ -359,13 +373,34 @@ export default function App() {
 		openVault: () => void openVault(),
 		createVault: () => void createNewVault(),
 		refreshTree: refreshAll,
-		revealInFinder: revealSelectedInFinder,
-		openInTerminal: openSelectedInTerminal,
-		deleteTreeItem: deleteSelectedPath,
-		collapseTreeCurrent: () => fileTreeHandle()?.collapseSelected(),
-		collapseTreeDefault: () => fileTreeHandle()?.collapseToDefault(),
-		cutTreeItem: () => fileTreeHandle()?.cutSelected(),
-		pasteTreeItem: () => fileTreeHandle()?.pasteIntoSelected(),
+		revealInFinder: () => {
+			if (onWritingSurface()) revealWritingTarget();
+			else revealSelectedInFinder();
+		},
+		openInTerminal: () => {
+			if (onWritingSurface()) openWritingTargetInTerminal();
+			else openSelectedInTerminal();
+		},
+		deleteTreeItem: () => {
+			if (onWritingSurface()) deleteWritingTarget();
+			else deleteSelectedPath();
+		},
+		// The writing rail has no collapse-to-default concept; never mutate the
+		// hidden reading tree while it is the active surface.
+		collapseTreeCurrent: () => {
+			if (!onWritingSurface()) fileTreeHandle()?.collapseSelected();
+		},
+		collapseTreeDefault: () => {
+			if (!onWritingSurface()) fileTreeHandle()?.collapseToDefault();
+		},
+		cutTreeItem: () => {
+			if (onWritingSurface()) cutWritingTarget();
+			else fileTreeHandle()?.cutSelected();
+		},
+		pasteTreeItem: () => {
+			if (onWritingSurface()) pasteWritingTarget();
+			else fileTreeHandle()?.pasteIntoSelected();
+		},
 		magicWand: openMagicWand,
 		quickOpen: () => openPalette("go"),
 		commandPalette: () => openPalette("commands"),
@@ -389,7 +424,10 @@ export default function App() {
 		focusSidebar: () => layout()?.focusSidebar(),
 		focusEditor: () => layout()?.focusEditorPane(),
 		focusNotes: () => layout()?.focusNotesEditor(),
-		closeTab: closeTabOrWindow,
+		closeTab: () => {
+			if (onWritingSurface()) closeActiveWritingTab();
+			else closeTabOrWindow();
+		},
 		reopenTab: reopenClosedTab,
 		splitPane: splitActivePane,
 		nextTab: () => cycleActiveTab(1),

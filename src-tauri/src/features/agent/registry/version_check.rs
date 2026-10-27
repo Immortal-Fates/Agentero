@@ -38,6 +38,7 @@ pub fn npm_package_for_template(template_id: &str) -> Option<&'static str> {
         "pi" => Some("@earendil-works/pi-coding-agent"),
         "grok-build" => Some("@xai-official/grok"),
         "qodercli" => Some("@qoder-ai/qodercli"),
+        "qoder-cn" => Some("@qodercn-ai/qoderclicn"),
         "dsh" => Some("@deepseek-ai/dsh"),
         "kimi-code" => Some("@moonshot-ai/kimi-code"),
         "zcode" => Some("zcode-acp-server"),
@@ -304,6 +305,10 @@ mod tests {
         assert_eq!(
             npm_package_for_template("qodercli"),
             Some("@qoder-ai/qodercli")
+        );
+        assert_eq!(
+            npm_package_for_template("qoder-cn"),
+            Some("@qodercn-ai/qoderclicn")
         );
         assert_eq!(
             npm_package_for_template("minimax-code"),

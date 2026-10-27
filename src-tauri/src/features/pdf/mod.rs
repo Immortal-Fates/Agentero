@@ -12,3 +12,6 @@ pub use agentero_core::features::pdf::locate;
 pub use agentero_core::features::pdf::marks;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub use agentero_core::features::pdf::text;
+
+#[cfg(feature = "desktop")]
+pub mod bookmarks;

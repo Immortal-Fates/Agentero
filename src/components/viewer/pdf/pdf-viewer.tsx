@@ -63,6 +63,7 @@ import { PdfToolbar } from "@/components/viewer/pdf/chrome/pdf-toolbar";
 import { usePdfEngineContext } from "@/components/viewer/pdf/engine-provider";
 import { usePdfActiveAnchors } from "@/components/viewer/pdf/hooks/use-pdf-active-anchors";
 import { usePdfAskThreads } from "@/components/viewer/pdf/hooks/use-pdf-ask-threads";
+import { usePdfBookmarkEditor } from "@/components/viewer/pdf/hooks/use-pdf-bookmark-editor";
 import { usePdfCards } from "@/components/viewer/pdf/hooks/use-pdf-cards";
 import { usePdfChromeVisibility } from "@/components/viewer/pdf/hooks/use-pdf-chrome-visibility";
 import { usePdfCitations } from "@/components/viewer/pdf/hooks/use-pdf-citations";
@@ -147,6 +148,11 @@ import {
 	annotationWikilinkMarkdown,
 	wikiTargetForPaper,
 } from "@/lib/pdf/annotation-ref";
+import { bookmarkPageIndex } from "@/lib/pdf/bookmark";
+import {
+	type EditableBookmark,
+	removePageBookmark,
+} from "@/lib/pdf/bookmark-edit";
 import { embedPdfDocumentId } from "@/lib/pdf/document-id";
 import {
 	HIGHLIGHT_HEX_LIST,
@@ -174,7 +180,6 @@ import {
 	translateHighlightsByPage as translateHighlightsByPageOf,
 	translateHighlightsFingerprint,
 } from "@/lib/pdf/translate/highlights";
-import { writingPdfChromeStore } from "@/lib/pdf/writing-chrome";
 import { PDF_ZOOM_MAX, PDF_ZOOM_MIN } from "@/lib/pdf/zoom";
 import { loadSettings } from "@/lib/settings";
 import type { MenuContext } from "@/lib/shell/commands/menu-contributions";
@@ -401,9 +406,7 @@ export const PdfViewer = memo(function PdfViewer(props: PdfViewerProps) {
 								docId={docId}
 								baseDocId={baseDocId}
 								sourceBytes={effectiveSourceBytes}
-								reloadPositionRef={
-									props.texRootPath ? reloadPositionRef : undefined
-								}
+								reloadPositionRef={reloadPositionRef}
 							/>
 						);
 					}}
@@ -473,6 +476,7 @@ function PdfViewerInner({
 	isActive = true,
 	isRemotePaper = false,
 	plainViewer = false,
+	showBottomBar = false,
 	translationPane = false,
 	translationOnly = false,
 	texRootPath = null,
@@ -953,12 +957,20 @@ function PdfViewerInner({
 		closeFindRef.current();
 	}, []);
 
-	const { outline, showOutline, toggleOutline } = usePdfOutline({
+	const { outline, outlineReady, showOutline, toggleOutline } = usePdfOutline({
+		pdfPath,
 		bookmarkCap,
 		docId,
 		totalPages,
 		paperAbsPath,
 		paperRelPath,
+	});
+
+	const bookmarkEditor = usePdfBookmarkEditor({
+		path: isRemotePaper ? null : pdfPath,
+		bytes: sourceBytes,
+		outline,
+		ready: outlineReady,
 	});
 
 	const {
@@ -970,6 +982,53 @@ function PdfViewerInner({
 		handleToggleReferences,
 		handleToggleFigures,
 	} = usePdfSidebarPanels({ showOutline, toggleOutline });
+
+	const bookmarkedPages = useMemo(() => {
+		const pages = new Set<number>();
+		const visit = (nodes: EditableBookmark[]) => {
+			for (const node of nodes) {
+				const page =
+					"pageIndex" in node && typeof node.pageIndex === "number"
+						? node.pageIndex
+						: bookmarkPageIndex(node);
+				if (node.pageBookmark && page !== null) pages.add(page);
+				visit(node.children ?? []);
+			}
+		};
+		visit(bookmarkEditor.nodes);
+		return pages;
+	}, [bookmarkEditor.nodes]);
+	const handleBookmarkPage = useCallback(
+		(pageIndex: number) => {
+			if (bookmarkEditor.draft?.saving) return;
+			bookmarkEditor.begin();
+			if (bookmarkedPages.has(pageIndex)) {
+				bookmarkEditor.change(
+					removePageBookmark(bookmarkEditor.nodes, pageIndex),
+				);
+			} else {
+				bookmarkEditor.change([
+					...bookmarkEditor.nodes,
+					{
+						id: crypto.randomUUID(),
+						origin: null,
+						title: t("pdf.bookmarks.defaultTitle", { page: pageIndex + 1 }),
+						pageBookmark: true,
+						pageIndex,
+						children: [],
+					},
+				]);
+			}
+		},
+		[
+			bookmarkEditor.begin,
+			bookmarkEditor.change,
+			bookmarkEditor.draft,
+			bookmarkedPages,
+			bookmarkEditor.nodes,
+			t,
+		],
+	);
 
 	// ---- In-text citation / internal PDF links ----
 
@@ -2067,6 +2126,9 @@ function PdfViewerInner({
 	const renderPage = useCallback(
 		({ pageIndex, width, height, rotatedWidth, rotatedHeight }: PageLayout) => (
 			<PdfPageLayers
+				bookmarkSaving={Boolean(bookmarkEditor.draft?.saving)}
+				onBookmarkPage={bookmarkEditor.canEdit ? handleBookmarkPage : undefined}
+				pageBookmarked={bookmarkedPages.has(pageIndex)}
 				annotationSource={paperRelPath ?? paperAbsPath ?? undefined}
 				docId={docId}
 				pageIndex={pageIndex}
@@ -2099,6 +2161,10 @@ function PdfViewerInner({
 			pageLayout,
 			pageMode,
 			pageHandlers,
+			bookmarkEditor.canEdit,
+			bookmarkEditor.draft?.saving,
+			handleBookmarkPage,
+			bookmarkedPages,
 		],
 	);
 
@@ -2136,6 +2202,39 @@ function PdfViewerInner({
 				: undefined,
 		[citationImport, handleCitationImportOpenChange, isRemotePaper],
 	);
+	const handleBookmarkSelection = useCallback(() => {
+		if (
+			!selectionMenu ||
+			!bookmarkEditor.canEdit ||
+			bookmarkEditor.draft?.saving
+		)
+			return;
+		const title = (selectionMenu.copyText ?? selectionMenu.anchor.quote ?? "")
+			.replace(/\s+/g, " ")
+			.trim();
+		bookmarkEditor.begin();
+		bookmarkEditor.change([
+			...bookmarkEditor.nodes,
+			{
+				id: crypto.randomUUID(),
+				origin: null,
+				title:
+					title ||
+					t("pdf.bookmarks.defaultTitle", { page: selectionMenu.anchor.page }),
+				pageIndex: selectionMenu.anchor.page - 1,
+				children: [],
+			},
+		]);
+		if (!showOutline) handleToggleOutline();
+		closeSelectionMenu();
+	}, [
+		t,
+		selectionMenu,
+		bookmarkEditor,
+		showOutline,
+		handleToggleOutline,
+		closeSelectionMenu,
+	]);
 	const contributionPaperId = paperMeta?.id?.trim() || undefined;
 	const cardSelectionMenu = useMemo(
 		() => ({
@@ -2145,6 +2244,10 @@ function PdfViewerInner({
 			onAddToChat: handleMenuAddToChat,
 			onTranslate: handleMenuTranslate,
 			onCopy: handleMenuCopy,
+			onBookmark:
+				bookmarkEditor.canEdit && !bookmarkEditor.draft?.saving
+					? handleBookmarkSelection
+					: undefined,
 			showHighlight: !isRemotePaper && !plainViewer,
 			showTranslate:
 				!selectionMenu?.fromTranslation && !isRemotePaper && !plainViewer,
@@ -2164,6 +2267,9 @@ function PdfViewerInner({
 			handleMenuAddToChat,
 			handleMenuTranslate,
 			handleMenuCopy,
+			bookmarkEditor.canEdit,
+			bookmarkEditor.draft?.saving,
+			handleBookmarkSelection,
 			isRemotePaper,
 			vaultPath,
 			paperRelPath,
@@ -2267,48 +2373,6 @@ function PdfViewerInner({
 		zoomCapRef.current?.requestZoom(next);
 	}, []);
 
-	useEffect(() => {
-		if (!plainViewer) {
-			writingPdfChromeStore.setState({ current: null });
-			return;
-		}
-		writingPdfChromeStore.setState({
-			current: {
-				totalPages,
-				pageField,
-				onPageFieldChange: setPageField,
-				pageFocusedRef,
-				onCommitPageField: handleCommitPageField,
-				currentPage,
-				onGoToPage: handleGoToPage,
-				pdfTone,
-				onSetPdfTone: setPdfTone,
-				zoomLevel,
-				onZoomChange: handleZoomSliderChange,
-			},
-		});
-	}, [
-		plainViewer,
-		totalPages,
-		pageField,
-		setPageField,
-		pageFocusedRef,
-		handleCommitPageField,
-		currentPage,
-		handleGoToPage,
-		pdfTone,
-		setPdfTone,
-		zoomLevel,
-		handleZoomSliderChange,
-	]);
-
-	useEffect(() => {
-		if (!plainViewer) return;
-		return () => {
-			writingPdfChromeStore.setState({ current: null });
-		};
-	}, [plainViewer]);
-
 	return (
 		<div
 			ref={hostRef}
@@ -2317,6 +2381,7 @@ function PdfViewerInner({
 		>
 			{!translationOnly && (
 				<PdfLeftToolbar
+					canEditBookmarks={bookmarkEditor.canEdit}
 					outline={outline}
 					showOutline={showOutline}
 					onToggleOutline={handleToggleOutline}
@@ -2335,6 +2400,8 @@ function PdfViewerInner({
 			)}
 			{!translationOnly && (
 				<PdfOutlinePanel
+					editor={bookmarkEditor}
+					currentPage={currentPage}
 					outline={outline}
 					showOutline={showOutline}
 					onGoToPage={handleGoToPage}
@@ -2400,6 +2467,18 @@ function PdfViewerInner({
 				hostRef={hostRef}
 				rightGutter={rightGutter}
 				className="agentero-scroll-both min-h-0 min-w-0 flex-1"
+				onClickCapture={(event) => {
+					const target = event.target;
+					// Observe the reading surface without swallowing its click. Portaled
+					// menus and page controls keep their own interaction unchanged.
+					if (
+						showOutline &&
+						target instanceof Element &&
+						event.currentTarget.contains(target) &&
+						!target.closest("[data-pdf-chrome]")
+					)
+						toggleOutline();
+				}}
 			>
 				<WheelZoomHandler docId={docId} rightGutter={rightGutter} />
 				<PanDragHandler
@@ -2438,7 +2517,7 @@ function PdfViewerInner({
 				/>
 			)}
 
-			{!translationOnly && !plainViewer && (
+			{!translationOnly && (!plainViewer || showBottomBar) && (
 				<PdfBottomBar
 					totalPages={totalPages}
 					pageField={pageField}

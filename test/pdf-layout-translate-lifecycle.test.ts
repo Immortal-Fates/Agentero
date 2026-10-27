@@ -229,7 +229,8 @@ function createHarness() {
 	const prepareReflow = async (items: Item[]) => items;
 	const modules: Record<string, unknown> = {
 		"./use-pdf-reflow": {
-			usePdfReflow: () => ({
+			usePdfReflow: (_context: unknown, _regions: unknown, items: Item[]) => ({
+				reflowItems: items,
 				prepare: prepareReflow,
 				reflowBusy: false,
 				reflowReady: false,

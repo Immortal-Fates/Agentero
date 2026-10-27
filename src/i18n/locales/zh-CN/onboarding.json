@@ -6,6 +6,7 @@
 		"welcome": "欢迎",
 		"theme": "外观",
 		"proxy": "网络",
+		"node": "Node.js",
 		"agent": "Agent",
 		"translate": "翻译",
 		"layout": "图表公式",
@@ -28,6 +29,21 @@
 		"enabledLabel": "启用网络代理",
 		"probe": "探测"
 	},
+	"node": {
+		"title": "准备 Node.js",
+		"desc": "Node.js 与 npm 是 ACP 适配器和部分 AI 助手一键安装的运行环境。",
+		"checking": "正在检查 Node.js 与 npm…",
+		"ready": "Node.js 已就绪",
+		"readyDesc": "Node.js 与 npm 已安装，可以直接继续。",
+		"missingTitle": "需要安装 Node.js",
+		"missingDesc": "安装 Node.js（自带 npm）后，Agent 适配器和 npm 安装才能正常运行。",
+		"install": "安装 Node.js",
+		"installing": "安装中…",
+		"installHint": "使用系统包管理器安装，可能需要几分钟。",
+		"installed": "已安装",
+		"missing": "未安装",
+		"recheck": "重新检查"
+	},
 	"agent": {
 		"title": "选一个 AI 助手",
 		"desc": "Agentero 会调用你电脑上已安装的 AI 助手，帮你总结论文、回答问题。不用额外申请 API，选中一个就能用。",
@@ -47,8 +63,10 @@
 		"failed": "探测失败",
 		"notProbed": "未探测",
 		"scanFailed": "扫描 Agent 失败",
+		"cliAgents": "CLI Agent",
 		"desktopApps": {
 			"title": "本地桌面应用",
+			"hint": "（暂不支持，请安装下方 CLI Agent）",
 			"unsupported": "暂不支持",
 			"chatgpt": "ChatGPT",
 			"qwenwork": "千问办公",

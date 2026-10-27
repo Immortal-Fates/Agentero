@@ -574,7 +574,8 @@ function normalizeLibraryColumns(raw: unknown): LibraryColumnPref[] {
 			const rawKey = (item as { key?: unknown }).key;
 			if (typeof rawKey !== "string") continue;
 			const key = rawKey === "year" ? "date" : rawKey;
-			if (!known.has(key)) continue;
+			const isCustomProp = key.startsWith("prop:");
+			if (!known.has(key) && !isCustomProp) continue;
 			const k = key as LibraryColumnKey;
 			if (seen.has(k)) continue;
 			seen.add(k);
@@ -606,6 +607,14 @@ function normalizeLibraryColumns(raw: unknown): LibraryColumnPref[] {
 		for (const fallback of DEFAULT_LIBRARY_COLUMNS) {
 			const pref = saved.find((c) => c.key === fallback.key);
 			out.push(pref ?? { ...fallback });
+		}
+		for (const pref of saved) {
+			if (
+				pref.key.startsWith("prop:") &&
+				!out.some((c) => c.key === pref.key)
+			) {
+				out.push(pref);
+			}
 		}
 	} else {
 		out.push(...saved);
