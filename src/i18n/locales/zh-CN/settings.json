@@ -6,7 +6,6 @@
 	},
 	"nav": {
 		"general": "通用",
-		"writing": "写作",
 		"appearance": "外观",
 		"agent": "Agent",
 		"translate": "翻译",
@@ -14,7 +13,7 @@
 		"experimental": "实验功能",
 		"doctor": "问题诊断",
 		"keyboard": "快捷键",
-		"remote-access": "远程访问",
+		"remote-access": "移动端访问",
 		"about": "关于",
 		"quickSetup": "快速配置向导",
 		"featureTour": "功能导引",
@@ -22,11 +21,6 @@
 		"plugins": "插件"
 	},
 	"writing": {
-		"title": "写作",
-		"engine": "LaTeX 引擎",
-		"projectSettings": "项目设置",
-		"noProject": "打开一个写作项目后才能改这些。",
-		"github": "GitHub",
 		"uploadMode": "何时上传",
 		"uploadManual": "手动",
 		"uploadOnCompile": "每次编译后",
@@ -37,8 +31,8 @@
 		"saved": "已保存"
 	},
 	"remoteAccess": {
-		"title": "远程访问",
-		"localVaultRequired": "请打开本地 Vault 后再提供远程访问。",
+		"title": "移动端访问",
+		"localVaultRequired": "请打开本地 Vault 后再提供移动端访问。",
 		"hostName": {
 			"label": "电脑名称"
 		},
@@ -46,8 +40,8 @@
 			"online": "在线",
 			"offline": "离线"
 		},
-		"start": "开启远程访问",
-		"stop": "关闭远程访问",
+		"start": "开启移动端访问",
+		"stop": "关闭移动端访问",
 		"qrAlt": "配对二维码",
 		"pairing": {
 			"title": "配对 iPhone 或 iPad"
@@ -79,7 +73,8 @@
 			"pdf": "PDF 阅读",
 			"plaza": "广场",
 			"network": "网络",
-			"integrations": "集成"
+			"integrations": "集成",
+			"mcp": "MCP"
 		},
 		"paperTreeLabelMode": {
 			"label": "文件树论文名称",
@@ -140,13 +135,13 @@
 			"label": "网络代理",
 			"systemDetected": "检测到系统代理（{{url}}）——开关关闭时将自动使用。"
 		},
-		"githubMirror": {
-			"label": "GitHub 镜像"
-		},
 		"institutionProxy": {
 			"label": "机构代理",
 			"cookieLabel": "代理 Cookie",
 			"cookiePlaceholder": "粘贴 WebVPN Cookie",
+			"login": "打开登录",
+			"loginFailed": "无法打开机构登录页面",
+			"cookieExpired": "机构登录已失效，请重新打开网关登录，成功后会静默保存 Cookie。",
 			"typeLabel": "网关类型",
 			"typeEzproxy": "EZProxy（login?url=）",
 			"typeWengine": "WebVPN（wengine 路径式）",
@@ -161,10 +156,7 @@
 				"zju": "浙江大学",
 				"ustc": "中国科学技术大学",
 				"xjtu": "西安交通大学",
-				"neu": "东北大学",
-				"zjnu": "浙江师范大学",
-				"sjzu": "沈阳建筑大学",
-				"zqu": "肇庆学院"
+				"neu": "东北大学"
 			}
 		},
 		"easyScholar": {
@@ -189,8 +181,7 @@
 		},
 		"mcp": {
 			"exposeText": {
-				"label": "对外暴露论文正文（MCP）",
-				"description": "开启后 paper_text_get 可用：外部客户端（如 ChatGPT）可读取 PDF 分页文本。默认关闭——正文不会离开本地库。"
+				"label": "对外暴露论文正文（MCP）"
 			},
 			"label": "MCP 服务器",
 			"portLabel": "MCP 端口",
@@ -984,7 +975,6 @@
 	"word": {
 		"damagedField": "引文字段结果为空或已损坏。请恢复文档，或在副本中重新插入引文。",
 		"label": "Zotero Word 插件（macOS 原型）",
-		"hint": "请先开启 Connector 并退出 Zotero。本次会话使用官方 Word 插件，仅支持正文引文，不支持修订模式和脚注。",
 		"search": "搜索论文",
 		"pages": "页码（应用于所选文献）",
 		"style": "引用样式",

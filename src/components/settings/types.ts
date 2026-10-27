@@ -1,7 +1,6 @@
 export type SettingsSection =
 	| "plugins"
 	| "general"
-	| "writing"
 	| "appearance"
 	| "agent"
 	| "translate"

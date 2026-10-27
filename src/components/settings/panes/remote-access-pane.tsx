@@ -1,9 +1,9 @@
 import {
 	Copy,
 	LoaderCircle,
-	MonitorSmartphone,
 	Power,
 	ShieldCheck,
+	Smartphone,
 	Trash2,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -216,7 +216,7 @@ export function RemoteAccessPane({ vaultPath }: { vaultPath: string | null }) {
 									/>
 								) : (
 									<div className="grid size-32 place-items-center border">
-										<MonitorSmartphone className="size-5 text-muted-foreground" />
+										<Smartphone className="size-5 text-muted-foreground" />
 									</div>
 								)}
 								<div className="min-w-0 space-y-3">

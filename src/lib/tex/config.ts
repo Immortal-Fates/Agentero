@@ -16,7 +16,7 @@ export type TexProjectSettings = {
 };
 
 export const DEFAULT_TEX_SETTINGS: TexProjectSettings = {
-	autoBuild: "never",
+	autoBuild: "onSave",
 	syncAfterBuild: false,
 	recipe: null,
 	recipes: [],
@@ -105,7 +105,7 @@ function loadSettings(): TexSettingsState {
 	const projects: TexSettingsState["projects"] = {};
 	for (const [path, value] of Object.entries(saved?.projects ?? {})) {
 		try {
-			projects[path] = validateTexSettings(value);
+			projects[path] = { ...validateTexSettings(value), autoBuild: "onSave" };
 		} catch {
 			/* Ignore invalid persisted entries. */
 		}

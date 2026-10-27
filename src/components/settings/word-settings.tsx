@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SettingsRow } from "@/components/settings/settings-layout";
 import { Switch } from "@/components/ui/switch";
 import { useTauriEvent } from "@/hooks/use-tauri-event";
 import { commands, events, type WordStatus } from "@/lib/core/bindings";
@@ -28,15 +29,7 @@ export function WordSettings() {
 	});
 	if (!isMacOS()) return null;
 	return (
-		<div className="flex items-center justify-between gap-4 py-3">
-			<div>
-				<label htmlFor="word-enabled" className="text-sm font-medium">
-					{t("word.label")}
-				</label>
-				<p className="max-w-md text-xs text-muted-foreground">
-					{t("word.hint")}
-				</p>
-			</div>
+		<SettingsRow label={t("word.label")} htmlFor="word-enabled">
 			<Switch
 				id="word-enabled"
 				checked={status?.enabled ?? false}
@@ -52,6 +45,6 @@ export function WordSettings() {
 					}
 				}}
 			/>
-		</div>
+		</SettingsRow>
 	);
 }

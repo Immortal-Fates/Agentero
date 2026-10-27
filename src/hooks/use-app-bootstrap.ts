@@ -9,11 +9,14 @@ import { loadCustomProperties } from "@/lib/paper/custom-properties-store";
 import { useTheme } from "next-themes";
 import { useEffect } from "react";
 import { useSettings, useVaultStore } from "@/hooks/use-app-stores";
+import { useInstitutionProxyHealth } from "@/hooks/use-institution-proxy-health";
 import { useUiRequest } from "@/hooks/use-ui-request";
 import { useVaultOpenRequest } from "@/hooks/use-vault-open-request";
 import { applyLocale } from "@/i18n";
 import { startActivityTracking } from "@/lib/activity";
 import { commands } from "@/lib/core/bindings";
+import { perfActive } from "@/lib/core/perf";
+import { startPerfRun } from "@/lib/core/perf-run";
 import { startTaskRuntime } from "@/lib/core/tasks";
 import { isTauri } from "@/lib/core/tauri";
 import { initLifecycleBridge, lifecycle } from "@/lib/lifecycle";
@@ -36,6 +39,7 @@ import { validateRestoredVault } from "@/lib/vault/actions";
 import { setTree, setTreeLoading } from "@/lib/vault/store";
 
 export function useAppBootstrap(): void {
+	useInstitutionProxyHealth();
 	const { setTheme } = useTheme();
 	// CLI / deep-link: agentero open <path> → vault:open-request
 	useVaultOpenRequest();
@@ -74,7 +78,10 @@ export function useAppBootstrap(): void {
 		});
 	}, [uiScale, interfaceFontFamily, monoFontFamily]);
 
-	useEffect(() => startActivityTracking(), []);
+	useEffect(() => {
+		if (perfActive()) return;
+		return startActivityTracking();
+	}, []);
 
 	// Validate the restored local Vault before restoring its tree and tabs, then
 	// announce readiness — app:ready must not claim a validation that is still
@@ -137,5 +144,9 @@ export function useAppBootstrap(): void {
 			disposeConnector();
 			disposeRefresh();
 		};
+	}, []);
+
+	useEffect(() => {
+		startPerfRun();
 	}, []);
 }

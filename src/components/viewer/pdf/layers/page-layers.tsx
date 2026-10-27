@@ -841,10 +841,15 @@ export const PdfPageLayers = memo(function PdfPageLayers({
 		marks.visualCropRegion?.page === pageNumber
 			? marks.visualCropRegion.region
 			: null;
-	const focusedLayoutOnPage =
-		marks.focusedLayoutRegion?.pageIndex === pageIndex
-			? marks.focusedLayoutRegion
-			: null;
+	const focus = marks.focusedLayoutRegion;
+	const focusedLayoutsOnPage = focus?.highlights
+		? focus.highlights
+				.filter((hit) => hit.pageIndex === pageIndex)
+				.map((hit, index) => ({ ...focus, ...hit, id: `${focus.id}:${index}` }))
+		: focus?.pageIndex === pageIndex
+			? [focus]
+			: [];
+
 	const pins = marks.pinsByPage.get(pageNumber) ?? EMPTY_PINS;
 	const comments = marks.commentsByPage.get(pageNumber) ?? EMPTY_COMMENTS;
 	// Per-page gated prop wins; the translation pane still passes the id
@@ -1711,7 +1716,7 @@ export const PdfPageLayers = memo(function PdfPageLayers({
 					</div>
 				) : null}
 				{/* Figures selection outline, or citation yellow flash block. */}
-				{focusedLayoutOnPage ? (
+				{focusedLayoutsOnPage.map((focusedLayoutOnPage) => (
 					<div
 						key={`${focusedLayoutOnPage.id}:${focusedLayoutOnPage.pageIndex}:${focusedLayoutOnPage.bbox.y}:${marks.focusedLayoutFlashToken}`}
 						className={cn(
@@ -1740,7 +1745,7 @@ export const PdfPageLayers = memo(function PdfPageLayers({
 						}
 						aria-hidden="true"
 					/>
-				) : null}
+				))}
 				{/* Active visual mark: default-theme outline of the crop region. */}
 				{activeVisualOnPage
 					? activeVisualOnPage.rects.map((rect) => (

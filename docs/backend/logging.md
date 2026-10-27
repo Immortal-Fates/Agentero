@@ -14,3 +14,4 @@
 - Settings → About「运行日志」提供：
   - **打开日志文件夹**：`appLogDir()` + opener `openPath`，便于报错时上传日志。
   - **清理日志**：Host `logs_clear` 删除目录内 `agentero*.log`（含轮转归档）；当前仍被 logger 占用的 `agentero.log` 删除失败时改为截断为空，返回清理的文件数。
+- 设了 `AGENTERO_PERF_TRACE` 时，同一条 `OpTimer` 会再写一行 JSON 到该文件。前端 span 走 `PERF {json}` 日志，由 Host 追加进同一个文件。用法见 [性能测试轨迹](../test/performance.md)。

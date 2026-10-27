@@ -6,6 +6,7 @@
  */
 
 import { createStore } from "zustand/vanilla";
+import { perfActive } from "@/lib/core/perf";
 import { isTauri } from "@/lib/core/tauri";
 import {
 	createPlaceholderTab,
@@ -56,7 +57,7 @@ let initialized = false;
 export function initWorkspaceStore(): void {
 	if (initialized) return;
 	initialized = true;
-	if (!isTauri()) return;
+	if (!isTauri() || perfActive()) return;
 	const persisted = loadPersistedTabs();
 	if (!persisted?.tabs.length) return;
 	workspaceStore.setState({

@@ -140,6 +140,7 @@ import { errorText } from "@/lib/core/error";
 import { callApiResult } from "@/lib/core/ipc";
 import { notifyError } from "@/lib/core/notify";
 import { openExternalUrl } from "@/lib/core/open-external";
+import { markOnce } from "@/lib/core/perf";
 import { cn } from "@/lib/core/utils";
 import { isPdfViewerSource } from "@/lib/paper";
 import { arxivUrls } from "@/lib/paper/arxiv";
@@ -190,6 +191,14 @@ export type {
 	PdfViewerHandle,
 	PdfViewerProps,
 } from "@/components/viewer/pdf/types";
+
+/** First document load or terminal error. No-op unless a perf trace is on. */
+function PdfReadyMark({ ok }: { ok: boolean }) {
+	useEffect(() => {
+		markOnce("pdf_first_page", { anchor: "open", ok });
+	}, [ok]);
+	return null;
+}
 
 /**
  * PDF viewer built on EmbedPDF (headless, PDFium/WASM). The engine is shared
@@ -347,6 +356,7 @@ export const PdfViewer = memo(function PdfViewer(props: PdfViewerProps) {
 	if (engineError) {
 		return (
 			<div id="agentero-pdf-host" className={hostClass}>
+				<PdfReadyMark ok={false} />
 				<p className="p-6 text-destructive text-sm">
 					{engineError.message || t("pdf.loadError")}
 				</p>
@@ -380,10 +390,13 @@ export const PdfViewer = memo(function PdfViewer(props: PdfViewerProps) {
 								documentState.errorDetails,
 							);
 							return (
-								<p className="p-6 text-center text-destructive text-sm">
-									{t("pdf.loadError")}
-									{documentState.error ? `: ${documentState.error}` : null}
-								</p>
+								<>
+									<PdfReadyMark ok={false} />
+									<p className="p-6 text-center text-destructive text-sm">
+										{t("pdf.loadError")}
+										{documentState.error ? `: ${documentState.error}` : null}
+									</p>
+								</>
 							);
 						}
 						if (!isLoaded) {
@@ -393,21 +406,26 @@ export const PdfViewer = memo(function PdfViewer(props: PdfViewerProps) {
 								</p>
 							);
 						}
-						return props.translationOnly ? (
-							<PdfTranslationViewerInner
-								{...props}
-								docId={docId}
-								baseDocId={baseDocId}
-								sourceBytes={effectiveSourceBytes}
-							/>
-						) : (
-							<PdfViewerInner
-								{...props}
-								docId={docId}
-								baseDocId={baseDocId}
-								sourceBytes={effectiveSourceBytes}
-								reloadPositionRef={reloadPositionRef}
-							/>
+						return (
+							<>
+								<PdfReadyMark ok />
+								{props.translationOnly ? (
+									<PdfTranslationViewerInner
+										{...props}
+										docId={docId}
+										baseDocId={baseDocId}
+										sourceBytes={effectiveSourceBytes}
+									/>
+								) : (
+									<PdfViewerInner
+										{...props}
+										docId={docId}
+										baseDocId={baseDocId}
+										sourceBytes={effectiveSourceBytes}
+										reloadPositionRef={reloadPositionRef}
+									/>
+								)}
+							</>
 						);
 					}}
 				</DocumentContent>
@@ -1220,12 +1238,12 @@ function PdfViewerInner({
 		handleJumpToLayoutRegion,
 		handleRenderLayoutThumb,
 		screenPointForRegion,
-		reflowBusy,
 		reflowReady,
 		exportTranslatedPdf,
 		layoutTranslateItemsByPage,
 		layoutTranslatePageStateByPage,
 		layoutTranslateRunning,
+		layoutTranslatePreparing,
 		layoutTranslateWaiting,
 		layoutTranslateActive,
 		layoutTranslateLabel,
@@ -2441,13 +2459,13 @@ function PdfViewerInner({
 			)}
 			{!translationOnly && !plainViewer && (
 				<PdfToolbar
-					reflowBusy={reflowBusy}
 					onExportTranslatedPdf={reflowReady ? exportTranslatedPdf : undefined}
 					regionSelecting={regionSelecting}
 					visualCropPending={visualCropPending}
 					engine={engine}
 					onToggleRegionSelect={toggleRegionSelect}
 					layoutTranslateRunning={layoutTranslateRunning}
+					layoutTranslatePreparing={layoutTranslatePreparing}
 					layoutTranslateWaiting={layoutTranslateWaiting}
 					layoutTranslateActive={layoutTranslateActive}
 					layoutTranslateLabel={layoutTranslateLabel}

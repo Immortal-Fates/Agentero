@@ -8,6 +8,7 @@
 import { createStore } from "zustand/vanilla";
 import { errorText } from "@/lib/core/error";
 import { notifyError } from "@/lib/core/notify";
+import { perfActive, perfWait } from "@/lib/core/perf";
 import { isTauri } from "@/lib/core/tauri";
 import { collectPaperFoldersFromTree } from "@/lib/paper";
 import {
@@ -142,7 +143,7 @@ export function initVaultStore(): void {
 	if (initialized) return;
 	initialized = true;
 	const vaultPath = isTauri()
-		? getSavedVaultPath({ allowRestore: true })
+		? getSavedVaultPath({ allowRestore: !perfActive() })
 		: null;
 	vaultStore.setState({
 		vaultPath,
@@ -355,8 +356,11 @@ export function scheduleTreeRefresh(changedAbsPaths?: string[]): void {
 	if (!changedAbsPaths?.length) treeRefreshPaths.add("");
 	else for (const p of changedAbsPaths) treeRefreshPaths.add(p);
 	if (treeRefreshTimer) clearTimeout(treeRefreshTimer);
+	const scheduledAt = performance.now();
+	const delay = watchRefreshDelayMs("tree");
 	treeRefreshTimer = setTimeout(() => {
 		treeRefreshTimer = null;
+		perfWait("watch_wait.tree", performance.now() - scheduledAt);
 		const vault = getVaultPath();
 		const changed = [...treeRefreshPaths];
 		treeRefreshPaths.clear();
@@ -401,5 +405,5 @@ export function scheduleTreeRefresh(changedAbsPaths?: string[]): void {
 					// best-effort background refresh
 				});
 		});
-	}, watchRefreshDelayMs("tree"));
+	}, delay);
 }

@@ -74,6 +74,8 @@ export type PdfLayoutTranslate = {
 		{ active: boolean; running: boolean }
 	>;
 	layoutTranslateRunning: boolean;
+	/** Final corrected preview/export output is still building after items settled. */
+	layoutTranslatePreparing: boolean;
 	/** Queued behind layout analysis; toolbar shows the waiting state. */
 	layoutTranslateWaiting: boolean;
 	/** Running, or finished with overlays still painted. */
@@ -139,6 +141,63 @@ function resetRunningTranslateItems(
 	return items.map((item) =>
 		item.status === "running" ? { ...item, status: "pending" } : item,
 	);
+}
+
+/** One items state update per frame while batches stream in. */
+const LAYOUT_TRANSLATE_PUBLISH_COALESCE_MS = 100;
+
+type CancelScheduled = () => void;
+/**
+ * Batches settle from network callbacks; publishes landing in the same frame
+ * only need one state update. rAF bounds that naturally; setTimeout covers
+ * rAF-less runtimes; a synchronous passthrough keeps non-DOM hosts (tests,
+ * headless) deterministic. Returning undefined means the run already happened.
+ */
+const schedulePublishFlush: (run: () => void) => CancelScheduled | undefined =
+	typeof requestAnimationFrame === "function"
+		? (run) => {
+				const id = requestAnimationFrame(run);
+				return () => cancelAnimationFrame(id);
+			}
+		: typeof setTimeout === "function"
+			? (run) => {
+					const id = setTimeout(run, LAYOUT_TRANSLATE_PUBLISH_COALESCE_MS);
+					return () => clearTimeout(id);
+				}
+			: (run) => {
+					run();
+					return undefined;
+				};
+
+/**
+ * Streaming batches settle continuously (bounded concurrency); each one used to
+ * replace the whole items state and re-render every mounted page. Coalesce
+ * publishes into one state update per window. Trailing edge only: the final
+ * job result supersedes, so `cancel()` drops what is still queued.
+ */
+function createTranslatePublishCoalescer(
+	flush: (items: LayoutTranslateItem[]) => void,
+): { push: (items: LayoutTranslateItem[]) => void; cancel: () => void } {
+	let pending: LayoutTranslateItem[] | null = null;
+	let cancelScheduled: CancelScheduled | undefined;
+	return {
+		push(items) {
+			pending = items;
+			if (cancelScheduled) return;
+			cancelScheduled =
+				schedulePublishFlush(() => {
+					cancelScheduled = undefined;
+					const next = pending;
+					pending = null;
+					if (next) flush(next);
+				}) ?? undefined;
+		},
+		cancel() {
+			cancelScheduled?.();
+			cancelScheduled = undefined;
+			pending = null;
+		},
+	};
 }
 
 export function usePdfLayoutTranslate({
@@ -327,6 +386,14 @@ export function usePdfLayoutTranslate({
 			layoutTranslateJobRef.current.items,
 		);
 		setLayoutTranslateJob({ status: "running", items: pendingItems });
+		const publishes = createTranslatePublishCoalescer((next) => {
+			if (ac.signal.aborted) return;
+			persistLayoutTranslateSidecarBestEffort(paperAbsPath, cacheKey, next);
+			setLayoutTranslateJob((prev) => ({
+				status: prev.status === "cancelled" ? "cancelled" : "running",
+				items: applyHiddenPages(next),
+			}));
+		});
 		void (async () => {
 			const sidecar = await readLayoutTranslateSidecar(paperAbsPath, cacheKey);
 			if (ac.signal.aborted) return;
@@ -346,11 +413,7 @@ export function usePdfLayoutTranslate({
 				vaultPath,
 				onUpdate: (next) => {
 					if (ac.signal.aborted) return;
-					persistLayoutTranslateSidecarBestEffort(paperAbsPath, cacheKey, next);
-					setLayoutTranslateJob((prev) => ({
-						status: prev.status === "cancelled" ? "cancelled" : "running",
-						items: applyHiddenPages(next),
-					}));
+					publishes.push(next);
 				},
 			});
 			// Cancellation/replacement owns the visible state now. A late result
@@ -377,6 +440,7 @@ export function usePdfLayoutTranslate({
 				}));
 			})
 			.finally(() => {
+				publishes.cancel();
 				if (layoutTranslateAbortRef.current === ac) {
 					layoutTranslateAbortRef.current = null;
 				}
@@ -427,6 +491,19 @@ export function usePdfLayoutTranslate({
 					pendingItems,
 				),
 			}));
+			const publishes = createTranslatePublishCoalescer((next) => {
+				if (ac.signal.aborted) return;
+				persistLayoutTranslateSidecarBestEffort(paperAbsPath, cacheKey, next, {
+					preserveExisting: true,
+					replacePageIndexes: [pageIndex],
+				});
+				setLayoutTranslateJob((prev) => ({
+					status: prev.status === "cancelled" ? "cancelled" : "running",
+					items: applyHiddenPages(
+						mergeTranslatePageItems(prev.items, pageIndex, next),
+					),
+				}));
+			});
 			void (async () => {
 				const sidecar = await readLayoutTranslateSidecar(
 					paperAbsPath,
@@ -460,21 +537,7 @@ export function usePdfLayoutTranslate({
 					vaultPath,
 					onUpdate: (next) => {
 						if (ac.signal.aborted) return;
-						persistLayoutTranslateSidecarBestEffort(
-							paperAbsPath,
-							cacheKey,
-							next,
-							{
-								preserveExisting: true,
-								replacePageIndexes: [pageIndex],
-							},
-						);
-						setLayoutTranslateJob((prev) => ({
-							status: prev.status === "cancelled" ? "cancelled" : "running",
-							items: applyHiddenPages(
-								mergeTranslatePageItems(prev.items, pageIndex, next),
-							),
-						}));
+						publishes.push(next);
 					},
 				});
 				// Only the current live run may publish or persist its final result.
@@ -511,6 +574,7 @@ export function usePdfLayoutTranslate({
 					}));
 				})
 				.finally(() => {
+					publishes.cancel();
 					if (layoutTranslateAbortRef.current === ac) {
 						layoutTranslateAbortRef.current = null;
 					}
@@ -742,6 +806,10 @@ export function usePdfLayoutTranslate({
 	}, [layoutTranslateJob.items]);
 
 	const layoutTranslateRunning = layoutTranslateJob.status === "running";
+	// Cached re-runs settle almost immediately, but the translated page only
+	// paints once the final reflow build publishes its previews. Keep the
+	// loading indicator up through that build instead of leaving a blank wait.
+	const layoutTranslatePreparing = reflowBusy && !reflowReady;
 	const layoutTranslateWaiting = layoutTranslateJob.status === "waitingLayout";
 	const layoutTranslateActive =
 		layoutTranslateRunning ||
@@ -763,6 +831,7 @@ export function usePdfLayoutTranslate({
 		layoutTranslateItemsByPage,
 		layoutTranslatePageStateByPage,
 		layoutTranslateRunning,
+		layoutTranslatePreparing,
 		layoutTranslateWaiting,
 		layoutTranslateActive,
 		layoutTranslateLabel,

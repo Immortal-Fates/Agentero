@@ -277,7 +277,7 @@
 		},
 		"networkProxy": {
 			"title": "网络请求失败",
-			"description": "如果访问受限，可在设置中配置代理或 GitHub 镜像后重试。",
+			"description": "如果访问受限，可在设置中配置代理后重试。",
 			"openSettings": "打开网络设置"
 		}
 	},

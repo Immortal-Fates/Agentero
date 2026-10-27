@@ -40,6 +40,12 @@ export const commands = {
 	 *  PDF. Returns a short human-readable result for the settings UI.
 	 */
 	institutionProxyProbe: () => __TAURI_INVOKE<ApiResult<string>>("institution_proxy_probe"),
+	/**
+	 *  Open the configured gateway in a dedicated webview for interactive SSO.
+	 *  Async is required when creating a window from WebView2 on Windows.
+	 *  Resolves once the login window closes; `true` when a cookie was captured.
+	 */
+	institutionProxyLoginOpen: (prefix: string) => typedError<boolean, string>(__TAURI_INVOKE("institution_proxy_login_open", { prefix })),
 	builtinProviderStatus: () => __TAURI_INVOKE<ApiResult<BuiltinProviderStatus>>("builtin_provider_status"),
 	layoutModelStatus: () => __TAURI_INVOKE<ApiResult<LayoutModelStatus>>("layout_model_status"),
 	layoutRemoteAnalyzePdf: (args: LayoutRemoteAnalyzePdfArgs) => __TAURI_INVOKE<ApiResult<LayoutRemoteAnalyzePdfResult>>("layout_remote_analyze_pdf", { args }),
@@ -411,6 +417,7 @@ export const commands = {
 	feedsRename: (args: FeedsRenameArgs) => __TAURI_INVOKE<ApiResult<FeedSub>>("feeds_rename", { args }),
 	feedsRefresh: (args: FeedsRefreshArgs) => __TAURI_INVOKE<ApiResult<FeedRefreshResult>>("feeds_refresh", { args }),
 	feedsItems: (args: FeedsItemsArgs) => __TAURI_INVOKE<ApiResult<FeedItemsPage>>("feeds_items", { args }),
+	feedsSetRead: (args: FeedsSetReadArgs) => __TAURI_INVOKE<ApiResult<FeedItem>>("feeds_set_read", { args }),
 	feedsMarkImported: (args: FeedsIdArgs) => __TAURI_INVOKE<ApiResult<FeedItem>>("feeds_mark_imported", { args }),
 	plazaScratchPrepare: (args: PlazaScratchPrepareArgs) => __TAURI_INVOKE<ApiResult<PlazaScratchEntry[]>>("plaza_scratch_prepare", { args }),
 	plazaScratchStats: () => __TAURI_INVOKE<ApiResult<ScratchStats>>("plaza_scratch_stats"),
@@ -1551,10 +1558,6 @@ export type AppSettings_Deserialize = {
 	easyScholarKey?: string,
 	networkProxyEnabled?: boolean,
 	networkProxyUrl?: string,
-	/**  URL-prefix GitHub mirror for Skill import fallback when GitHub is unreachable. */
-	githubMirrorEnabled?: boolean,
-	/**  e.g. `https://gh.llkk.cc` — requests become `{base}/https://codeload.github.com/...`. */
-	githubMirrorBaseUrl?: string,
 	/**
 	 *  EZProxy/WebVPN prefix for paywalled PDF fallback, e.g.
 	 *  `https://webvpn.example.edu/login?url=`. Empty disables the layer.
@@ -1683,10 +1686,6 @@ export type AppSettings_Serialize = {
 	easyScholarKey: string,
 	networkProxyEnabled: boolean,
 	networkProxyUrl: string,
-	/**  URL-prefix GitHub mirror for Skill import fallback when GitHub is unreachable. */
-	githubMirrorEnabled: boolean,
-	/**  e.g. `https://gh.llkk.cc` — requests become `{base}/https://codeload.github.com/...`. */
-	githubMirrorBaseUrl: string,
 	/**
 	 *  EZProxy/WebVPN prefix for paywalled PDF fallback, e.g.
 	 *  `https://webvpn.example.edu/login?url=`. Empty disables the layer.
@@ -2998,6 +2997,7 @@ export type FeedItem = {
 	contentHtml: string | null,
 	paperUrl: string | null,
 	importedAt: string | null,
+	readAt: string | null,
 	bodyMarkdown: string | null,
 };
 
@@ -3057,6 +3057,11 @@ export type FeedsRenameArgs = {
 export type FeedsSetPinnedArgs = {
 	id: string,
 	pinned: boolean,
+};
+
+export type FeedsSetReadArgs = {
+	id: string,
+	read: boolean,
 };
 
 /**  Payload for the `vault:file-changed` event (consumed by the renderer). */

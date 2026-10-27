@@ -111,6 +111,7 @@ impl FsWatchController {
                 // events are pending — timeouts never run when the queue is empty.
                 let mut pending: Vec<Event> = Vec::new();
                 let mut deadline: Option<Instant> = None;
+                let mut burst_at: Option<Instant> = None;
                 loop {
                     let recv = match deadline {
                         None => match rx.recv() {
@@ -135,6 +136,15 @@ impl FsWatchController {
                         Err(()) => break,
                         Ok(None) => {
                             if !pending.is_empty() {
+                                if let Some(started) = burst_at.take() {
+                                    crate::core::perf::record(
+                                        "fs_watch_wait",
+                                        started.elapsed().as_micros(),
+                                        true,
+                                        "host",
+                                        "kind=wait",
+                                    );
+                                }
                                 let batch = std::mem::take(&mut pending);
                                 for payload in payloads_from_events(batch) {
                                     invalidate_caps_for_paths(&app, &watch_root, &payload.paths);
@@ -158,6 +168,9 @@ impl FsWatchController {
                         }
                         Ok(Some(Ok(event))) => {
                             note_markdown_for_rename(&app, &watch_root, &event);
+                            if burst_at.is_none() {
+                                burst_at = Some(Instant::now());
+                            }
                             pending.push(event);
                             deadline = Some(Instant::now() + DEBOUNCE);
                         }

@@ -20,6 +20,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -31,11 +32,14 @@ import { cancelTask } from "@/lib/core/tasks";
 import { isTauri } from "@/lib/core/tauri";
 import { cn } from "@/lib/core/utils";
 import { ensureTexBuildEvents, texBuildStore } from "@/lib/tex/build-state";
+import { rememberTexEngine } from "@/lib/tex/engine";
 import { getVaultPath } from "@/lib/vault/store";
 import { compileTexProject } from "@/lib/workspace/actions";
 import {
 	cleanTexAuxFiles,
+	engineChoiceForRoot,
 	initTexEngines,
+	type TexEngineChoice,
 	texCompileStore,
 } from "@/lib/workspace/tex-compile";
 import {
@@ -80,6 +84,9 @@ export function WritingPdfBar({
 	const ready = enginesLoading || engines.length > 0;
 	const vault = getVaultPath();
 	const historyActive = useStore(writingStore, (state) => state.historyActive);
+	const [engineChoice, setEngineChoice] = useState<TexEngineChoice | null>(
+		null,
+	);
 	const [syncing, setSyncing] = useState(false);
 	const [github, setGithub] = useState<WritingGitHubLink | null>(() =>
 		vault ? readWritingGitHub(vault) : null,
@@ -95,6 +102,17 @@ export function WritingPdfBar({
 		initTexEngines();
 		void ensureTexBuildEvents();
 	}, []);
+
+	useEffect(() => {
+		if (enginesLoading && engines.length === 0) return;
+		let cancelled = false;
+		void engineChoiceForRoot(key).then((choice) => {
+			if (!cancelled) setEngineChoice(choice);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [key, engines, enginesLoading]);
 
 	useEffect(() => {
 		const refresh = () => {
@@ -237,6 +255,47 @@ export function WritingPdfBar({
 						>
 							{t("fileTree.cleanAux")}
 						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuLabel>{t("fileTree.latexEngine")}</DropdownMenuLabel>
+						{engineChoice?.locked ? (
+							<DropdownMenuLabel className="text-[11px] font-normal">
+								{t("latexPanel.engineFromFile")}
+							</DropdownMenuLabel>
+						) : null}
+						{enginesLoading ? (
+							<DropdownMenuItem disabled>
+								{t("fileTree.detectingEngines")}
+							</DropdownMenuItem>
+						) : engines.length === 0 ? (
+							<DropdownMenuItem disabled>
+								{t("fileTree.noLatexEngine")}
+							</DropdownMenuItem>
+						) : (
+							engines.map((engine) => {
+								const selected = engineChoice?.engineId === engine.id;
+								return (
+									<DropdownMenuItem
+										key={engine.id}
+										disabled={engineChoice?.locked}
+										onSelect={() => {
+											if (!engineChoice || engineChoice.locked) return;
+											rememberTexEngine(engineChoice.rootPath, engine.id);
+											setEngineChoice({
+												...engineChoice,
+												engineId: engine.id,
+											});
+										}}
+										className="justify-between"
+									>
+										<span>{engine.label}</span>
+										<Check
+											className={cn("size-4", !selected && "invisible")}
+											aria-hidden
+										/>
+									</DropdownMenuItem>
+								);
+							})
+						)}
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
 							onSelect={() => void toggleLivePreview()}

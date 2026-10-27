@@ -166,27 +166,7 @@ async fn default_branch(owner: &str, repo: &str) -> Result<String, AppError> {
     {
         return default_branch_from_body(body);
     }
-    let candidates = crate::http::github_url_candidates(&canonical);
-    let mut last_err: Option<AppError> = None;
-    for (index, url) in candidates.iter().enumerate() {
-        match default_branch_once(url).await {
-            Ok(branch) => return Ok(branch),
-            Err(err) => {
-                let retry =
-                    index + 1 < candidates.len() && crate::http::should_fallback_github_error(&err);
-                if retry {
-                    log::warn!(
-                        target: "agentero::skill",
-                        "GitHub default_branch via {url} failed ({err}); trying mirror"
-                    );
-                    last_err = Some(err);
-                    continue;
-                }
-                return Err(err);
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| AppError::message("GitHub repository lookup failed")))
+    default_branch_once(&canonical).await
 }
 
 async fn default_branch_once(url: &str) -> Result<String, AppError> {
@@ -469,7 +449,7 @@ async fn github_blob_bytes(source: &SkillSource, sha: &str) -> Result<Vec<u8>, A
         source.repo,
         urlencoding::encode(sha)
     );
-    let blob = fetch_github_blob_with_mirror_fallback(&canonical).await?;
+    let blob = fetch_github_blob(&canonical).await?;
     if blob.encoding != "base64" {
         return Err(AppError::message(format!(
             "unsupported GitHub blob encoding: {}",
@@ -510,7 +490,7 @@ async fn github_contents(
             urlencoding::encode(reference)
         )
     };
-    let response = fetch_github_json_with_mirror_fallback(&canonical).await?;
+    let response = fetch_github_contents(&canonical).await?;
     match response {
         GithubContentsResponse::Entry(entry) => Ok(vec![entry]),
         GithubContentsResponse::Entries(entries) => Ok(entries),
@@ -524,37 +504,17 @@ async fn github_tree(source: &SkillSource, reference: &str) -> Result<GithubTree
         source.repo,
         urlencoding::encode(reference)
     );
-    fetch_github_tree_with_mirror_fallback(&canonical).await
+    fetch_github_tree(&canonical).await
 }
 
-async fn fetch_github_tree_with_mirror_fallback(canonical: &str) -> Result<GithubTree, AppError> {
+async fn fetch_github_tree(canonical: &str) -> Result<GithubTree, AppError> {
     if let Some(tree) =
         fetch_github_api_json_via_gh::<GithubTree>(canonical, "invalid GitHub tree response")
             .await?
     {
         return Ok(tree);
     }
-    let candidates = crate::http::github_url_candidates(canonical);
-    let mut last_err: Option<AppError> = None;
-    for (index, url) in candidates.iter().enumerate() {
-        match fetch_github_tree_once(url).await {
-            Ok(value) => return Ok(value),
-            Err(err) => {
-                let retry =
-                    index + 1 < candidates.len() && crate::http::should_fallback_github_error(&err);
-                if retry {
-                    log::warn!(
-                        target: "agentero::skill",
-                        "GitHub tree via {url} failed ({err}); trying mirror"
-                    );
-                    last_err = Some(err);
-                    continue;
-                }
-                return Err(err);
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| AppError::message("GitHub tree request failed")))
+    fetch_github_tree_once(canonical).await
 }
 
 async fn fetch_github_tree_once(url: &str) -> Result<GithubTree, AppError> {
@@ -582,34 +542,14 @@ async fn fetch_github_tree_once(url: &str) -> Result<GithubTree, AppError> {
         .map_err(|e| AppError::message(format!("invalid GitHub tree response: {e}")))
 }
 
-async fn fetch_github_blob_with_mirror_fallback(canonical: &str) -> Result<GithubBlob, AppError> {
+async fn fetch_github_blob(canonical: &str) -> Result<GithubBlob, AppError> {
     if let Some(blob) =
         fetch_github_api_json_via_gh::<GithubBlob>(canonical, "invalid GitHub blob response")
             .await?
     {
         return Ok(blob);
     }
-    let candidates = crate::http::github_url_candidates(canonical);
-    let mut last_err: Option<AppError> = None;
-    for (index, url) in candidates.iter().enumerate() {
-        match fetch_github_blob_once(url).await {
-            Ok(value) => return Ok(value),
-            Err(err) => {
-                let retry =
-                    index + 1 < candidates.len() && crate::http::should_fallback_github_error(&err);
-                if retry {
-                    log::warn!(
-                        target: "agentero::skill",
-                        "GitHub blob via {url} failed ({err}); trying mirror"
-                    );
-                    last_err = Some(err);
-                    continue;
-                }
-                return Err(err);
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| AppError::message("GitHub blob request failed")))
+    fetch_github_blob_once(canonical).await
 }
 
 async fn fetch_github_blob_once(url: &str) -> Result<GithubBlob, AppError> {
@@ -637,9 +577,7 @@ async fn fetch_github_blob_once(url: &str) -> Result<GithubBlob, AppError> {
         .map_err(|e| AppError::message(format!("invalid GitHub blob response: {e}")))
 }
 
-async fn fetch_github_json_with_mirror_fallback(
-    canonical: &str,
-) -> Result<GithubContentsResponse, AppError> {
+async fn fetch_github_contents(canonical: &str) -> Result<GithubContentsResponse, AppError> {
     if let Some(response) = fetch_github_api_json_via_gh::<GithubContentsResponse>(
         canonical,
         "invalid GitHub contents response",
@@ -648,27 +586,7 @@ async fn fetch_github_json_with_mirror_fallback(
     {
         return Ok(response);
     }
-    let candidates = crate::http::github_url_candidates(canonical);
-    let mut last_err: Option<AppError> = None;
-    for (index, url) in candidates.iter().enumerate() {
-        match fetch_github_json_once(url).await {
-            Ok(value) => return Ok(value),
-            Err(err) => {
-                let retry =
-                    index + 1 < candidates.len() && crate::http::should_fallback_github_error(&err);
-                if retry {
-                    log::warn!(
-                        target: "agentero::skill",
-                        "GitHub contents via {url} failed ({err}); trying mirror"
-                    );
-                    last_err = Some(err);
-                    continue;
-                }
-                return Err(err);
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| AppError::message("GitHub contents request failed")))
+    fetch_github_json_once(canonical).await
 }
 
 async fn fetch_github_json_once(url: &str) -> Result<GithubContentsResponse, AppError> {
@@ -915,10 +833,6 @@ mod tests {
             github_api_endpoint("https://api.github.com/repos/o/r/contents/skills/pptx?ref=main")
                 .as_deref(),
             Some("/repos/o/r/contents/skills/pptx?ref=main")
-        );
-        assert_eq!(
-            github_api_endpoint("https://gh.llkk.cc/https://api.github.com/repos/o/r").as_deref(),
-            None
         );
         assert_eq!(
             github_api_endpoint("https://codeload.github.com/o/r/tar.gz/main").as_deref(),

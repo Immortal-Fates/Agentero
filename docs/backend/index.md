@@ -21,7 +21,7 @@ Tauri 2 + Rust Host：文件系统、Catalog、索引、ACP Client、远程 Vaul
 
 ```text
 crates/agentero-core/src/   # tauri 无关基座 + 数据域（agentero-core crate）
-  error、fs、http、paths、log_util、sqlite、time、blocking、usage（存储层）、decision…
+  error、fs、http、paths、log_util、perf、sqlite、time、blocking、usage（存储层）、decision…
   app_handle    # AppHandle + HostHooks（宿主回调抽象：emit / job spawn）
   features/     # catalog、vault（tree/trash/rename/doctor）、wiki、import、
                 # zotero codec/io、scholar_api、pdf_parse、refs、feeds、

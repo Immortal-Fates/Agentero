@@ -6,6 +6,7 @@
  */
 
 import { createStore } from "zustand/vanilla";
+import { perfOp, perfWait } from "@/lib/core/perf";
 import {
 	clearRefreshWave,
 	noteWikiPath,
@@ -74,7 +75,7 @@ export function setExternalRenameFailure(
 /** Rebuild wiki index and notify Backlinks/Graph panels to re-fetch. */
 export async function rebuildWikiAndNotify(path: string): Promise<void> {
 	try {
-		await rebuildWikiIndex(path);
+		await perfOp("graph_rebuild", () => rebuildWikiIndex(path));
 		bumpWikiIndexRevision();
 	} catch {
 		// Index rebuild is best-effort; panels re-fetch on next path change.
@@ -93,18 +94,21 @@ const wikiEchoEmbedPaths = new Set<string>();
  */
 export function scheduleWikiRebuild(absPath: string): void {
 	if (!isWikiTargetPath(absPath)) return;
-	// Autosave/⌘S echo: the editor already has this write, so the watcher
-	// only refreshes mounted embeds (#270).
+	// Autosave/⌘S echo: the save path already folded this file into the index,
+	// so the watcher only refreshes mounted embeds (#270).
 	if (isSelfWrittenPath(absPath)) {
 		wikiEchoEmbedPaths.add(absPath);
 		if (wikiRebuildTimer) clearTimeout(wikiRebuildTimer);
+		const scheduledAt = performance.now();
+		const delay = watchRefreshDelayMs("wiki");
 		wikiRebuildTimer = setTimeout(() => {
 			wikiRebuildTimer = null;
+			perfWait("watch_wait.wiki", performance.now() - scheduledAt);
 			const echoPaths = [...wikiEchoEmbedPaths];
 			wikiEchoEmbedPaths.clear();
 			if (!getVaultPath() || echoPaths.length === 0) return;
 			notifyWikiEmbedTargets(echoPaths);
-		}, watchRefreshDelayMs("wiki"));
+		}, delay);
 		return;
 	}
 	if (!getVaultPath()) return;

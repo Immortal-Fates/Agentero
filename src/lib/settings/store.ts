@@ -30,7 +30,6 @@ import {
 	DEFAULT_PDF_ASK_SETTINGS,
 	DEFAULT_SETTINGS,
 	DEFAULT_TRANSLATOR_BASE_URL,
-	GITHUB_MIRROR_PRESETS,
 	snapUiScale,
 } from "@/lib/settings/defaults";
 import { normalizeFontFamilyValue } from "@/lib/settings/fonts";
@@ -337,19 +336,6 @@ function normalizePartial(
 		merged.networkProxyUrl = DEFAULT_SETTINGS.networkProxyUrl;
 	} else {
 		merged.networkProxyUrl = parsed.networkProxyUrl.trim();
-	}
-	if (typeof parsed.githubMirrorEnabled !== "boolean") {
-		merged.githubMirrorEnabled = DEFAULT_SETTINGS.githubMirrorEnabled;
-	}
-	if (typeof parsed.githubMirrorBaseUrl !== "string") {
-		merged.githubMirrorBaseUrl = DEFAULT_SETTINGS.githubMirrorBaseUrl;
-	} else {
-		const trimmed = parsed.githubMirrorBaseUrl.trim().replace(/\/+$/, "");
-		merged.githubMirrorBaseUrl = (
-			GITHUB_MIRROR_PRESETS as readonly string[]
-		).includes(trimmed)
-			? trimmed
-			: GITHUB_MIRROR_PRESETS[0];
 	}
 	if (!isPaperTreeLabelMode(merged.paperTreeLabelMode)) {
 		merged.paperTreeLabelMode = DEFAULT_SETTINGS.paperTreeLabelMode;

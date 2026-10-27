@@ -166,13 +166,6 @@ export type AppSettings = {
 	networkProxyEnabled: boolean;
 	networkProxyUrl: string;
 	/**
-	 * URL-prefix GitHub mirror for Skill import. When enabled and GitHub is
-	 * unreachable, Host retries via `{base}/https://api|codeload.github.com/...`.
-	 */
-	githubMirrorEnabled: boolean;
-	/** e.g. `https://gh.llkk.cc` (no trailing slash). Empty = no fallback. */
-	githubMirrorBaseUrl: string;
-	/**
 	 * How paper folders are labeled in the file tree (display-only).
 	 * Default: title · author.
 	 */

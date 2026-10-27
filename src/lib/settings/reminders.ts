@@ -64,8 +64,8 @@ export function maybeShowLayoutLocalModelReminder(): void {
 }
 
 /**
- * A user-visible failure looked network-related. Suggest proxy / mirror config
- * when none is enabled (once per session, dismissible).
+ * A user-visible failure looked network-related. Suggest proxy config when none
+ * is enabled (once per session, dismissible).
  */
 export function reportNetworkFailure(): void {
 	if (getSettings().networkProxyEnabled) return;

@@ -8,6 +8,7 @@ import { errorText } from "@/lib/core/error";
 import { initLogger, logger } from "@/lib/core/logger";
 import { notifyAction, notifyError } from "@/lib/core/notify";
 import { initPaintOptimizations } from "@/lib/core/paint-perf";
+import { perfActive, perfEmit } from "@/lib/core/perf";
 import { initAutoHideScrollbars } from "@/lib/core/scrollbars";
 import { isMobileApp, isTauri } from "@/lib/core/tauri";
 import {
@@ -39,8 +40,12 @@ const isDocWindow = windowKind === "doc";
 // serial await chain and in dev every step is a module request, so a slow window
 // needs per-stage numbers to be actionable rather than guesswork.
 const bootElapsed = () => Math.round(performance.now());
+let bootMark = 0;
 function bootStage(name: string) {
-	logger.info(`boot stage=${name} ms=${bootElapsed()}`);
+	const now = bootElapsed();
+	logger.info(`boot stage=${name} ms=${now}`);
+	perfEmit(`boot.${name}`, (now - bootMark) * 1000);
+	bootMark = now;
 }
 
 async function boot() {
@@ -227,6 +232,8 @@ async function boot() {
 	logger.info(
 		`op end frontend_boot ok=true duration_ms=${bootElapsed()} window=main`,
 	);
+	perfEmit("frontend_boot", bootElapsed() * 1000, true, "window=main");
+	if (perfActive()) return;
 	void checkForStartupUpdate();
 	// After an in-app update relaunches the app, re-align the installed CLI
 	// shim with the new build (the updater only replaces the GUI package).

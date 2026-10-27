@@ -2353,8 +2353,9 @@ CLI 不再暴露 usage 命令；清除通过桌面端设置 / Host API 操作。
 | `feeds_remove` / `feeds_rename` | 删除 / 改显示名 |
 | `feeds_set_pinned` | `{ id, pinned }` 钉到列表最上 |
 | `feeds_refresh` | `{ id?, staleOnly? }` 拉源 |
-| `feeds_items` | 时间线；`filter`: all / paper / other |
+| `feeds_items` | 时间线；`filter`: all / paper / other / unread（SQL 在 LIMIT 前筛选未读） |
 | `feeds_mark_imported` | 标记本机已入库 |
+| `feeds_set_read` | `{id, read}` 设置 / 清除 `readAt`；返回更新后的条目，重复标已读保留首次时间 |
 | `feeds_resolve_body` | 打开详情时抓全文 → Markdown |
 
 ### 3.10.5 广场 arXiv 推荐（catalog `embed_cache` / `discovery_runs`）

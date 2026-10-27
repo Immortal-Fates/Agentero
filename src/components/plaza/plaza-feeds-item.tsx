@@ -1,7 +1,7 @@
 /**
- * Feed timeline card + in-panel detail. Click opens the item; import lives
- * on the detail page so a truncated abstract is never treated as the whole
- * paper. Detail body supports selection Ask / Add-to-chat (ephemeral).
+ * Feed timeline card + in-panel detail. Import is available from the card
+ * context menu and detail toolbar. Detail body supports selection Ask /
+ * Add-to-chat (ephemeral).
  */
 
 import {
@@ -10,13 +10,21 @@ import {
 	Download,
 	ExternalLink,
 	Loader2,
+	Mail,
+	MailOpen,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { PlazaSelectionMenu } from "@/components/plaza/plaza-selection-menu";
 import { usePlazaFeedSelection } from "@/components/plaza/use-plaza-feed-selection";
 import { Button } from "@/components/ui/button";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { SelectionCopiedLabel } from "@/components/ui/selection-copied-label";
 import {
 	Tooltip,
@@ -30,9 +38,7 @@ import {
 	cleanFeedSummary,
 	type FeedItem,
 	feedDetailMarkdown,
-	feedsMarkImported,
 	feedsResolveBody,
-	importFeedPaper,
 } from "@/lib/plaza/feeds";
 
 export function formatFeedWhen(iso: string | null, locale: string): string {
@@ -56,83 +62,127 @@ export function PlazaFeedItemRow({
 	item,
 	hideSource,
 	onOpen,
+	onToggleRead,
+	onImport,
+	importing,
 }: {
 	item: FeedItem;
 	hideSource: boolean;
 	onOpen: (item: FeedItem) => void;
+	onToggleRead: (item: FeedItem) => void;
+	onImport: (item: FeedItem) => void;
+	importing: boolean;
 }) {
 	const { t, i18n } = useTranslation("sidebar");
 	const when = formatFeedWhen(item.publishedAt, i18n.language);
 	const summary = cleanFeedSummary(item.summaryText);
-	const href = item.url ?? item.paperUrl;
+	const href = item.url?.trim() || item.paperUrl?.trim();
 
 	return (
-		<div
-			className={cn(
-				"group relative rounded-lg border bg-background p-2.5",
-				"transition-colors hover:border-foreground/20 hover:bg-muted/50",
-			)}
-		>
-			<button
-				type="button"
-				onClick={() => onOpen(item)}
-				className={cn(
-					"block w-full min-w-0 pr-8 text-left",
-					"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-				)}
-			>
-				{hideSource ? (
-					<div className="flex items-baseline gap-2">
-						<span className="min-w-0 truncate font-medium text-sm">
-							{item.title}
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<div
+					className={cn(
+						"group relative rounded-lg border bg-background p-2.5",
+						"transition-colors hover:border-foreground/20 hover:bg-muted/50",
+					)}
+				>
+					<button
+						type="button"
+						onClick={() => onOpen(item)}
+						className={cn(
+							"block w-full min-w-0 pr-16 text-left",
+							item.readAt && "text-muted-foreground",
+							"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+						)}
+					>
+						<span className="sr-only">
+							{t(item.readAt ? "plaza.feeds.read" : "plaza.feeds.unread")}
 						</span>
-						{when ? (
-							<span className="shrink-0 text-muted-foreground text-xs">
-								{when}
-							</span>
+						{hideSource ? (
+							<div className="flex items-baseline gap-2">
+								<span
+									className={cn(
+										"min-w-0 truncate text-sm",
+										!item.readAt && "font-medium",
+									)}
+								>
+									{item.title}
+								</span>
+								{when ? (
+									<span className="shrink-0 text-muted-foreground text-xs">
+										{when}
+									</span>
+								) : null}
+							</div>
+						) : (
+							<>
+								<div
+									className={cn(
+										"truncate text-sm",
+										!item.readAt && "font-medium",
+									)}
+								>
+									{item.title}
+								</div>
+								<div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
+									<span className="truncate">{item.subscriptionTitle}</span>
+									{when ? (
+										<>
+											<span aria-hidden>·</span>
+											<span className="shrink-0">{when}</span>
+										</>
+									) : null}
+								</div>
+							</>
+						)}
+						{summary ? (
+							<p className="mt-1 line-clamp-3 text-muted-foreground text-xs leading-snug">
+								{summary}
+							</p>
 						) : null}
+					</button>
+					<div className="absolute top-2 right-10">
+						<FeedReadButton item={item} onClick={() => onToggleRead(item)} />
 					</div>
-				) : (
-					<>
-						<div className="truncate font-medium text-sm">{item.title}</div>
-						<div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-							<span className="truncate">{item.subscriptionTitle}</span>
-							{when ? (
-								<>
-									<span aria-hidden>·</span>
-									<span className="shrink-0">{when}</span>
-								</>
-							) : null}
-						</div>
-					</>
-				)}
-				{summary ? (
-					<p className="mt-1 line-clamp-3 text-muted-foreground text-xs leading-snug">
-						{summary}
-					</p>
-				) : null}
-			</button>
-			{href ? (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-sm"
-							className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-							aria-label={t("plaza.feeds.openOriginal")}
-							onClick={(event) => {
-								event.stopPropagation();
-								openExternalUrl(href);
-							}}
-						>
-							<ExternalLink className="size-3.5" aria-hidden />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>{t("plaza.feeds.openOriginal")}</TooltipContent>
-				</Tooltip>
-			) : null}
-		</div>
+					{href ? (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+									aria-label={t("plaza.feeds.openOriginal")}
+									onClick={(event) => {
+										event.stopPropagation();
+										openExternalUrl(href);
+									}}
+								>
+									<ExternalLink className="size-3.5" aria-hidden />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>{t("plaza.feeds.openOriginal")}</TooltipContent>
+						</Tooltip>
+					) : null}
+				</div>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<ContextMenuItem
+					disabled={importing || Boolean(item.importedAt) || !href}
+					onSelect={() => onImport(item)}
+				>
+					{item.importedAt ? (
+						<Check aria-hidden />
+					) : importing ? (
+						<Loader2 className="animate-spin" aria-hidden />
+					) : (
+						<Download aria-hidden />
+					)}
+					{t(item.importedAt ? "plaza.feeds.imported" : "plaza.feeds.import")}
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
 	);
 }
 
@@ -140,23 +190,26 @@ export function PlazaFeedItemDetail({
 	item,
 	hideSource,
 	onBack,
-	onImported,
+	onImport,
+	importing,
 	onResolved,
+	onToggleRead,
 }: {
 	item: FeedItem;
 	hideSource: boolean;
 	onBack: () => void;
-	onImported: (next: FeedItem) => void;
+	onImport: (item: FeedItem) => void;
+	importing: boolean;
 	onResolved: (next: FeedItem) => void;
+	onToggleRead: () => void;
 }) {
 	const { t, i18n } = useTranslation("sidebar");
-	const [busy, setBusy] = useState(false);
 	const [resolving, setResolving] = useState(!item.bodyMarkdown);
 	const bodyRef = useRef<HTMLDivElement | null>(null);
 	const when = formatFeedWhen(item.publishedAt, i18n.language);
-	const href = item.url ?? item.paperUrl;
+	const href = item.url?.trim() || item.paperUrl?.trim();
 	const imported = Boolean(item.importedAt);
-	const isPaper = Boolean(item.paperUrl);
+	const canImport = Boolean(item.paperUrl?.trim() || item.url?.trim());
 	const markdown = feedDetailMarkdown(item);
 	const selection = usePlazaFeedSelection({ item, bodyRef });
 
@@ -182,17 +235,6 @@ export function PlazaFeedItemDetail({
 		};
 	}, [item.bodyMarkdown, item.id, onResolved]);
 
-	const importPaper = useCallback(async () => {
-		if (busy || imported || !item.paperUrl) return;
-		setBusy(true);
-		try {
-			const ok = await importFeedPaper(item);
-			if (ok) onImported(await feedsMarkImported(item.id));
-		} finally {
-			setBusy(false);
-		}
-	}, [busy, imported, item, onImported]);
-
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="flex shrink-0 select-none items-center gap-1 border-b px-2 py-1.5">
@@ -215,6 +257,7 @@ export function PlazaFeedItemDetail({
 						.filter(Boolean)
 						.join(" · ")}
 				</span>
+				<FeedReadButton item={item} onClick={onToggleRead} />
 				{resolving ? (
 					<Loader2
 						className="size-3.5 shrink-0 animate-spin text-muted-foreground"
@@ -237,7 +280,7 @@ export function PlazaFeedItemDetail({
 						<TooltipContent>{t("plaza.feeds.openOriginal")}</TooltipContent>
 					</Tooltip>
 				) : null}
-				{isPaper ? (
+				{canImport ? (
 					imported ? (
 						<span className="inline-flex items-center gap-0.5 pr-1 text-muted-foreground text-xs">
 							<Check className="size-3" aria-hidden />
@@ -250,11 +293,11 @@ export function PlazaFeedItemDetail({
 									type="button"
 									variant="ghost"
 									size="icon-sm"
-									disabled={busy}
+									disabled={importing}
 									aria-label={t("plaza.feeds.import")}
-									onClick={() => void importPaper()}
+									onClick={() => onImport(item)}
 								>
-									{busy ? (
+									{importing ? (
 										<Loader2 className="size-3.5 animate-spin" aria-hidden />
 									) : (
 										<Download className="size-3.5" aria-hidden />
@@ -307,5 +350,38 @@ export function PlazaFeedItemDetail({
 				</div>
 			) : null}
 		</div>
+	);
+}
+
+function FeedReadButton({
+	item,
+	onClick,
+}: {
+	item: FeedItem;
+	onClick: () => void;
+}) {
+	const { t } = useTranslation("sidebar");
+	const label = t(
+		item.readAt ? "plaza.feeds.markUnread" : "plaza.feeds.markRead",
+	);
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					aria-label={label}
+					onClick={onClick}
+				>
+					{item.readAt ? (
+						<MailOpen className="size-3.5 text-muted-foreground" aria-hidden />
+					) : (
+						<Mail className="size-3.5" aria-hidden />
+					)}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
 	);
 }

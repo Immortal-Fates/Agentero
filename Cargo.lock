@@ -101,6 +101,7 @@ dependencies = [
  "dirs",
  "ed25519-dalek",
  "encoding_rs",
+ "fern",
  "flate2",
  "fontdb 0.23.0",
  "futures-util",
@@ -215,6 +216,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "which",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 

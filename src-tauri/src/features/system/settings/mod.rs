@@ -24,14 +24,6 @@ pub const DEFAULT_TRANSLATOR_BASE_URL: &str = "https://translation-server.agente
 pub const DEFAULT_NETWORK_PROXY_URL: &str = "http://127.0.0.1:7890";
 /// Default System One endpoint (TypeSafe jEV). Clef/OpenAI presets override it.
 pub const DEFAULT_DECISION_BASE_URL: &str = "https://api.typesafe.ai/v1/systemone";
-/// Built-in URL-prefix GitHub mirrors. The user picks from this list instead of
-/// typing a custom URL. All entries must support `{base}/{canonical_github_url}`.
-pub const GITHUB_MIRROR_PRESETS: &[&str] = &[
-    "https://gh.llkk.cc",
-    "https://mirror.ghproxy.com",
-    "https://ghproxy.net",
-    "https://github.moeyy.xyz",
-];
 /// Default Zotero Connector port (must match the official extension default).
 /// Owned here because the persisted `connectorPort` default must exist at
 /// deserialize time; `features::connector` re-exports it.
@@ -84,12 +76,6 @@ pub struct AppSettings {
     pub network_proxy_enabled: bool,
     #[serde(default = "default_network_proxy_url")]
     pub network_proxy_url: String,
-    /// URL-prefix GitHub mirror for Skill import fallback when GitHub is unreachable.
-    #[serde(default)]
-    pub github_mirror_enabled: bool,
-    /// e.g. `https://gh.llkk.cc` — requests become `{base}/https://codeload.github.com/...`.
-    #[serde(default)]
-    pub github_mirror_base_url: String,
     /// EZProxy/WebVPN prefix for paywalled PDF fallback, e.g.
     /// `https://webvpn.example.edu/login?url=`. Empty disables the layer.
     #[serde(default)]
@@ -430,8 +416,6 @@ impl Default for AppSettings {
             easy_scholar_key: String::new(),
             network_proxy_enabled: false,
             network_proxy_url: default_network_proxy_url(),
-            github_mirror_enabled: false,
-            github_mirror_base_url: GITHUB_MIRROR_PRESETS[0].to_string(),
             institution_proxy_prefix: String::new(),
             institution_proxy_cookie: String::new(),
             institution_proxy_type: "ezproxy".to_string(),
@@ -1006,6 +990,36 @@ impl AppSettingsStore {
         ))
     }
 
+    /// Persist cookies captured after an interactive gateway login without
+    /// overwriting unrelated settings changed by another window meanwhile.
+    pub fn update_institution_proxy_cookie(
+        &self,
+        prefix: &str,
+        cookie: String,
+    ) -> Result<Option<AppSettings>, AppError> {
+        let redacted = {
+            let mut guard = self
+                .inner
+                .lock()
+                .map_err(|_| AppError::message("settings lock poisoned"))?;
+            if guard.institution_proxy_prefix.trim() != prefix.trim() {
+                return Ok(None);
+            }
+            let mut next = guard.clone();
+            next.institution_proxy_cookie = cookie;
+            persist(&self.path, &next)?;
+            *guard = next.clone();
+            redact_secrets(next)
+        };
+        if let Some((kind, prefix, cookie)) = self.institution_proxy() {
+            agentero_core::features::paper::import::download::set_institution_proxy(
+                kind, &prefix, &cookie,
+            );
+        }
+        self.notify(&redacted);
+        Ok(Some(redacted))
+    }
+
     /// Resolve the configured EasyScholar key. Returns None when unset or when
     /// the stored value is a UI mask (`*`-only), so probes never send masks.
     pub fn easy_scholar_key(&self) -> Option<String> {
@@ -1197,12 +1211,6 @@ fn normalize(s: &mut AppSettings) {
     if s.network_proxy_url.is_empty() {
         s.network_proxy_url = default_network_proxy_url();
     }
-    let mirror = s.github_mirror_base_url.trim().trim_end_matches('/');
-    s.github_mirror_base_url = if GITHUB_MIRROR_PRESETS.contains(&mirror) {
-        mirror.to_string()
-    } else {
-        GITHUB_MIRROR_PRESETS[0].to_string()
-    };
     s.institution_proxy_prefix = s
         .institution_proxy_prefix
         .trim()
@@ -1505,6 +1513,31 @@ fn normalize_translate_provider_configs(configs: &mut HashMap<String, TranslateP
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn captured_proxy_cookie_updates_only_matching_gateway() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AppSettingsStore {
+            inner: Mutex::new(AppSettings {
+                institution_proxy_prefix: "https://vpn.example.edu".into(),
+                institution_proxy_cookie: "old=1".into(),
+                theme: "dark".into(),
+                ..AppSettings::default()
+            }),
+            path: dir.path().join("settings.json"),
+            listeners: Mutex::new(Vec::new()),
+        };
+        assert!(store
+            .update_institution_proxy_cookie("https://other.example.edu", "wrong=1".into())
+            .unwrap()
+            .is_none());
+        store
+            .update_institution_proxy_cookie("https://vpn.example.edu", "fresh=1".into())
+            .unwrap();
+        let (saved, _) = read_file(&store.path);
+        assert_eq!(saved.institution_proxy_cookie, "fresh=1");
+        assert_eq!(saved.theme, "dark");
+    }
 
     #[test]
     fn roundtrip_defaults() {

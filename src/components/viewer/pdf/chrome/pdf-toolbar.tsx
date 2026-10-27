@@ -28,13 +28,14 @@ import { cn } from "@/lib/core/utils";
 import { formatShortcutById } from "@/lib/shell/shortcuts";
 
 type PdfToolbarProps = {
-	reflowBusy?: boolean;
 	onExportTranslatedPdf?: (dual?: boolean) => void;
 	regionSelecting: boolean;
 	visualCropPending: boolean;
 	engine: PdfEngine | null;
 	onToggleRegionSelect: () => void;
 	layoutTranslateRunning: boolean;
+	/** Final corrected preview is still building after items settled. */
+	layoutTranslatePreparing?: boolean;
 	/** Queued behind layout analysis; plain click cancels the wait. */
 	layoutTranslateWaiting?: boolean;
 	layoutTranslateActive: boolean;
@@ -54,13 +55,13 @@ type PdfToolbarProps = {
 
 /** Top-right toolbar: region select, bulk translate. Always visible. */
 export const PdfToolbar = memo(function PdfToolbar({
-	reflowBusy,
 	onExportTranslatedPdf,
 	regionSelecting,
 	visualCropPending,
 	engine,
 	onToggleRegionSelect,
 	layoutTranslateRunning,
+	layoutTranslatePreparing = false,
 	layoutTranslateWaiting = false,
 	layoutTranslateActive,
 	layoutTranslateLabel,
@@ -168,37 +169,28 @@ export const PdfToolbar = memo(function PdfToolbar({
 						PDF_CHROME_CHIP,
 					)}
 				>
-					{(onExportTranslatedPdf || reflowBusy) && (
+					{onExportTranslatedPdf ? (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button
 									type="button"
 									size="icon-xs"
 									variant="ghost"
-									disabled={reflowBusy}
 									aria-label={t("pdf.layoutTranslate.exportPdf")}
 								>
-									{reflowBusy ? (
-										<Loader2 className="size-3.5 animate-spin" />
-									) : (
-										<Download className="size-3.5" />
-									)}
+									<Download className="size-3.5" />
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
-								<DropdownMenuItem
-									onSelect={() => onExportTranslatedPdf?.(false)}
-								>
+								<DropdownMenuItem onSelect={() => onExportTranslatedPdf(false)}>
 									{t("pdf.layoutTranslate.exportPdf")}
 								</DropdownMenuItem>
-								<DropdownMenuItem
-									onSelect={() => onExportTranslatedPdf?.(true)}
-								>
+								<DropdownMenuItem onSelect={() => onExportTranslatedPdf(true)}>
 									{t("pdf.layoutTranslate.exportDualPdf")}
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
-					)}
+					) : null}
 					{isRemotePaper ? (
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -281,7 +273,8 @@ export const PdfToolbar = memo(function PdfToolbar({
 								>
 									{layoutTranslateWaiting ? (
 										<Clock className="size-3.5 animate-pulse" aria-hidden />
-									) : layoutTranslateRunning && !longPressing ? (
+									) : (layoutTranslateRunning || layoutTranslatePreparing) &&
+										!longPressing ? (
 										<Loader2 className="size-3.5 animate-spin" aria-hidden />
 									) : (
 										<Languages className="size-3.5" aria-hidden />

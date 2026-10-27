@@ -2,6 +2,7 @@ import { commands, type VaultTreeNode_Serialize } from "@/lib/core/bindings";
 import { errorText } from "@/lib/core/error";
 import { callApiResult } from "@/lib/core/ipc";
 import { toVaultRelative } from "@/lib/core/path";
+import { perfOp } from "@/lib/core/perf";
 import { compareNaturalName } from "@/lib/core/sort";
 import { normalizePathKey } from "@/lib/vault/path";
 import {
@@ -628,11 +629,13 @@ export function collectWikiTargetRelPaths(
  * - Ignored names ({@link TREE_IGNORE_NAMES} / dots / `*.egg-info`) are never listed.
  */
 export async function loadVaultTree(rootPath: string): Promise<FileNode[]> {
-	if (isRemoteVaultHandle(rootPath)) {
-		return buildTree(remoteTreeAdapter(rootPath), rootPath, "");
-	}
-	await ensureLocalFsScope(rootPath);
-	// Local: the Host walks the vault in-process and returns the tree in one IPC.
-	const nodes = await callApiResult(() => commands.vaultTreeBuild(rootPath));
-	return mapHostTreeNodes(nodes);
+	return perfOp("vault_tree_build", async () => {
+		if (isRemoteVaultHandle(rootPath)) {
+			return buildTree(remoteTreeAdapter(rootPath), rootPath, "");
+		}
+		await ensureLocalFsScope(rootPath);
+		// Local: the Host walks the vault in-process and returns the tree in one IPC.
+		const nodes = await callApiResult(() => commands.vaultTreeBuild(rootPath));
+		return mapHostTreeNodes(nodes);
+	});
 }

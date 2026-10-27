@@ -47,6 +47,18 @@ pub fn build_log_plugin() -> tauri_plugin_log::Builder {
         builder = builder.target(Target::new(TargetKind::Webview));
     }
 
+    // Frontend spans are `PERF {json}` info lines. Copy them into the trace
+    // file with the same writer the host OpTimer uses. Absent unless
+    // AGENTERO_PERF_TRACE is set, so normal launches do not install it.
+    if crate::core::perf::tracing() {
+        let dispatch = fern::Dispatch::new()
+            .filter(|meta| meta.target().starts_with("webview"))
+            .chain(fern::Output::call(|record| {
+                crate::core::perf::capture_log_line(&record.args().to_string());
+            }));
+        builder = builder.target(Target::new(TargetKind::Dispatch(dispatch)));
+    }
+
     builder
 }
 

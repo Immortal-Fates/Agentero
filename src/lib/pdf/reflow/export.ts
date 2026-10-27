@@ -14,11 +14,33 @@ import { layoutReflowDocument, type ReflowFonts } from "./layout";
 import { relocateReflowLinks } from "./links";
 import type { PageLayout, ReflowDocument } from "./types";
 
+/**
+ * pdf-lib re-parses font bytes on every `embedFont` call, and page-level
+ * preview builds re-embed the full CJK pair (`subset: false`) for each page,
+ * so the same ~20 MB fonts were parsed per page on the main thread.
+ * `loadReflowFonts()` returns cached byte instances, which key this parse
+ * cache shared across every build of the session.
+ */
+const parsedFonts = new WeakMap<
+	Uint8Array,
+	ReturnType<typeof fontkit.create>
+>();
+const cachingFontkit = {
+	...fontkit,
+	create(bytes: Uint8Array) {
+		const cached = parsedFonts.get(bytes);
+		if (cached) return cached;
+		const font = fontkit.create(bytes);
+		parsedFonts.set(bytes, font);
+		return font;
+	},
+} as typeof fontkit;
+
 export async function embedReflowFonts(
 	pdf: PDFDocument,
 	cjkBytes: Uint8Array | ReflowFontBytes,
 ): Promise<ReflowFonts> {
-	pdf.registerFontkit(fontkit);
+	pdf.registerFontkit(cachingFontkit);
 	const bundle = cjkBytes instanceof Uint8Array ? null : cjkBytes;
 	const cjkData = cjkBytes instanceof Uint8Array ? cjkBytes : cjkBytes.cjk;
 	const [regular, bold, italic, boldItalic, cjk, cjkBold] = await Promise.all([

@@ -147,3 +147,19 @@ pub async fn feeds_resolve_body(args: FeedsIdArgs) -> ApiResult<FeedItem> {
         Err(e) => map_err(e),
     }
 }
+
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedsSetReadArgs {
+    pub id: String,
+    pub read: bool,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn feeds_set_read(args: FeedsSetReadArgs) -> ApiResult<FeedItem> {
+    match super::set_read(&args.id, args.read) {
+        Ok(data) => ApiResult::ok(data),
+        Err(e) => map_err(e),
+    }
+}

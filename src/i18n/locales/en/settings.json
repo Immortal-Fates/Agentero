@@ -6,7 +6,6 @@
 	},
 	"nav": {
 		"general": "General",
-		"writing": "Writing",
 		"appearance": "Appearance",
 		"agent": "Agent",
 		"translate": "Translate",
@@ -14,7 +13,7 @@
 		"experimental": "Experimental",
 		"doctor": "Doctor",
 		"keyboard": "Keyboard",
-		"remote-access": "Remote access",
+		"remote-access": "Mobile access",
 		"about": "About",
 		"quickSetup": "Quick setup wizard",
 		"featureTour": "Feature tour",
@@ -22,11 +21,6 @@
 		"plugins": "Plugins"
 	},
 	"writing": {
-		"title": "Writing",
-		"engine": "LaTeX engine",
-		"projectSettings": "Project settings",
-		"noProject": "Open a writing project to change these.",
-		"github": "GitHub",
 		"uploadMode": "When to upload",
 		"uploadManual": "Manually",
 		"uploadOnCompile": "After each compile",
@@ -37,8 +31,8 @@
 		"saved": "Saved"
 	},
 	"remoteAccess": {
-		"title": "Remote access",
-		"localVaultRequired": "Open a local Vault to provide remote access.",
+		"title": "Mobile access",
+		"localVaultRequired": "Open a local Vault to provide mobile access.",
 		"hostName": {
 			"label": "Computer name"
 		},
@@ -46,8 +40,8 @@
 			"online": "Online",
 			"offline": "Offline"
 		},
-		"start": "Enable remote access",
-		"stop": "Disable remote access",
+		"start": "Enable mobile access",
+		"stop": "Disable mobile access",
 		"qrAlt": "Pairing QR code",
 		"pairing": {
 			"title": "Pair an iPhone or iPad"
@@ -79,7 +73,8 @@
 			"pdf": "PDF reading",
 			"plaza": "Plaza",
 			"network": "Network",
-			"integrations": "Integrations"
+			"integrations": "Integrations",
+			"mcp": "MCP"
 		},
 		"paperTreeLabelMode": {
 			"label": "Paper names in file tree",
@@ -140,13 +135,13 @@
 			"label": "Network proxy",
 			"systemDetected": "System proxy detected ({{url}}) — used automatically while this switch is off."
 		},
-		"githubMirror": {
-			"label": "GitHub mirror"
-		},
 		"institutionProxy": {
 			"label": "Institution proxy",
 			"cookieLabel": "Proxy cookie",
 			"cookiePlaceholder": "Paste WebVPN cookie",
+			"login": "Open login",
+			"loginFailed": "Could not open the institution login",
+			"cookieExpired": "Institution login expired. Open the gateway and sign in again; cookies are saved automatically.",
 			"typeLabel": "Gateway type",
 			"typeEzproxy": "EZProxy (login?url=)",
 			"typeWengine": "WebVPN (wengine)",
@@ -161,10 +156,7 @@
 				"zju": "Zhejiang University",
 				"ustc": "University of Science and Technology of China",
 				"xjtu": "Xi'an Jiaotong University",
-				"neu": "Northeastern University",
-				"zjnu": "Zhejiang Normal University",
-				"sjzu": "Shenyang Jianzhu University",
-				"zqu": "Zhaoqing University"
+				"neu": "Northeastern University"
 			}
 		},
 		"easyScholar": {
@@ -189,8 +181,7 @@
 		},
 		"mcp": {
 			"exposeText": {
-				"label": "Expose paper text (MCP)",
-				"description": "Opt-in for paper_text_get: external clients (e.g. ChatGPT) can read the PDF's page text. Off by default — full text then never leaves the vault."
+				"label": "Expose paper text (MCP)"
 			},
 			"label": "MCP server",
 			"portLabel": "MCP port",
@@ -984,7 +975,6 @@
 	"word": {
 		"damagedField": "This citation has an empty or damaged field result. Restore the document or reinsert the citation in a copy.",
 		"label": "Zotero Word plugin (macOS prototype)",
-		"hint": "Enable Connector first and quit Zotero. Uses the official Word plugin for this session. Body citations only; no tracked changes or footnotes.",
 		"search": "Search papers",
 		"pages": "Pages (for selected references)",
 		"style": "Citation style",

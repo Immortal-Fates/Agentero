@@ -7,8 +7,9 @@ import {
 	useEditorContainerRef,
 	useEditorRef,
 } from "platejs/react";
-import type * as React from "react";
+import { type ComponentProps, type RefObject, useEffect } from "react";
 
+import { markOnce } from "@/lib/core/perf";
 import { cn } from "@/lib/core/utils";
 
 const editorContainerClassName = cn(
@@ -21,11 +22,15 @@ export function EditorContainer({
 	className,
 	ref,
 	...props
-}: React.ComponentProps<"div">) {
+}: ComponentProps<"div">) {
 	const editor = useEditorRef();
 	const plateContainerRef = useEditorContainerRef();
 	const composedRef = useComposedRef(plateContainerRef, ref);
-	const containerProps: React.ComponentProps<"div"> = {
+	useEffect(() => {
+		plateContainerRef.current?.setAttribute("data-agentero-editor", "");
+		markOnce("notes_editor_ready", { anchor: "open" });
+	}, [plateContainerRef]);
+	const containerProps: ComponentProps<"div"> = {
 		...props,
 		id: editor.meta.uid,
 		ref: composedRef,
@@ -55,7 +60,7 @@ export const Editor = ({
 	className,
 	ref,
 	...props
-}: PlateContentProps & { ref?: React.RefObject<HTMLDivElement | null> }) => (
+}: PlateContentProps & { ref?: RefObject<HTMLDivElement | null> }) => (
 	<PlateContent
 		ref={ref}
 		className={cn(editorClassName, className)}

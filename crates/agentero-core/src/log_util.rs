@@ -1,6 +1,7 @@
 //! Operation start/end logging helpers (see `docs/development/logging.md`).
 
 use crate::error::{map_err, ApiResult, AppError};
+use crate::perf;
 use std::time::Instant;
 
 const TARGET: &str = "agentero::op";
@@ -35,6 +36,16 @@ impl OpTimer {
         self.start.elapsed().as_millis()
     }
 
+    fn emit_perf(&self, ok: bool) {
+        perf::record(
+            self.name,
+            self.start.elapsed().as_micros(),
+            ok,
+            "host",
+            &self.fields,
+        );
+    }
+
     fn fields_suffix(&self) -> String {
         if self.fields.is_empty() {
             String::new()
@@ -44,6 +55,7 @@ impl OpTimer {
     }
 
     pub fn finish_ok(self) {
+        self.emit_perf(true);
         let ms = self.duration_ms();
         let extra = self.fields_suffix();
         log::info!(
@@ -56,13 +68,27 @@ impl OpTimer {
     }
 
     pub fn finish_ok_extra(self, extra_fields: impl AsRef<str>) {
+        let more_raw = extra_fields.as_ref().trim();
+        let perf_fields = if more_raw.is_empty() {
+            self.fields.clone()
+        } else if self.fields.is_empty() {
+            more_raw.to_string()
+        } else {
+            format!("{} {more_raw}", self.fields)
+        };
+        perf::record(
+            self.name,
+            self.start.elapsed().as_micros(),
+            true,
+            "host",
+            &perf_fields,
+        );
         let ms = self.duration_ms();
         let base = self.fields_suffix();
-        let more = extra_fields.as_ref().trim();
-        let more = if more.is_empty() {
+        let more = if more_raw.is_empty() {
             String::new()
         } else {
-            format!(" {more}")
+            format!(" {more_raw}")
         };
         log::info!(
             target: TARGET,
@@ -75,6 +101,7 @@ impl OpTimer {
     }
 
     pub fn finish_err(self, err: &AppError) {
+        self.emit_perf(false);
         let ms = self.duration_ms();
         let extra = self.fields_suffix();
         log::error!(
@@ -89,6 +116,7 @@ impl OpTimer {
     }
 
     pub fn finish_err_msg(self, error_code: &str, error: impl std::fmt::Display) {
+        self.emit_perf(false);
         let ms = self.duration_ms();
         let extra = self.fields_suffix();
         log::error!(

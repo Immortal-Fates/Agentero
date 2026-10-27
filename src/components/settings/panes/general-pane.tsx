@@ -2,11 +2,17 @@ import { Copy, ExternalLink, LoaderCircle, Power } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-	GitHubMirrorRow,
 	type InstitutionProxyPresetOption,
 	InstitutionProxyRow,
 	NetworkProxyRow,
 } from "@/components/settings/agent-common-rows";
+import {
+	PROVIDER_INPUT_CLASS,
+	ProbeDot,
+	ProviderCard,
+	ProviderCardHeader,
+	ProviderFieldRow,
+} from "@/components/settings/provider-card";
 import {
 	PageTitle,
 	SettingsGroup,
@@ -36,7 +42,7 @@ import { clearUsage } from "@/lib/activity";
 import { commands, events } from "@/lib/core/bindings";
 import { copyTextToClipboard } from "@/lib/core/clipboard";
 import { errorText } from "@/lib/core/error";
-import { callApi } from "@/lib/core/ipc";
+import { callApi, callResult } from "@/lib/core/ipc";
 import { notifyError, notifySuccess } from "@/lib/core/notify";
 import { openExternalUrl } from "@/lib/core/open-external";
 import { isTauri } from "@/lib/core/tauri";
@@ -134,6 +140,9 @@ export function GeneralPane({
 					? { status: "ok", message: result.data ?? "" }
 					: { status: "fail", message: result.error?.message ?? "failed" },
 			);
+			if (result.error?.code === "institution_proxy_auth_required") {
+				notifyError(t("general.institutionProxy.cookieExpired"));
+			}
 		} catch (error) {
 			setInstitutionProxyResult({
 				status: "fail",
@@ -142,7 +151,25 @@ export function GeneralPane({
 		} finally {
 			setInstitutionProxyTesting(false);
 		}
-	}, []);
+	}, [t]);
+	const openInstitutionLogin = useCallback(async () => {
+		commitInstitutionProxy();
+		try {
+			const captured = await callResult(() =>
+				commands.institutionProxyLoginOpen(institutionProxyPrefixDraft),
+			);
+			if (captured) void testInstitutionProxy();
+		} catch (error) {
+			notifyError(t("general.institutionProxy.loginFailed"), {
+				description: errorText(error),
+			});
+		}
+	}, [
+		commitInstitutionProxy,
+		institutionProxyPrefixDraft,
+		t,
+		testInstitutionProxy,
+	]);
 	const institutionProxyPresets = useMemo(
 		() =>
 			INSTITUTION_PROXY_PRESETS.map((preset) => ({
@@ -478,16 +505,8 @@ export function GeneralPane({
 						patch({ networkProxyEnabled })
 					}
 				/>
-				<GitHubMirrorRow
-					htmlFor="github-mirror-enabled"
-					label={t("general.githubMirror.label")}
-					value={settings.githubMirrorBaseUrl}
-					enabled={settings.githubMirrorEnabled}
-					onValueChange={(githubMirrorBaseUrl) =>
-						patch({ githubMirrorBaseUrl })
-					}
-					onToggle={(githubMirrorEnabled) => patch({ githubMirrorEnabled })}
-				/>
+			</SettingsGroup>
+			<SettingsGroup>
 				<SettingsRow
 					label={t("general.institutionProxy.typeLabel")}
 					htmlFor="institution-proxy-type"
@@ -528,6 +547,7 @@ export function GeneralPane({
 					}
 					cookiePlaceholder={t("general.institutionProxy.cookiePlaceholder")}
 					cookieLabel={t("general.institutionProxy.cookieLabel")}
+					loginLabel={t("general.institutionProxy.login")}
 					testLabel={t("general.institutionProxy.test")}
 					testingLabel={t("general.institutionProxy.testing")}
 					presetsLabel={t("general.institutionProxy.presetsLabel")}
@@ -537,12 +557,17 @@ export function GeneralPane({
 					onPresetSelect={selectInstitutionProxyPreset}
 					onCommit={commitInstitutionProxy}
 					onTest={() => void testInstitutionProxy()}
+					onLogin={() => void openInstitutionLogin()}
 					testing={institutionProxyTesting}
 					probeStatus={institutionProxyProbeStatus}
 					probeLabel={institutionProxyProbeLabel}
 					probeDetail={institutionProxyResult?.message}
 				/>
 			</SettingsGroup>
+			<SettingsSectionLabel className="mt-4">
+				{t("general.sections.integrations")}
+			</SettingsSectionLabel>
+			<ConnectorSettingsBlock settings={settings} patch={patch} />
 			<EasyScholarSettingsBlock
 				savedKey={settings.easyScholarKey}
 				keyDraft={easyScholarKeyDraft}
@@ -556,11 +581,7 @@ export function GeneralPane({
 					setEasyScholarKeyDraft(next.easyScholarKey);
 				}}
 			/>
-			<SettingsSectionLabel className="mt-4">
-				{t("general.sections.integrations")}
-			</SettingsSectionLabel>
-			<ConnectorSettingsBlock settings={settings} patch={patch} />
-			<WordSettings />
+			<SettingsSectionLabel>{t("general.sections.mcp")}</SettingsSectionLabel>
 			<McpSettingsBlock
 				settings={settings}
 				patch={patch}
@@ -630,27 +651,63 @@ function EasyScholarSettingsBlock({
 	);
 
 	return (
-		<>
-			<SettingsSectionLabel className="mt-4">
-				{t("general.easyScholar.section")}
-			</SettingsSectionLabel>
-			<SettingsGroup>
-				<SettingsRow
-					label={
-						<span className="inline-flex items-center gap-1.5">
-							{t("general.easyScholar.keyLabel")}
-							<StatusDot tone={probeTone(status)} label={statusLabel} />
-						</span>
+		<div className="mb-5">
+			<ProviderCard>
+				<ProviderCardHeader
+					left={
+						<>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<ProbeDot
+										status={status}
+										configured={hasEasyScholarKey(savedKey)}
+										label={statusLabel}
+									/>
+								</TooltipTrigger>
+								<TooltipContent>{statusLabel}</TooltipContent>
+							</Tooltip>
+							<p className="min-w-0 truncate font-medium text-sm">
+								{t("general.easyScholar.section")}
+							</p>
+							<Button
+								type="button"
+								variant="link"
+								size="xs"
+								className="-ml-1.5 h-auto shrink-0 px-1.5 text-primary"
+								onClick={() =>
+									void openExternalUrl(
+										"https://www.easyscholar.cc/console/user/open",
+									)
+								}
+							>
+								<ExternalLink data-icon="inline-start" className="size-3" />
+								{t("general.easyScholar.openKeyPage")}
+							</Button>
+						</>
 					}
-					htmlFor="easy-scholar-key"
-				>
-					<div className="flex items-center gap-2">
+					right={
+						<Button
+							type="button"
+							variant="outline"
+							size="xs"
+							disabled={!changed || status === "probing"}
+							onClick={() => void handleConfirm()}
+						>
+							{t("general.easyScholar.confirm")}
+						</Button>
+					}
+				/>
+				<div className="grid gap-1.5">
+					<ProviderFieldRow
+						label={t("general.easyScholar.keyLabel")}
+						htmlFor="easy-scholar-key"
+					>
 						<Input
 							id="easy-scholar-key"
 							type="password"
 							autoComplete="off"
 							placeholder={t("general.easyScholar.placeholder")}
-							className="h-8 w-64 max-w-[18rem] font-mono text-xs"
+							className={PROVIDER_INPUT_CLASS}
 							value={keyDraft}
 							onChange={(e) => {
 								const next = e.currentTarget.value;
@@ -674,55 +731,11 @@ function EasyScholarSettingsBlock({
 								}
 							}}
 						/>
-						<Button
-							type="button"
-							variant="outline"
-							size="xs"
-							disabled={!changed || status === "probing"}
-							onClick={() => void handleConfirm()}
-						>
-							{t("general.easyScholar.confirm")}
-						</Button>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									aria-label={t("general.easyScholar.openKeyPage")}
-									onClick={() =>
-										void openExternalUrl(
-											"https://www.easyscholar.cc/console/user/open",
-										)
-									}
-								>
-									<ExternalLink className="size-4" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								{t("general.easyScholar.openKeyPage")}
-							</TooltipContent>
-						</Tooltip>
-					</div>
-				</SettingsRow>
-			</SettingsGroup>
-		</>
+					</ProviderFieldRow>
+				</div>
+			</ProviderCard>
+		</div>
 	);
-}
-
-function probeTone(
-	status: EasyScholarProbeStatus,
-): "ok" | "idle" | "warn" | "err" {
-	switch (status) {
-		case "ok":
-			return "ok";
-		case "probing":
-			return "warn";
-		case "fail":
-			return "err";
-		default:
-			return "idle";
-	}
 }
 
 function PrivacySettingsBlock({
@@ -873,6 +886,7 @@ function ConnectorSettingsBlock({
 					disabled={busy}
 				/>
 			</SettingsRow>
+			<WordSettings />
 		</SettingsGroup>
 	);
 }
@@ -944,90 +958,93 @@ function McpSettingsBlock({
 	const url = status?.url ?? null;
 
 	return (
-		<SettingsGroup>
-			<SettingsRow label={t("general.mcp.label")} htmlFor="mcp-enabled">
-				<Switch
-					id="mcp-enabled"
-					checked={settings.mcpEnabled}
-					disabled={busy || disabled}
-					onCheckedChange={(v) => void onToggle(v)}
-				/>
-			</SettingsRow>
-			<SettingsRow
-				label={t("general.mcp.exposeText.label")}
-				description={t("general.mcp.exposeText.description")}
-				htmlFor="mcp-expose-paper-text"
-			>
-				<Switch
-					id="mcp-expose-paper-text"
-					checked={settings.mcpExposePaperText}
-					disabled={disabled}
-					onCheckedChange={(mcpExposePaperText) =>
-						patch({ mcpExposePaperText })
-					}
-				/>
-			</SettingsRow>
-			<SettingsRow
-				label={
-					<>
-						{t("general.mcp.portLabel")}
-						{status?.listening ? (
-							<span className="ml-1.5">
-								<StatusDot tone="ok" label={t("common:listening")} />
-							</span>
-						) : null}
-					</>
-				}
-				htmlFor="mcp-port"
-			>
-				<div className="flex items-center gap-2">
-					<Input
-						id="mcp-port"
-						type="number"
-						min={1}
-						max={65535}
-						className="h-8 w-28"
-						defaultValue={settings.mcpPort}
-						onBlur={(e) => void onPortBlur(e.currentTarget.value)}
+		<>
+			<SettingsGroup>
+				<SettingsRow label={t("general.mcp.label")} htmlFor="mcp-enabled">
+					<Switch
+						id="mcp-enabled"
+						checked={settings.mcpEnabled}
 						disabled={busy || disabled}
+						onCheckedChange={(v) => void onToggle(v)}
 					/>
-					{url ? (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									className="size-8"
-									aria-label={t("general.mcp.copyUrl")}
-									onClick={() => {
-										void copyTextToClipboard(url).then((ok) => {
-											if (!ok) return;
-											setCopied(true);
-											window.setTimeout(() => setCopied(false), 1500);
-										});
-									}}
-								>
-									<Copy className="size-4" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								{copied ? t("general.mcp.copied") : t("general.mcp.copyUrl")}
-							</TooltipContent>
-						</Tooltip>
-					) : null}
-				</div>
-			</SettingsRow>
+				</SettingsRow>
+				<SettingsRow
+					label={t("general.mcp.exposeText.label")}
+					htmlFor="mcp-expose-paper-text"
+				>
+					<Switch
+						id="mcp-expose-paper-text"
+						checked={settings.mcpExposePaperText}
+						disabled={disabled}
+						onCheckedChange={(mcpExposePaperText) =>
+							patch({ mcpExposePaperText })
+						}
+					/>
+				</SettingsRow>
+				<SettingsRow
+					label={
+						<>
+							{t("general.mcp.portLabel")}
+							{status?.listening ? (
+								<span className="ml-1.5">
+									<StatusDot tone="ok" label={t("common:listening")} />
+								</span>
+							) : null}
+						</>
+					}
+					htmlFor="mcp-port"
+				>
+					<div className="flex items-center gap-2">
+						<Input
+							id="mcp-port"
+							type="number"
+							min={1}
+							max={65535}
+							className="h-8 w-28"
+							defaultValue={settings.mcpPort}
+							onBlur={(e) => void onPortBlur(e.currentTarget.value)}
+							disabled={busy || disabled}
+						/>
+						{url ? (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										className="size-8"
+										aria-label={t("general.mcp.copyUrl")}
+										onClick={() => {
+											void copyTextToClipboard(url).then((ok) => {
+												if (!ok) return;
+												setCopied(true);
+												window.setTimeout(() => setCopied(false), 1500);
+											});
+										}}
+									>
+										<Copy className="size-4" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>
+									{copied ? t("general.mcp.copied") : t("general.mcp.copyUrl")}
+								</TooltipContent>
+							</Tooltip>
+						) : null}
+					</div>
+				</SettingsRow>
+			</SettingsGroup>
 			{settings.mcpEnabled && (
-				<McpTunnelRows
-					settings={settings}
-					patch={patch}
-					disabled={disabled || busy}
-					mcpListening={status?.listening ?? false}
-					mcpUrl={url}
-				/>
+				<SettingsGroup>
+					<McpTunnelRows
+						settings={settings}
+						patch={patch}
+						disabled={disabled || busy}
+						mcpListening={status?.listening ?? false}
+						mcpUrl={url}
+					/>
+				</SettingsGroup>
 			)}
-		</SettingsGroup>
+		</>
 	);
 }
 
@@ -1163,6 +1180,26 @@ function McpTunnelRows({
 
 	return (
 		<>
+			<SettingsRow label={t("general.mcp.tunnel.label")}>
+				<div className="flex items-center gap-2">
+					<StatusDot tone={tunnelPhaseTone(phase)} label={phaseLabel} />
+					<Button
+						type="button"
+						size="sm"
+						disabled={disabled || busy || binaryMissing || !mcpListening}
+						onClick={() => void (running ? stop() : start())}
+					>
+						{busy ? (
+							<LoaderCircle className="mr-1.5 size-4 animate-spin" />
+						) : (
+							<Power className="mr-1.5 size-4" />
+						)}
+						{running
+							? t("general.mcp.tunnel.stop")
+							: t("general.mcp.tunnel.start")}
+					</Button>
+				</div>
+			</SettingsRow>
 			<SettingsRow
 				label={t("general.mcp.tunnel.apiKeyLabel")}
 				htmlFor="mcp-tunnel-key"
@@ -1243,26 +1280,6 @@ function McpTunnelRows({
 							{t("general.mcp.tunnel.openTunnels")}
 						</TooltipContent>
 					</Tooltip>
-				</div>
-			</SettingsRow>
-			<SettingsRow label={t("general.mcp.tunnel.label")}>
-				<div className="flex items-center gap-2">
-					<StatusDot tone={tunnelPhaseTone(phase)} label={phaseLabel} />
-					<Button
-						type="button"
-						size="sm"
-						disabled={disabled || busy || binaryMissing || !mcpListening}
-						onClick={() => void (running ? stop() : start())}
-					>
-						{busy ? (
-							<LoaderCircle className="mr-1.5 size-4 animate-spin" />
-						) : (
-							<Power className="mr-1.5 size-4" />
-						)}
-						{running
-							? t("general.mcp.tunnel.stop")
-							: t("general.mcp.tunnel.start")}
-					</Button>
 				</div>
 			</SettingsRow>
 			{binaryMissing && (

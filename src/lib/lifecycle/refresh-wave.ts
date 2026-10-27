@@ -9,6 +9,7 @@
  */
 
 import { backgroundTasksStore } from "@/lib/core/background-tasks";
+import { perfWait } from "@/lib/core/perf";
 import { isTauri } from "@/lib/core/tauri";
 import { ensurePaperRows, listPapers } from "@/lib/paper/api";
 import { setLibraryPapers } from "@/lib/paper/library-store";
@@ -133,10 +134,13 @@ function scheduleWaveFlush(): void {
 		waveTimer = null;
 		return;
 	}
+	const scheduledAt = performance.now();
+	const delay = watchRefreshDelayMs("library");
 	waveTimer = setTimeout(() => {
 		waveTimer = null;
+		perfWait("watch_wait.library", performance.now() - scheduledAt);
 		void flushWave();
-	}, watchRefreshDelayMs("library"));
+	}, delay);
 }
 
 function scheduleExternalFlush(): void {
@@ -145,12 +149,15 @@ function scheduleExternalFlush(): void {
 		externalTimer = null;
 		return;
 	}
-	const delay =
-		external.library === "none"
-			? watchRefreshDelayMs("wiki")
-			: watchRefreshDelayMs("library");
+	const wikiOnly = external.library === "none";
+	const scheduledAt = performance.now();
+	const delay = watchRefreshDelayMs(wikiOnly ? "wiki" : "library");
 	externalTimer = setTimeout(() => {
 		externalTimer = null;
+		perfWait(
+			wikiOnly ? "watch_wait.wiki" : "watch_wait.library",
+			performance.now() - scheduledAt,
+		);
 		void flushExternal();
 	}, delay);
 }

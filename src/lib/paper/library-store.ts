@@ -5,6 +5,7 @@
  */
 
 import { createStore } from "zustand/vanilla";
+import { perfWait } from "@/lib/core/perf";
 import { isTauri } from "@/lib/core/tauri";
 import type { PaperLibraryRow, PaperMetadata } from "@/lib/paper";
 import { listPapers, rescanPapers, setPaperTags } from "@/lib/paper/api";
@@ -212,10 +213,12 @@ export async function runLibraryRefresh(): Promise<void> {
  */
 export function scheduleLibraryRefresh(): void {
 	if (libraryRefreshTimer) clearTimeout(libraryRefreshTimer);
-	libraryRefreshTimer = setTimeout(
-		runLibraryRefresh,
-		watchRefreshDelayMs("library"),
-	);
+	const scheduledAt = performance.now();
+	const delay = watchRefreshDelayMs("library");
+	libraryRefreshTimer = setTimeout(() => {
+		perfWait("watch_wait.library", performance.now() - scheduledAt);
+		void runLibraryRefresh();
+	}, delay);
 }
 
 /**

@@ -282,3 +282,72 @@ it("closes a preview document and suppresses late images when cleared during ren
 	await settled();
 	expect(session.decorate([first])[0].reflowPreview).toBeTruthy();
 });
+
+it("routes builds and preview renders through the dedicated build engine", async () => {
+	const dedicatedRender = vi.fn(() => ({
+		toPromise: async () => new Blob(["preview"]),
+	}));
+	const dedicated = {
+		openDocumentBuffer: vi.fn(() => ({ toPromise: async () => document })),
+		renderPage: dedicatedRender,
+		closeDocument: close,
+	} as unknown as PdfEngine;
+	const ownDoc = { id: "own" } as PdfDocumentObject;
+	const provider = {
+		get: vi.fn(async () => ({ engine: dedicated, document: ownDoc })),
+		idle: vi.fn(),
+		dispose: vi.fn(),
+	};
+	session = new ReflowPreviewSession(
+		engine,
+		document,
+		() => {},
+		failed,
+		provider,
+	);
+	session.update([item(0)], [], true);
+	await settled();
+	expect(provider.get).toHaveBeenCalled();
+	const call = vi.mocked(buildReflowPage).mock.calls[0];
+	expect(call[0]).toBe(dedicated);
+	expect(call[1]).toBe(ownDoc);
+	expect(dedicated.openDocumentBuffer).toHaveBeenCalledTimes(1);
+	expect(dedicatedRender).toHaveBeenCalledTimes(1);
+	// The viewer engine stays untouched by the whole build.
+	expect(engine.openDocumentBuffer).not.toHaveBeenCalled();
+	session.dispose();
+	expect(provider.dispose).toHaveBeenCalled();
+});
+
+it("releases the build engine once the queue drains", async () => {
+	const provider = {
+		get: vi.fn(async () => ({ engine, document })),
+		idle: vi.fn(),
+		dispose: vi.fn(),
+	};
+	session = new ReflowPreviewSession(
+		engine,
+		document,
+		() => {},
+		failed,
+		provider,
+	);
+	vi.useFakeTimers();
+	try {
+		session.update([item(0)], [], true);
+		// Drain the serial queue with microtasks only; fake timers never fire.
+		for (let i = 0; i < 50 && session.busy; i++) await Promise.resolve();
+		expect(provider.idle).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(30_000);
+		expect(provider.idle).toHaveBeenCalledTimes(1);
+		// Restarting a translation cancels a pending release; a settled queue
+		// schedules a fresh one.
+		session.update([item(1)], [], true);
+		for (let i = 0; i < 50 && session.busy; i++) await Promise.resolve();
+		session.update([item(1)], [], true);
+		vi.advanceTimersByTime(30_000);
+		expect(provider.idle).toHaveBeenCalledTimes(1);
+	} finally {
+		vi.useRealTimers();
+	}
+});
