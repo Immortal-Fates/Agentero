@@ -27,7 +27,6 @@ import {
 import { RenderPluginPackage } from "@embedpdf/plugin-render/react";
 import {
 	type PageLayout,
-	Scroller,
 	ScrollPluginPackage,
 	ScrollStrategy,
 	useScroll,
@@ -127,6 +126,7 @@ import type {
 import { ActiveCardScrollSync } from "@/components/viewer/pdf/viewport/active-card-scroll-sync";
 import { DockviewViewport } from "@/components/viewer/pdf/viewport/dockview-viewport";
 import { PanDragHandler } from "@/components/viewer/pdf/viewport/pan-handler";
+import { PdfScroller } from "@/components/viewer/pdf/viewport/pdf-scroller";
 import { WheelZoomHandler } from "@/components/viewer/pdf/viewport/wheel-zoom-handler";
 import { useLibraryStore, useSettings } from "@/hooks/use-app-stores";
 import { presentAgentComposer } from "@/lib/agent/composer-focus";
@@ -275,11 +275,13 @@ export const PdfViewer = memo(function PdfViewer(props: PdfViewerProps) {
 			// optional spread plugin to group pages into one/two-page rows.
 			createPluginRegistration(SpreadPluginPackage, {
 				defaultSpreadMode:
-					reading.pdfSpreadMode === "odd"
-						? SpreadMode.Odd
-						: reading.pdfSpreadMode === "even"
-							? SpreadMode.Even
-							: SpreadMode.None,
+					reading.pdfScrollStrategy === "paginated"
+						? SpreadMode.None
+						: reading.pdfSpreadMode === "odd"
+							? SpreadMode.Odd
+							: reading.pdfSpreadMode === "even"
+								? SpreadMode.Even
+								: SpreadMode.None,
 			}),
 			createPluginRegistration(ScrollPluginPackage, {
 				// Manifest default (4) keeps ~8 off-screen pages mounted, and every
@@ -2515,7 +2517,7 @@ function PdfViewerInner({
 				    touch devices. */}
 				<ZoomGestureWrapper documentId={docId} enableWheel={false}>
 					<GlobalPointerProvider documentId={docId}>
-						<Scroller documentId={docId} renderPage={renderPage} />
+						<PdfScroller documentId={docId} renderPage={renderPage} />
 					</GlobalPointerProvider>
 				</ZoomGestureWrapper>
 			</DockviewViewport>
@@ -2537,6 +2539,8 @@ function PdfViewerInner({
 
 			{!translationOnly && (!plainViewer || showBottomBar) && (
 				<PdfBottomBar
+					currentPage={currentPage}
+					onGoToPage={handleGoToPage}
 					totalPages={totalPages}
 					pageField={pageField}
 					onPageFieldChange={setPageField}
