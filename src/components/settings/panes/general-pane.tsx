@@ -7,6 +7,13 @@ import {
 	NetworkProxyRow,
 } from "@/components/settings/agent-common-rows";
 import {
+	PROVIDER_INPUT_CLASS,
+	ProbeDot,
+	ProviderCard,
+	ProviderCardHeader,
+	ProviderFieldRow,
+} from "@/components/settings/provider-card";
+import {
 	PageTitle,
 	SettingsGroup,
 	SettingsRow,
@@ -551,6 +558,10 @@ export function GeneralPane({
 					probeDetail={institutionProxyResult?.message}
 				/>
 			</SettingsGroup>
+			<SettingsSectionLabel className="mt-4">
+				{t("general.sections.integrations")}
+			</SettingsSectionLabel>
+			<ConnectorSettingsBlock settings={settings} patch={patch} />
 			<EasyScholarSettingsBlock
 				savedKey={settings.easyScholarKey}
 				keyDraft={easyScholarKeyDraft}
@@ -564,10 +575,6 @@ export function GeneralPane({
 					setEasyScholarKeyDraft(next.easyScholarKey);
 				}}
 			/>
-			<SettingsSectionLabel className="mt-4">
-				{t("general.sections.integrations")}
-			</SettingsSectionLabel>
-			<ConnectorSettingsBlock settings={settings} patch={patch} />
 			<SettingsSectionLabel>{t("general.sections.mcp")}</SettingsSectionLabel>
 			<McpSettingsBlock
 				settings={settings}
@@ -638,27 +645,63 @@ function EasyScholarSettingsBlock({
 	);
 
 	return (
-		<>
-			<SettingsSectionLabel className="mt-4">
-				{t("general.easyScholar.section")}
-			</SettingsSectionLabel>
-			<SettingsGroup>
-				<SettingsRow
-					label={
-						<span className="inline-flex items-center gap-1.5">
-							{t("general.easyScholar.keyLabel")}
-							<StatusDot tone={probeTone(status)} label={statusLabel} />
-						</span>
+		<div className="mb-5">
+			<ProviderCard>
+				<ProviderCardHeader
+					left={
+						<>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<ProbeDot
+										status={status}
+										configured={hasEasyScholarKey(savedKey)}
+										label={statusLabel}
+									/>
+								</TooltipTrigger>
+								<TooltipContent>{statusLabel}</TooltipContent>
+							</Tooltip>
+							<p className="min-w-0 truncate font-medium text-sm">
+								{t("general.easyScholar.section")}
+							</p>
+							<Button
+								type="button"
+								variant="link"
+								size="xs"
+								className="-ml-1.5 h-auto shrink-0 px-1.5 text-primary"
+								onClick={() =>
+									void openExternalUrl(
+										"https://www.easyscholar.cc/console/user/open",
+									)
+								}
+							>
+								<ExternalLink data-icon="inline-start" className="size-3" />
+								{t("general.easyScholar.openKeyPage")}
+							</Button>
+						</>
 					}
-					htmlFor="easy-scholar-key"
-				>
-					<div className="flex items-center gap-2">
+					right={
+						<Button
+							type="button"
+							variant="outline"
+							size="xs"
+							disabled={!changed || status === "probing"}
+							onClick={() => void handleConfirm()}
+						>
+							{t("general.easyScholar.confirm")}
+						</Button>
+					}
+				/>
+				<div className="grid gap-1.5">
+					<ProviderFieldRow
+						label={t("general.easyScholar.keyLabel")}
+						htmlFor="easy-scholar-key"
+					>
 						<Input
 							id="easy-scholar-key"
 							type="password"
 							autoComplete="off"
 							placeholder={t("general.easyScholar.placeholder")}
-							className="h-8 w-64 max-w-[18rem] font-mono text-xs"
+							className={PROVIDER_INPUT_CLASS}
 							value={keyDraft}
 							onChange={(e) => {
 								const next = e.currentTarget.value;
@@ -682,55 +725,11 @@ function EasyScholarSettingsBlock({
 								}
 							}}
 						/>
-						<Button
-							type="button"
-							variant="outline"
-							size="xs"
-							disabled={!changed || status === "probing"}
-							onClick={() => void handleConfirm()}
-						>
-							{t("general.easyScholar.confirm")}
-						</Button>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									aria-label={t("general.easyScholar.openKeyPage")}
-									onClick={() =>
-										void openExternalUrl(
-											"https://www.easyscholar.cc/console/user/open",
-										)
-									}
-								>
-									<ExternalLink className="size-4" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								{t("general.easyScholar.openKeyPage")}
-							</TooltipContent>
-						</Tooltip>
-					</div>
-				</SettingsRow>
-			</SettingsGroup>
-		</>
+					</ProviderFieldRow>
+				</div>
+			</ProviderCard>
+		</div>
 	);
-}
-
-function probeTone(
-	status: EasyScholarProbeStatus,
-): "ok" | "idle" | "warn" | "err" {
-	switch (status) {
-		case "ok":
-			return "ok";
-		case "probing":
-			return "warn";
-		case "fail":
-			return "err";
-		default:
-			return "idle";
-	}
 }
 
 function PrivacySettingsBlock({
