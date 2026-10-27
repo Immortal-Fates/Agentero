@@ -58,6 +58,43 @@ describe("wikilink projection markdown invariance", () => {
 		});
 	});
 
+	it.each([
+		"【",
+		"［",
+	])("normalizes a fullwidth bang with repeated %s into an embed trigger", (bracket) => {
+		const editor = createWikiEditor([{ text: "前" }]);
+		editor.tf.select({ path: [0, 0], offset: 1 });
+		editor.tf.insertText("！");
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe(`前！${bracket}`);
+		editor.tf.insertText(bracket);
+		expect(editor.api.string([0])).toBe("前![[");
+		expect(editor.selection?.anchor.offset).toBe(4);
+		expect(findWikiCompletionTrigger(editor.api.string([0]), 4)).toEqual({
+			start: 1,
+			raw: "",
+			embed: true,
+		});
+	});
+
+	it("normalizes an IME committed embed prefix without rewriting surrounding text", () => {
+		const editor = createWikiEditor([{ text: "前！【【后" }]);
+		editor.tf.select({ path: [0, 0], offset: 4 });
+		expect(normalizeWikiTrigger(editor)).toBe(true);
+		expect(editor.api.string([0])).toBe("前![[后");
+		expect(editor.selection?.anchor.offset).toBe(4);
+		expect(findWikiCompletionTrigger(editor.api.string([0]), 4)?.embed).toBe(
+			true,
+		);
+	});
+
+	it("preserves a fullwidth embed prefix in inline code", () => {
+		const editor = createWikiEditor([{ text: "", code: true }]);
+		editor.tf.select({ path: [0, 0], offset: 0 });
+		editor.tf.insertText("！【【");
+		expect(editor.api.string([0])).toBe("！【【");
+	});
+
 	it("normalizes an IME committed pair without rewriting surrounding text", () => {
 		const editor = createWikiEditor([{ text: "前【【后" }]);
 		editor.tf.select({ path: [0, 0], offset: 3 });

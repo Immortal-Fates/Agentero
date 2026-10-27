@@ -16,8 +16,12 @@ export function normalizeWikiTrigger(editor: SlateEditor): boolean {
 		isWikiLinkNode(editor.api.parent(path)?.[0])
 	)
 		return false;
-	editor.tf.insertText("[[", {
-		at: { anchor: { path, offset: offset - 2 }, focus: { path, offset } },
+	const fullwidthBang = offset >= 3 && leaf.text[offset - 3] === "！";
+	editor.tf.insertText(fullwidthBang ? "![[" : "[[", {
+		at: {
+			anchor: { path, offset: offset - (fullwidthBang ? 3 : 2) },
+			focus: { path, offset },
+		},
 	});
 	return true;
 }
