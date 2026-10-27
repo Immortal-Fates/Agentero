@@ -61,7 +61,7 @@ fn papers_child_candidate(vault: &Path, path: &Path) -> Option<PathBuf> {
         {
             Some(path.to_path_buf())
         }
-        ["papers", _, ..] => path.parent().map(Path::to_path_buf),
+        ["papers", _, _, ..] => path.parent().map(Path::to_path_buf),
         _ => None,
     }
 }
