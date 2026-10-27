@@ -1073,7 +1073,7 @@ export const ChatTranscript = memo(function ChatTranscript({
 				) : lines.length === 0 ? (
 					<div className="flex w-full flex-col gap-6">
 						<ConversationEmptyState
-							className={zhihuEmpty ? "px-4 py-8" : undefined}
+							className={zhihuEmpty ? "px-2 py-8" : undefined}
 							title={t("empty.title")}
 							description={t(
 								writing ? "empty.writingDescription" : "empty.description",

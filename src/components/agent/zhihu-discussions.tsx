@@ -82,7 +82,7 @@ export function ZhihuDiscussions({
 	return (
 		<div
 			className={cn(
-				"flex w-full max-w-md flex-col items-stretch gap-2 text-left",
+				"flex w-full flex-col items-stretch gap-2 text-left",
 				className,
 			)}
 		>
