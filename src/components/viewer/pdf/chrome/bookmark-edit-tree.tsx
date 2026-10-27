@@ -19,6 +19,12 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { isMacOS } from "@/lib/core/tauri";
 import { cn } from "@/lib/core/utils";
 import { bookmarkPageIndex } from "@/lib/pdf/bookmark";
@@ -150,151 +156,154 @@ export function BookmarkEditTree({
 									}}
 								/>
 							) : (
-								<button
-									type="button"
-									className="min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
-									title={node.title}
-									aria-keyshortcuts={isMacOS() ? "Enter F2" : "F2"}
-									onKeyDown={(event) => {
-										if (
-											(event.key === "F2" ||
-												(isMacOS() && event.key === "Enter")) &&
-											!disabled
-										) {
-											event.preventDefault();
-											startRename(node);
-										}
-									}}
-									onClick={(event) => {
-										event.currentTarget.focus({ preventScroll: true });
-										if (page !== null) onGoToPage(page + 1);
-									}}
-								>
-									{node.title}
-								</button>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<button
+											type="button"
+											className="min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+											aria-keyshortcuts={isMacOS() ? "Enter F2" : "F2"}
+											onKeyDown={(event) => {
+												if (
+													(event.key === "F2" ||
+														(isMacOS() && event.key === "Enter")) &&
+													!disabled
+												) {
+													event.preventDefault();
+													startRename(node);
+												}
+											}}
+											onClick={(event) => {
+												event.currentTarget.focus({ preventScroll: true });
+												if (page !== null) onGoToPage(page + 1);
+											}}
+										>
+											{node.title}
+										</button>
+									</TooltipTrigger>
+									<TooltipContent
+										side="right"
+										sideOffset={8}
+										className="max-w-80 whitespace-normal break-words"
+									>
+										<span className="min-w-0 [overflow-wrap:anywhere]">
+											{node.title}
+										</span>
+									</TooltipContent>
+								</Tooltip>
 							)}
-							<Button
-								variant="ghost"
-								size="icon-xs"
-								disabled={disabled || Boolean(rename)}
-								className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-								title={t("pdf.bookmarks.rename")}
-								aria-label={t("pdf.bookmarks.rename")}
-								onClick={() => startRename(node)}
-							>
-								<Pencil className="size-3.5" />
-							</Button>
-							{page !== null && (
-								<span className="shrink-0 px-1 text-muted-foreground text-xs tabular-nums">
-									{page + 1}
-								</span>
-							)}
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button
-										variant="ghost"
-										className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
-										size="icon-xs"
-										disabled={disabled || Boolean(rename)}
-										aria-label={t("pdf.bookmarks.actions", {
-											title: node.title,
-										})}
-									>
-										<MoreHorizontal className="size-3.5" />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent
-									align="start"
-									className="min-w-40 whitespace-nowrap"
-									onCloseAutoFocus={(event) => {
-										if (renaming.current) event.preventDefault();
-									}}
-								>
-									<DropdownMenuItem onSelect={() => startRename(node)}>
-										<Pencil />
-										{t("pdf.bookmarks.rename")}
-									</DropdownMenuItem>
-									<DropdownMenuItem onSelect={() => onRetarget(node)}>
-										<MapPin />
-										{t("pdf.bookmarks.useCurrentPage")}
-									</DropdownMenuItem>
-									<DropdownMenuItem onSelect={() => onAddChild(node)}>
-										<Plus />
-										{t("pdf.bookmarks.addChild")}
-									</DropdownMenuItem>
-									<DropdownMenuSeparator />
-									<DropdownMenuItem
-										disabled={index === 0}
-										onSelect={() =>
-											onChange(
-												moveBookmark(
-													nodes,
-													node.id,
-													items[index - 1].id,
-													"before",
-												),
-											)
-										}
-									>
-										<ArrowUp />
-										{t("pdf.bookmarks.up")}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										disabled={index === items.length - 1}
-										onSelect={() =>
-											onChange(
-												moveBookmark(
-													nodes,
-													node.id,
-													items[index + 1].id,
-													"after",
-												),
-											)
-										}
-									>
-										<ArrowDown />
-										{t("pdf.bookmarks.down")}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										disabled={index === 0}
-										onSelect={() =>
-											onChange(
-												moveBookmark(
-													nodes,
-													node.id,
-													items[index - 1].id,
-													"inside",
-												),
-											)
-										}
-									>
-										<CornerDownRight />
-										{t("pdf.bookmarks.indent")}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										disabled={!parent}
-										onSelect={() => {
-											if (parent)
-												onChange(
-													moveBookmark(nodes, node.id, parent.id, "after"),
-												);
+							<div className="grid min-w-6 shrink-0 items-center [&:has([data-state=open])>span]:opacity-0">
+								{page !== null && (
+									<span className="pointer-events-none col-start-1 row-start-1 px-1 text-center text-muted-foreground text-xs tabular-nums group-hover:opacity-0 group-focus-within:opacity-0 [@media(hover:none)]:opacity-0">
+										{page + 1}
+									</span>
+								)}
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button
+											variant="ghost"
+											className="col-start-1 row-start-1 w-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+											size="icon-xs"
+											disabled={disabled || Boolean(rename)}
+											aria-label={t("pdf.bookmarks.actions", {
+												title: node.title,
+											})}
+										>
+											<MoreHorizontal className="size-3.5" />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent
+										align="start"
+										className="min-w-40 whitespace-nowrap"
+										onCloseAutoFocus={(event) => {
+											if (renaming.current) event.preventDefault();
 										}}
 									>
-										<CornerUpLeft />
-										{t("pdf.bookmarks.outdent")}
-									</DropdownMenuItem>
-									<DropdownMenuSeparator />
-									<DropdownMenuItem
-										variant="destructive"
-										onSelect={() =>
-											onChange(updateBookmark(nodes, node.id, () => null))
-										}
-									>
-										<Trash2 />
-										{t("pdf.bookmarks.delete")}
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
+										<DropdownMenuItem onSelect={() => startRename(node)}>
+											<Pencil />
+											{t("pdf.bookmarks.rename")}
+										</DropdownMenuItem>
+										<DropdownMenuItem onSelect={() => onRetarget(node)}>
+											<MapPin />
+											{t("pdf.bookmarks.useCurrentPage")}
+										</DropdownMenuItem>
+										<DropdownMenuItem onSelect={() => onAddChild(node)}>
+											<Plus />
+											{t("pdf.bookmarks.addChild")}
+										</DropdownMenuItem>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem
+											disabled={index === 0}
+											onSelect={() =>
+												onChange(
+													moveBookmark(
+														nodes,
+														node.id,
+														items[index - 1].id,
+														"before",
+													),
+												)
+											}
+										>
+											<ArrowUp />
+											{t("pdf.bookmarks.up")}
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											disabled={index === items.length - 1}
+											onSelect={() =>
+												onChange(
+													moveBookmark(
+														nodes,
+														node.id,
+														items[index + 1].id,
+														"after",
+													),
+												)
+											}
+										>
+											<ArrowDown />
+											{t("pdf.bookmarks.down")}
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											disabled={index === 0}
+											onSelect={() =>
+												onChange(
+													moveBookmark(
+														nodes,
+														node.id,
+														items[index - 1].id,
+														"inside",
+													),
+												)
+											}
+										>
+											<CornerDownRight />
+											{t("pdf.bookmarks.indent")}
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											disabled={!parent}
+											onSelect={() => {
+												if (parent)
+													onChange(
+														moveBookmark(nodes, node.id, parent.id, "after"),
+													);
+											}}
+										>
+											<CornerUpLeft />
+											{t("pdf.bookmarks.outdent")}
+										</DropdownMenuItem>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem
+											variant="destructive"
+											onSelect={() =>
+												onChange(updateBookmark(nodes, node.id, () => null))
+											}
+										>
+											<Trash2 />
+											{t("pdf.bookmarks.delete")}
+										</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</div>
 						</fieldset>
 						{node.children.length > 0 && render(node.children, depth + 1, node)}
 					</li>
@@ -302,5 +311,7 @@ export function BookmarkEditTree({
 			})}
 		</ul>
 	);
-	return render(nodes, 0);
+	return (
+		<TooltipProvider delayDuration={300}>{render(nodes, 0)}</TooltipProvider>
+	);
 }
