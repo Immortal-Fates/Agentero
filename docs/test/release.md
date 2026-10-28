@@ -101,6 +101,7 @@ GitHub Actions 必须配置以下 repository secrets；`release.yml` 会在创�
 - Draft Release 用于验收，发布前不会被客户端读取；
 - 只有完整、已发布的稳定版 Release 才会成为更新源；
 - Windows metadata 优先采用 NSIS updater 包；macOS 与 Linux 使用 Tauri 生成的对应更新产物；
+- `tauri-action` 生成的 `latest.json` 使用 `api.github.com/.../releases/assets/<id>` 地址，匿名调用该接口按 IP 限 60 次/小时——共享出口网络下客户端下载会 403，而版本检查走 `releases/latest/download` 的 CDN 不受影响。`release.yml` 的 `updater-json` job 在安装包全部上传后运行 `scripts/rewrite-updater-json.mjs`，把各平台 URL 改写为 `github.com/.../releases/download/<tag>/<file>` 再覆盖上传；签名段保持原样，内置公钥验签不受影响；
 - 上述签名只证明更新包完整性，macOS 的 Developer ID 签名和 notarization 仍必须照常完成。
 
 生成或轮换密钥时，在安全位置执行以下命令，将公钥替换到 `tauri.conf.json`，并将私钥/密码写入 GitHub Actions Secrets：

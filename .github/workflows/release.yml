@@ -220,6 +220,24 @@ jobs:
           uploadUpdaterSignatures: true
           updaterJsonPreferNsis: true
 
+  # tauri-action writes api.github.com asset URLs into latest.json; anonymous
+  # API requests share a 60/hour per-IP quota, so updater downloads 403 behind
+  # shared NATs. Rewrite them to CDN download URLs once all installers are up.
+  updater-json:
+    name: Rewrite updater manifest
+    needs: installers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Point updater downloads at the release CDN
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: node scripts/rewrite-updater-json.mjs
+
   # Android ships its own signed APK into the same draft. Kept out of the
   # `installers` matrix because it needs the Android SDK/NDK and a keystore
   # instead of per-OS desktop toolchains. The matrix is the ABI list: add
