@@ -44,7 +44,7 @@ function preferredRoot(dir: string, files: readonly string[]): string {
 }
 
 /** Root file of one project folder; chapters may live in immediate subfolders. */
-async function findTexRoot(
+export async function findTexRoot(
 	vaultPath: string,
 	dir: string,
 	depth: number,

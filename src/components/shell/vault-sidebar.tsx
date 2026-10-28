@@ -20,17 +20,15 @@ import {
 	VaultSidebarHeader,
 } from "@/components/sidebar/file-tree";
 import { PaperInfoPanel } from "@/components/sidebar/paper-info-panel";
-import { WorkspaceModeSwitch } from "@/components/writing/workspace-mode-switch";
-import { WritingRail } from "@/components/writing/writing-rail";
+import { useTexProject } from "@/components/sidebar/use-tex-project";
+import { WritingOutline } from "@/components/writing/writing-outline";
 import {
 	useLibraryStore,
 	useSettings,
 	useUiStore,
 	useVaultStore,
 	useWorkspaceStore,
-	useWritingStore,
 } from "@/hooks/use-app-stores";
-import { cn } from "@/lib/core/utils";
 import type { PaperTag } from "@/lib/paper";
 import {
 	isPaperDirectory,
@@ -89,7 +87,7 @@ import {
 	selectLibrary,
 	selectTrash,
 } from "@/lib/workspace/actions";
-import { bindWritingVault, setWritingSurface } from "@/lib/writing/store";
+import { bindWritingVault } from "@/lib/writing/store";
 
 // Stable callbacks so the memoized header / tree bail out on unrelated renders.
 const onLookupSubmit = (texts: string[]) => lookupSubmit(texts);
@@ -138,6 +136,28 @@ export function VaultSidebar() {
 	const { t } = useTranslation(["app", "sidebar"]);
 	const vaultPath = useVaultStore((s) => s.vaultPath);
 	const tree = useVaultStore((s) => s.tree);
+	const treeWithWriting = useMemo(() => {
+		if (!vaultPath) return tree;
+		const path = joinVaultPath(vaultPath, "thesis");
+		if (
+			tree.some(
+				(node) =>
+					node.path.replaceAll("\\", "/").toLowerCase() ===
+					path.replaceAll("\\", "/").toLowerCase(),
+			)
+		)
+			return tree;
+		return [
+			...tree,
+			{
+				id: path,
+				path,
+				name: "thesis",
+				kind: "directory" as const,
+				children: [],
+			},
+		];
+	}, [tree, vaultPath]);
 	const treeLoading = useVaultStore((s) => s.treeLoading);
 	const treeSelectedPath = useVaultStore((s) => s.treeSelectedPath);
 	const paperFolders = useVaultStore((s) => s.paperFolders);
@@ -157,7 +177,11 @@ export function VaultSidebar() {
 		(s) => s.tabs.find((tab) => tab.id === s.activeTabId) ?? null,
 	);
 	const paperMeta = activeTab?.paperMeta ?? null;
-	const writingSurface = useWritingStore((s) => s.surface);
+	const texProjectPath = useTexProject(
+		vaultPath,
+		activeTab?.path ?? null,
+		activeTab?.writingRoot ?? activeTab?.texRoot,
+	);
 	useLayoutEffect(() => {
 		bindWritingVault(vaultPath);
 	}, [vaultPath]);
@@ -279,21 +303,10 @@ export function VaultSidebar() {
 				/>
 			</div>
 			<div className="flex min-h-0 flex-1 flex-col">
-				<div className="shrink-0 px-2 py-1.5">
-					<WorkspaceModeSwitch
-						value={writingSurface}
-						onChange={setWritingSurface}
-					/>
-				</div>
-				<div
-					className={cn(
-						"flex min-h-0 flex-1 flex-col pl-1",
-						writingSurface === "writing" && "hidden",
-					)}
-				>
+				<div className="flex min-h-0 flex-1 flex-col pl-1">
 					<FileTree
 						ref={fileTreeRef}
-						nodes={tree}
+						nodes={treeWithWriting}
 						loading={treeLoading}
 						selectedPath={treeSelectedPath}
 						vaultPath={vaultPath}
@@ -340,9 +353,12 @@ export function VaultSidebar() {
 						onLoadDirChildren={loadDirChildren}
 					/>
 				</div>
-				{writingSurface === "writing" ? <WritingRail /> : null}
 			</div>
-			{writingSurface === "writing" || !displayedPaperMeta ? null : (
+			{texProjectPath ? (
+				<div className="flex h-[35%] min-h-32 shrink-0 flex-col">
+					<WritingOutline texPath={texProjectPath} />
+				</div>
+			) : !displayedPaperMeta ? null : (
 				<PaperInfoPanel
 					meta={displayedPaperMeta}
 					onTagsChange={onPaperTagsChange}

@@ -55,6 +55,8 @@ export type DocTab = {
 	texLive?: boolean;
 	/** Project root .tex for compiled PDFs and live previews, including custom outputs. */
 	texRoot?: string;
+	/** Owning writing project for source files and project assets. */
+	writingRoot?: string;
 	loaded: boolean;
 };
 

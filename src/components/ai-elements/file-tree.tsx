@@ -241,12 +241,14 @@ export const FileTreeFolderRow = ({
 	name,
 	icon,
 	className,
+	openOnLabel = false,
 }: {
 	path: string;
 	name: string;
 	/** Overrides the default folder glyph (e.g. the Library icon for `papers/`). */
 	icon?: ReactNode;
 	className?: string;
+	openOnLabel?: boolean;
 }) => {
 	const {
 		expandedPaths,
@@ -293,7 +295,13 @@ export const FileTreeFolderRow = ({
 				}
 				// Expand/collapse children in the tree AND notify selection so the
 				// host can open a folder-scoped paper list in the center pane.
-				togglePath(path);
+				if (
+					!openOnLabel ||
+					(e.target as HTMLElement).closest("[data-tree-disclosure]")
+				) {
+					togglePath(path);
+					if (openOnLabel) return;
+				}
 				onSelectRow?.(path, {
 					meta: false,
 					ctrl: false,
@@ -319,17 +327,19 @@ export const FileTreeFolderRow = ({
 			aria-selected={isSelected}
 			role="treeitem"
 		>
-			<FileTreeDisclosureIcon
-				isExpanded={isExpanded}
-				icon={
-					icon ??
-					(isExpanded ? (
-						<FolderOpenIcon className="size-4 text-blue-500" aria-hidden />
-					) : (
-						<FolderIcon className="size-4 text-blue-500" aria-hidden />
-					))
-				}
-			/>
+			<span data-tree-disclosure className="inline-flex shrink-0">
+				<FileTreeDisclosureIcon
+					isExpanded={isExpanded}
+					icon={
+						icon ??
+						(isExpanded ? (
+							<FolderOpenIcon className="size-4 text-blue-500" aria-hidden />
+						) : (
+							<FolderIcon className="size-4 text-blue-500" aria-hidden />
+						))
+					}
+				/>
+			</span>
 			<FileTreeName>{name}</FileTreeName>
 		</button>
 	);

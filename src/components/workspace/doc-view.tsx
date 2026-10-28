@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { lazy, memo, Suspense, useCallback } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { PapersLibrary } from "@/components/library/papers-library";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,7 +7,10 @@ import type { PdfViewerHandle } from "@/components/viewer";
 import { HtmlViewer, ImageViewer } from "@/components/viewer";
 import { LocalHtmlViewer } from "@/components/viewer/local-html-viewer";
 import { RecycleBinView } from "@/components/workspace/recycle-bin-view";
+import { TexProjectView } from "@/components/writing/tex-project-view";
 import { useSettings } from "@/hooks/use-app-stores";
+import { errorText } from "@/lib/core/error";
+import { notifyError } from "@/lib/core/notify";
 import type { PaperLibraryRow, PaperMetadata } from "@/lib/paper";
 import { isRemoteArxivPath } from "@/lib/paper";
 import type { PdfVisualSessionTrace } from "@/lib/pdf/agent-trace/types";
@@ -16,12 +19,22 @@ import type { PdfHighlight } from "@/lib/pdf/highlight/types";
 import type { LibraryColumnPref } from "@/lib/settings";
 import { isMarkdownPath, paperRelFromNotes } from "@/lib/vault";
 import type { WikiRenameHeadingRequest } from "@/lib/wiki";
+import {
+	openWritingFile,
+	rememberWritingSource,
+} from "@/lib/workspace/navigation";
+import { updateTab } from "@/lib/workspace/store";
 import { type DocTab, tabIsPaperNotes } from "@/lib/workspace/tabs";
 import {
 	isHtmlPath,
 	isPlainPdfPath,
 	viewerModeSpec,
 } from "@/lib/workspace/viewer";
+import { isWritingSource } from "@/lib/workspace/writing-focus";
+import {
+	isWritingPath,
+	resolveWritingTarget,
+} from "@/lib/writing/project-target";
 
 // Heavyweight viewers are lazy-loaded so the EmbedPDF (PDFium) and Plate
 // editor bundles stay out of the initial chunk and are fetched on first use.
@@ -258,7 +271,7 @@ function docViewPropsEqual(prev: DocViewProps, next: DocViewProps): boolean {
 }
 
 /** Document content router by tab.kind / mode (library, trash, editor, PDF, image, HTML). */
-export const DocView = memo(function DocView({
+const DocumentContent = memo(function DocumentContent({
 	tab,
 	active,
 	keepMounted,
@@ -523,7 +536,7 @@ export const DocView = memo(function DocView({
 		// Same keep-alive gate as the Markdown editor: an evicted tab's
 		// unmount flushes its pending autosave; remount re-seeds from disk.
 		if (!active && !keepMounted) return <TabLoadingSkeleton />;
-		return (
+		const source = (
 			<div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
 				<Suspense fallback={<TabLoadingSkeleton />}>
 					<TextEditor
@@ -531,6 +544,7 @@ export const DocView = memo(function DocView({
 						// in place via `reloadKey` (view state and scroll survive).
 						key={`text-${tab.id}`}
 						panelId={tab.id}
+						hideLintFooter={isWritingSource(tab, vaultPath)}
 						seed={tab.textSeed}
 						path={tab.path}
 						reloadKey={tab.textKey}
@@ -543,6 +557,7 @@ export const DocView = memo(function DocView({
 				</Suspense>
 			</div>
 		);
+		return source;
 	}
 	// HTML pages. Do not create their iframe (and therefore do not start a
 	// request) until the panel is actually activated. A `.html` file in the
@@ -570,3 +585,49 @@ export const DocView = memo(function DocView({
 		</div>
 	);
 }, docViewPropsEqual);
+
+/** The project frame belongs to every project file, independent of viewer mode. */
+export function DocView(props: DocViewProps) {
+	const { tab, vaultPath, active, keepMounted } = props;
+	useEffect(() => {
+		if (active && tab.writingRoot)
+			rememberWritingSource(tab.path, tab.writingRoot);
+	}, [active, tab.path, tab.writingRoot]);
+	useEffect(() => {
+		if (
+			!active ||
+			!vaultPath ||
+			tab.writingRoot ||
+			!isWritingPath(vaultPath, tab.path)
+		)
+			return;
+		let cancelled = false;
+		void resolveWritingTarget(vaultPath, tab.path)
+			.then((project) => {
+				if (cancelled || !project) return;
+				if (project.compiledPdf) openWritingFile(tab.path, project.root, true);
+				else updateTab(tab.id, { writingRoot: project.root });
+			})
+			.catch((error) => {
+				if (!cancelled) notifyError(errorText(error));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [active, vaultPath, tab.id, tab.path, tab.writingRoot]);
+	const content = <DocumentContent {...props} />;
+	if (vaultPath && tab.writingRoot && (active || keepMounted)) {
+		return (
+			<TexProjectView
+				panelId={tab.id}
+				sourcePath={tab.path}
+				projectRoot={tab.writingRoot}
+				vaultPath={vaultPath}
+				active={active}
+			>
+				{content}
+			</TexProjectView>
+		);
+	}
+	return content;
+}

@@ -106,8 +106,16 @@ export function useTreeIndex({
 			relPathForNode,
 			paperTreeLabelMode,
 		);
+		const writing = sorted.filter(
+			(node) => vaultRootFace(vaultPath, node.path) === "thesis",
+		);
+		const ordered = sorted.filter(
+			(node) => vaultRootFace(vaultPath, node.path) !== "thesis",
+		);
+		const libraryIndex = ordered.findIndex((node) => isPapersRoot(node.path));
+		ordered.splice(libraryIndex < 0 ? 0 : libraryIndex + 1, 0, ...writing);
 		return finishAgentTreeDisplay(
-			sorted.filter((node) => vaultRootFace(vaultPath, node.path) !== "thesis"),
+			ordered,
 			vaultPath,
 			skillLabels ?? EMPTY_SKILL_LABELS,
 		);

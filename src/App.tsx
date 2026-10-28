@@ -26,15 +26,11 @@ import {
 } from "@/components/ui/resizable";
 import { resolveActivePdfHandle } from "@/components/viewer";
 import { WorkspaceHost } from "@/components/workspace/workspace-host";
-import { WritingDesk } from "@/components/writing/writing-desk";
+import { WritingDialogs } from "@/components/writing/writing-dialogs";
 import { useAgentCatalogPrefetch } from "@/hooks/use-agent-catalog-prefetch";
 import { useAppBootstrap } from "@/hooks/use-app-bootstrap";
 import { useAppShortcuts } from "@/hooks/use-app-shortcuts";
-import {
-	useUiStore,
-	useVaultStore,
-	useWritingStore,
-} from "@/hooks/use-app-stores";
+import { useUiStore, useVaultStore } from "@/hooks/use-app-stores";
 import { useConfigReminders } from "@/hooks/use-config-reminders";
 import { useConnectorSync } from "@/hooks/use-connector-sync";
 import { useExternalFileDrop } from "@/hooks/use-external-file-drop";
@@ -125,15 +121,6 @@ import {
 	splitActivePane,
 } from "@/lib/workspace/actions";
 import { workspaceStore } from "@/lib/workspace/store";
-import { writingStore } from "@/lib/writing/store";
-import {
-	closeActiveWritingTab,
-	cutWritingTarget,
-	deleteWritingTarget,
-	openWritingTargetInTerminal,
-	pasteWritingTarget,
-	revealWritingTarget,
-} from "@/lib/writing/tree-actions";
 
 // macOS keeps native traffic lights (Overlay title bar) and a native menu bar.
 // Other desktop platforms also use native decorations, but have no native menu
@@ -162,11 +149,6 @@ function zoomOut(): void {
 
 function zoomReset(): void {
 	if (getSettings().uiScale !== 1) patchSettings({ uiScale: 1 });
-}
-
-/** The writing desk replaces the reading tree; route its shortcuts to it. */
-function onWritingSurface(): boolean {
-	return writingStore.getState().surface === "writing";
 }
 
 /** Title bar wrapper: subscribes to tabs/ui itself so the shell stays still. */
@@ -246,14 +228,6 @@ export default function App() {
 	// Low-frequency config reminders (#658): startup layout-model hint.
 	useConfigReminders();
 	const vaultPath = useVaultStore((s) => s.vaultPath);
-	const writing = useWritingStore((s) => s.surface === "writing");
-	useEffect(() => {
-		if (writing) return;
-		const id = requestAnimationFrame(() => {
-			window.dispatchEvent(new Event("resize"));
-		});
-		return () => cancelAnimationFrame(id);
-	}, [writing]);
 	const {
 		sidebarPanelRef,
 		rightSidebarPanelRef,
@@ -380,32 +354,25 @@ export default function App() {
 		createVault: () => void createNewVault(),
 		refreshTree: refreshAll,
 		revealInFinder: () => {
-			if (onWritingSurface()) revealWritingTarget();
-			else revealSelectedInFinder();
+			revealSelectedInFinder();
 		},
 		openInTerminal: () => {
-			if (onWritingSurface()) openWritingTargetInTerminal();
-			else openSelectedInTerminal();
+			openSelectedInTerminal();
 		},
 		deleteTreeItem: () => {
-			if (onWritingSurface()) deleteWritingTarget();
-			else deleteSelectedPath();
+			deleteSelectedPath();
 		},
-		// The writing rail has no collapse-to-default concept; never mutate the
-		// hidden reading tree while it is the active surface.
 		collapseTreeCurrent: () => {
-			if (!onWritingSurface()) fileTreeHandle()?.collapseSelected();
+			fileTreeHandle()?.collapseSelected();
 		},
 		collapseTreeDefault: () => {
-			if (!onWritingSurface()) fileTreeHandle()?.collapseToDefault();
+			fileTreeHandle()?.collapseToDefault();
 		},
 		cutTreeItem: () => {
-			if (onWritingSurface()) cutWritingTarget();
-			else fileTreeHandle()?.cutSelected();
+			fileTreeHandle()?.cutSelected();
 		},
 		pasteTreeItem: () => {
-			if (onWritingSurface()) pasteWritingTarget();
-			else fileTreeHandle()?.pasteIntoSelected();
+			fileTreeHandle()?.pasteIntoSelected();
 		},
 		magicWand: openMagicWand,
 		quickOpen: () => openPalette("go"),
@@ -431,8 +398,7 @@ export default function App() {
 		focusEditor: () => layout()?.focusEditorPane(),
 		focusNotes: () => layout()?.focusNotesEditor(),
 		closeTab: () => {
-			if (onWritingSurface()) closeActiveWritingTab();
-			else closeTabOrWindow();
+			closeTabOrWindow();
 		},
 		reopenTab: reopenClosedTab,
 		splitPane: splitActivePane,
@@ -588,14 +554,8 @@ export default function App() {
 									<WelcomeCenter />
 								) : (
 									<div className="relative h-full min-h-0 flex-1 overflow-hidden">
-										<div className={writing ? "hidden" : "h-full min-h-0"}>
-											<WorkspaceHost />
-										</div>
-										{writing ? (
-											<div className="absolute inset-0 z-20 bg-background">
-												<WritingDesk />
-											</div>
-										) : null}
+										<WorkspaceHost />
+										<WritingDialogs />
 									</div>
 								)}
 							</div>

@@ -214,14 +214,18 @@ function ProjectEditor({ path }: { path: string }) {
 	);
 }
 
-function ProjectPdf({
+export function ProjectPdf({
 	rootFile,
 	vaultPath,
 	livePreview,
+	active = true,
+	instanceId = "writing",
 }: {
 	rootFile: string;
 	vaultPath: string;
 	livePreview: boolean;
+	active?: boolean;
+	instanceId?: string;
 }) {
 	const { t } = useTranslation("sidebar");
 	const buildToken = useStore(texBuildStore, (state) => {
@@ -313,9 +317,9 @@ function ProjectPdf({
 					key={`${pdf.path}:${pdf.rev}`}
 					source={null}
 					sourceBytes={pdf.bytes}
-					docId={`writing:${normalizePath(pdf.path)}:${pdf.rev}`}
+					docId={`${instanceId}:${normalizePath(pdf.path)}:${pdf.rev}`}
 					vaultPath={vaultPath}
-					isActive
+					isActive={active}
 					plainViewer
 					showBottomBar
 					texRootPath={rootFile}

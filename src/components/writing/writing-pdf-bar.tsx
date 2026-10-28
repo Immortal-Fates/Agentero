@@ -63,10 +63,12 @@ export function WritingPdfBar({
 	rootFile,
 	livePreview,
 	onLivePreviewChange,
+	manageSync = true,
 }: {
 	rootFile: string;
 	livePreview: boolean;
 	onLivePreviewChange: (live: boolean) => void;
+	manageSync?: boolean;
 }) {
 	const { t } = useTranslation(["sidebar", "latexBuild"]);
 	const key = normalizePath(rootFile);
@@ -151,14 +153,14 @@ export function WritingPdfBar({
 			}
 			if (seenJob.current === snap.jobId) return;
 			seenJob.current = snap.jobId;
-			if (!vault || syncMode !== "onCompile" || !github) return;
+			if (!manageSync || !vault || syncMode !== "onCompile" || !github) return;
 			if (isWritingAutoSyncPaused()) return;
 			void runSyncRef.current(github, true);
 		});
-	}, [key, vault, syncMode, github]);
+	}, [key, vault, syncMode, github, manageSync]);
 
 	useEffect(() => {
-		if (!vault || syncMode !== "interval" || !github) return;
+		if (!manageSync || !vault || syncMode !== "interval" || !github) return;
 		const timer = window.setInterval(
 			() => {
 				if (isWritingAutoSyncPaused()) return;
@@ -167,7 +169,7 @@ export function WritingPdfBar({
 			syncMinutes * 60 * 1000,
 		);
 		return () => window.clearInterval(timer);
-	}, [vault, syncMode, syncMinutes, github]);
+	}, [vault, syncMode, syncMinutes, github, manageSync]);
 
 	function syncProject() {
 		resumeWritingAutoSync();

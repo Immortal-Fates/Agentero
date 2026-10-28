@@ -32,10 +32,10 @@ import {
 	editorLintStore,
 	pendingEditorLineJump,
 } from "@/lib/tex/editor-lint-bridge";
+import { navigateTexSource } from "@/lib/tex/editor-navigation";
 import { type LogProblem, parseLatexLog } from "@/lib/tex/log-problems";
 import { joinVaultPath } from "@/lib/vault/path";
 import { manuscriptDir } from "@/lib/writing/session";
-import { setWritingFile } from "@/lib/writing/store";
 
 type Row = {
 	key: string;
@@ -325,7 +325,7 @@ function jumpToCompileProblem(rootFile: string, problem: LogProblem) {
 		path: normalizePath(target),
 		line: problem.line,
 	});
-	setWritingFile(target);
+	navigateTexSource(target, problem.line);
 }
 
 function resolveProblemPath(

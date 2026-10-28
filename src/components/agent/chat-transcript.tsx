@@ -105,7 +105,8 @@ import { selectionNavigationStore } from "@/lib/agent/selection-navigation-state
 import { selectionsPromptBlock } from "@/lib/agent/selection-prompt";
 import { cn } from "@/lib/core/utils";
 import type { PaperMetadata } from "@/lib/paper";
-import { writingStore } from "@/lib/writing/store";
+import { workspaceStore } from "@/lib/workspace/store";
+import { isTexPath } from "@/lib/workspace/viewer";
 
 /** Compact note: interactive form is docked below, not inside the tool card. */
 function AskUserToolPendingNote() {
@@ -1023,10 +1024,10 @@ export const ChatTranscript = memo(function ChatTranscript({
 		editCompositionProps,
 	};
 	const hasOpenSource = Boolean(onOpenSource);
-	const writing = useStore(
-		writingStore,
-		(state) => state.surface === "writing",
-	);
+	const writing = useStore(workspaceStore, (state) => {
+		const tab = state.tabs.find((tab) => tab.id === state.activeTabId);
+		return Boolean(tab && (tab.texRoot || isTexPath(tab.path)));
+	});
 	const suggestions = suggestionItems(writing);
 	const rowHandlers = useMemo<RowHandlers>(
 		() => ({

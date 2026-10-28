@@ -14,12 +14,8 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { notifyError } from "@/lib/core/notify";
-import { discoverWritingProjects } from "@/lib/writing/discover";
+import { openTab } from "@/lib/workspace/actions";
 import { createWritingProject } from "@/lib/writing/projects";
-import {
-	selectManuscript,
-	setDiscoveredManuscripts,
-} from "@/lib/writing/store";
 import {
 	isWritingTemplateId,
 	WRITING_TEMPLATE_IDS,
@@ -54,9 +50,7 @@ export function NewProjectForm({
 				} else notifyError(result.message || t("writing.createFailed"));
 				return;
 			}
-			const found = await discoverWritingProjects(vaultPath);
-			setDiscoveredManuscripts(found);
-			selectManuscript(result.rootFile);
+			openTab(result.rootFile, { preferMode: "text" });
 			setName("");
 			if (!startOpen) setOpen(false);
 			onCreated?.();

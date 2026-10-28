@@ -69,6 +69,24 @@ beforeEach(() => {
 });
 
 describe("compiled PDF SyncTeX routing", () => {
+	it("keeps source-to-PDF navigation inside the active project preview", async () => {
+		const navigate = vi.fn();
+		const off = registerTexPdfViewer("/vault/thesis/build/paper.pdf", {
+			tabId: "project-source",
+			scope: "writing",
+			navigate,
+			isActive: () => true,
+		});
+		try {
+			await syncTexToPdf("/vault/thesis/chapter.tex", 12, 7);
+			expect(navigate).toHaveBeenCalledExactlyOnceWith(location);
+			expect(mocks.open).not.toHaveBeenCalled();
+			expect(mocks.update).not.toHaveBeenCalled();
+		} finally {
+			off();
+		}
+	});
+
 	it("uses the actual configured output and queues a location until the PDF mounts", async () => {
 		await syncTexToPdf("/vault/thesis/chapter.tex", 12, 7);
 		expect(mocks.artifacts).toHaveBeenCalledWith("/vault/thesis/main.tex", {

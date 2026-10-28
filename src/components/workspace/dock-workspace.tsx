@@ -93,6 +93,7 @@ import {
 	viewerModeSpec,
 } from "@/lib/workspace/viewer";
 import { pdfHandleFor } from "@/lib/workspace/viewer/pdf-viewer-registry";
+import { createWritingFocus } from "@/lib/workspace/writing-focus";
 
 /** Grey + paper tag palette (same swatches as library tags). */
 const TAB_GROUP_COLORS = ["grey", ...TAG_COLOR_IDS] as const;
@@ -208,6 +209,13 @@ function WorkspacePane(props: IDockviewPanelProps<{ panelId: string }>) {
 }
 
 const components = { pane: WorkspacePane };
+
+/** Restore headers hidden by older single-preview layouts. */
+function syncProjectPreviewHeaders(api: DockviewApi) {
+	for (const group of api.groups) {
+		if (group.model.header.hidden) group.model.header.hidden = false;
+	}
+}
 
 function WorkspaceTab({
 	api,
@@ -594,6 +602,16 @@ export const DockWorkspace = memo(
 		const disposablesRef = useRef<{ dispose: () => void }[]>([]);
 		const tabsRef = useRef(tabs);
 		tabsRef.current = tabs;
+		const writingFocus = useRef(createWritingFocus());
+		const vaultRef = useRef(centerProps.vaultPath);
+		vaultRef.current = centerProps.vaultPath;
+		const syncWritingFocus = useCallback((api: DockviewApi) => {
+			writingFocus.current(
+				api,
+				tabsRef.current.find((tab) => tab.id === api.activePanel?.id),
+				vaultRef.current,
+			);
+		}, []);
 		const layoutRef = useRef(layout);
 		layoutRef.current = layout;
 		const onCloseRef = useRef(onClosePanel);
@@ -674,12 +692,13 @@ export const DockWorkspace = memo(
 			(api: DockviewApi) => {
 				requestAnimationFrame(() => {
 					syncingRef.current = false;
+					syncWritingFocus(api);
 					onActiveRef.current(api.activePanel?.id ?? null);
 					publishVisiblePanels(api);
 					scheduleLayoutSave(api);
 				});
 			},
-			[publishVisiblePanels, scheduleLayoutSave],
+			[publishVisiblePanels, scheduleLayoutSave, syncWritingFocus],
 		);
 
 		const keepSet = useMemo(() => new Set(keepMountedIds), [keepMountedIds]);
@@ -859,6 +878,7 @@ export const DockWorkspace = memo(
 					}),
 					api.onDidActivePanelChange((ev) => {
 						if (syncingRef.current) return;
+						syncWritingFocus(api);
 						onActiveRef.current(ev.panel?.id ?? null);
 						publishVisiblePanels(api);
 					}),
@@ -870,6 +890,7 @@ export const DockWorkspace = memo(
 					// (incl. tab-group rename / color / membership via toJSON).
 					api.onDidLayoutChange(() => {
 						ensureLibraryTabFirst(api);
+						syncProjectPreviewHeaders(api);
 						if (!syncingRef.current) publishVisiblePanels(api);
 						scheduleLayoutSave(api);
 					}),
@@ -895,7 +916,13 @@ export const DockWorkspace = memo(
 					syncPanels(api);
 				}
 			},
-			[endSync, publishVisiblePanels, scheduleLayoutSave, syncPanels],
+			[
+				endSync,
+				publishVisiblePanels,
+				scheduleLayoutSave,
+				syncPanels,
+				syncWritingFocus,
+			],
 		);
 
 		// Sync membership when panel ids change (not titles).
@@ -908,7 +935,12 @@ export const DockWorkspace = memo(
 		}, [panelIdsKey, syncPanels]);
 
 		// Title + persist params + renderer channel (mode/path without full membership).
-		const metaKey = tabs.map((t) => `${t.id}:${t.title}:${t.mode}`).join("|");
+		const metaKey = tabs
+			.map(
+				(t) =>
+					`${t.id}:${t.title}:${t.mode}:${t.texRoot ?? ""}:${t.writingRoot ?? ""}`,
+			)
+			.join("|");
 		useEffect(() => {
 			void metaKey;
 			const api = apiRef.current;
@@ -918,10 +950,12 @@ export const DockWorkspace = memo(
 				if (!panel) continue;
 				applyTabPanelMeta(panel, tab);
 			}
+			syncProjectPreviewHeaders(api);
+			syncWritingFocus(api);
 			// Param updates (e.g. resolved title) don't emit onDidLayoutChange;
 			// re-save so the next restore shows titles before hydration (#410).
 			scheduleLayoutSave(api);
-		}, [metaKey, scheduleLayoutSave]);
+		}, [metaKey, scheduleLayoutSave, syncWritingFocus]);
 
 		// Activate panel when React activePanelId changes (openTab / library).
 		useEffect(() => {
@@ -931,7 +965,8 @@ export const DockWorkspace = memo(
 			if (panel && api.activePanel?.id !== activePanelId) {
 				panel.api.setActive();
 			}
-		}, [activePanelId]);
+			syncWritingFocus(api);
+		}, [activePanelId, syncWritingFocus]);
 
 		useEffect(() => {
 			return () => {

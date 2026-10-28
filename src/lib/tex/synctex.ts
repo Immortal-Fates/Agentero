@@ -71,7 +71,7 @@ export function registerTexPdfViewer(
 export function syncWritingPdfToSource(): boolean {
 	for (const peers of viewers.values()) {
 		for (const peer of peers) {
-			if (peer.scope === "writing" && peer.syncFromView) {
+			if (peer.scope === "writing" && peer.isActive() && peer.syncFromView) {
 				return peer.syncFromView();
 			}
 		}
@@ -160,7 +160,10 @@ export async function syncTexToPdf(
 		}
 		let targetTabId: string | undefined;
 		let targetDocumentId: string | undefined;
-		if (placeInDock) {
+		const embeddedPreview = [
+			...(viewers.get(normalizePath(pdfPath)) ?? []),
+		].find((peer) => peer.scope === "writing" && peer.isActive());
+		if (placeInDock && !embeddedPreview) {
 			// A live preview can occupy this same tab without having loaded the
 			// on-disk PDF. Load its compiled bytes before leaving live mode.
 			const liveTab = tabs.find(
@@ -204,7 +207,7 @@ export async function syncTexToPdf(
 			report,
 			targetDocumentId,
 			targetTabId,
-			options?.scope,
+			embeddedPreview ? "writing" : options?.scope,
 		);
 	} catch (error) {
 		if (request === forwardRequest && report)

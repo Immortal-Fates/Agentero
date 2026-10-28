@@ -32,6 +32,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { NewProjectButton } from "@/components/writing/new-project-button";
 import { contextPathIcon } from "@/lib/agent/context-path-icon";
 import { cn } from "@/lib/core/utils";
 import { isPapersRoot } from "@/lib/paper";
@@ -49,6 +50,7 @@ import {
 	skillDescriptionTooltip,
 } from "@/lib/vault/agent-tree";
 import { normalizePathKey } from "@/lib/vault/path";
+import { isWritingPath } from "@/lib/writing/project-target";
 import type { TexCompileActions as TexCompileHookActions } from "./hooks/use-tex-compile";
 import {
 	DOWNLOAD_REASON_KEYS,
@@ -274,6 +276,9 @@ export function NodeTreeRow({
 			>
 				<div className="min-w-0 flex-1">
 					<FileTreeFolderRow
+						openOnLabel={Boolean(
+							vaultPath && isWritingPath(vaultPath, node.path),
+						)}
 						path={node.path}
 						name={
 							isLibraryRoot
@@ -281,7 +286,11 @@ export function NodeTreeRow({
 								: isAgentRoot
 									? t("fileTree.vaultRoot.agents")
 									: rootFace
-										? t(VAULT_ROOT_LABEL_KEY[rootFace])
+										? t(
+												rootFace === "thesis"
+													? "writing.write"
+													: VAULT_ROOT_LABEL_KEY[rootFace],
+											)
 										: node.name
 						}
 						icon={
@@ -295,6 +304,9 @@ export function NodeTreeRow({
 						}
 					/>
 				</div>
+				{rootFace === "thesis" && vaultPath ? (
+					<NewProjectButton vaultPath={vaultPath} />
+				) : null}
 				{pendingLoad && expanded ? (
 					<Loader2
 						className="pointer-events-none absolute right-2 size-3.5 shrink-0 animate-spin text-muted-foreground"

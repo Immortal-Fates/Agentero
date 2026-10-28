@@ -80,7 +80,8 @@ export function bindWritingVault(vaultPath: string | null): void {
 	const prefs = readWritingPrefs(vaultPath);
 	writingStore.setState({
 		vaultPath,
-		surface: prefs.surface,
+		// The workspace no longer restores a separate writing surface.
+		surface: "reading",
 		activeRoot: prefs.activeRoot,
 		activeFile: prefs.activeRoot,
 		openFiles: prefs.activeRoot ? [prefs.activeRoot] : [],
