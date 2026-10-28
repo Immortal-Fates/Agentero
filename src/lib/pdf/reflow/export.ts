@@ -9,6 +9,7 @@ import {
 	rgb,
 	StandardFonts,
 } from "pdf-lib";
+import { visiblePageBox } from "../page-box";
 import type { ReflowFontBytes } from "./fonts";
 import { layoutReflowDocument, type ReflowFonts } from "./layout";
 import { relocateReflowLinks } from "./links";
@@ -79,9 +80,7 @@ export async function writeReflowPdf(
 			throw new Error("Rotated pages require normalized page coordinates");
 		const sourcePage = ir.pages.find((p) => p.index === page.index);
 		if (sourcePage) relocateReflowLinks(target, sourcePage, page);
-		const crop = target.getCropBox();
-		if (crop.x !== 0 || crop.y !== 0)
-			throw new Error("Offset crop boxes require normalized page coordinates");
+		const crop = visiblePageBox(target);
 		for (const paragraph of page.paragraphs) {
 			if (!paragraph.fits)
 				throw new Error(`Translation does not fit: ${paragraph.id}`);
@@ -92,8 +91,8 @@ export async function writeReflowPdf(
 			);
 			for (const { box: b } of originalParagraph?.formulas ?? []) {
 				target.drawRectangle({
-					x: b.x,
-					y: page.height - b.y - b.h,
+					x: crop.x + b.x,
+					y: crop.y + crop.height - b.y - b.h,
 					width: b.w,
 					height: b.h,
 					color: rgb(1, 1, 1),
@@ -111,22 +110,24 @@ export async function writeReflowPdf(
 					if (!fragment)
 						throw new Error(`Missing formula fragment: ${paragraph.id}`);
 					const fragmentDoc = await PDFDocument.load(fragment);
-					const snippet = await pdf.embedPage(fragmentDoc.getPage(0), {
-						left: f.x,
-						bottom: page.height - f.y - f.h,
-						right: f.x + f.w,
-						top: page.height - f.y,
+					const fragmentPage = fragmentDoc.getPage(0);
+					const fragmentBox = visiblePageBox(fragmentPage);
+					const snippet = await pdf.embedPage(fragmentPage, {
+						left: fragmentBox.x + f.x,
+						bottom: fragmentBox.y + fragmentBox.height - f.y - f.h,
+						right: fragmentBox.x + f.x + f.w,
+						top: fragmentBox.y + fragmentBox.height - f.y,
 					});
 					target.drawPage(snippet, {
-						x: unit.x,
-						y: page.height - unit.y,
+						x: crop.x + unit.x,
+						y: crop.y + crop.height - unit.y,
 						width: unit.width,
 						height: unit.height,
 					});
 				} else {
 					target.drawText(unit.text, {
-						x: unit.x,
-						y: page.height - unit.y,
+						x: crop.x + unit.x,
+						y: crop.y + crop.height - unit.y,
 						size: unit.fontSize,
 						font: fonts[unit.font],
 						color: rgb(

@@ -1,4 +1,5 @@
 import { PDFArray, PDFDict, PDFName, PDFNumber, type PDFPage } from "pdf-lib";
+import { visiblePageBox } from "../page-box";
 import {
 	intersects,
 	type PageLayout,
@@ -13,6 +14,7 @@ export function relocateReflowLinks(
 ): void {
 	const annotations = page.node.Annots();
 	if (!annotations) return;
+	const crop = visiblePageBox(page);
 	const additions: PDFDict[] = [];
 	for (let index = annotations.size() - 1; index >= 0; index--) {
 		const annotation = annotations.lookup(index, PDFDict);
@@ -22,7 +24,12 @@ export function relocateReflowLinks(
 		const [x, y, x2, y2] = Array.from({ length: 4 }, (_, i) =>
 			rect.lookup(i, PDFNumber).asNumber(),
 		);
-		const box = { x, y: source.height - y2, w: x2 - x, h: y2 - y };
+		const box = {
+			x: x - crop.x,
+			y: crop.y + crop.height - y2,
+			w: x2 - x,
+			h: y2 - y,
+		};
 		const paragraph = source.paragraphs.find((p) => intersects(p.box, box));
 		const placed = layout.paragraphs.find((p) => p.id === paragraph?.id);
 		if (!paragraph || !placed) continue;
@@ -76,10 +83,10 @@ export function relocateReflowLinks(
 			moved.set(
 				PDFName.of("Rect"),
 				page.doc.context.obj([
-					hit.x,
-					source.height - hit.y - hit.h,
-					hit.x + hit.w,
-					source.height - hit.y,
+					crop.x + hit.x,
+					crop.y + crop.height - hit.y - hit.h,
+					crop.x + hit.x + hit.w,
+					crop.y + crop.height - hit.y,
 				]),
 			);
 			additions.push(moved);
